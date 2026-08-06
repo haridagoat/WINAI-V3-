@@ -4,53 +4,81 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>WIN AI — NBA Props Engine</title>
-<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg:#0a0a0f;--surface:#111118;--surface2:#18181f;
-    --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);
+    --bg:#0b1220;--surface:#111a2e;--surface2:#17233d;
+    --border:rgba(255,255,255,0.08);--border2:rgba(255,255,255,0.15);
     --gold:#d4a844;--gold2:#f0c96a;--green:#2ecc71;--red:#e74c3c;
-    --amber:#f39c12;--blue:#4a9eff;--text:#e8e8f0;--muted:#7a7a8c;
+    --amber:#f39c12;--blue:#4a9eff;--text:#e8e8f0;--muted:#8189a4;--muted2:#b9c0d6;
   }
   *{box-sizing:border-box;margin:0;padding:0;}
-  body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min-height:100vh;}
-  header{border-bottom:1px solid var(--border);padding:18px 28px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:rgba(10,10,15,0.97);backdrop-filter:blur(12px);z-index:100;}
-  .logo{font-family:'Bebas Neue',cursive;font-size:26px;letter-spacing:3px;color:var(--gold);line-height:1;}
-  .logo span{color:var(--muted);font-size:11px;font-family:'DM Mono',monospace;letter-spacing:2px;display:block;margin-top:2px;}
+  body{background:var(--bg);color:var(--text);font-family:'Space Grotesk',sans-serif;min-height:100vh;}
+  header{border-bottom:1px solid var(--border);padding:18px 28px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:rgba(11,18,32,0.97);backdrop-filter:blur(12px);z-index:100;}
+  .logo{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:23px;letter-spacing:0.5px;color:var(--gold);line-height:1;}
+  .logo span{color:var(--muted);font-size:11px;font-family:'Space Grotesk',sans-serif;letter-spacing:2px;display:block;margin-top:2px;}
   .live-dot{width:7px;height:7px;border-radius:50%;background:var(--green);display:inline-block;margin-right:6px;animation:pulse 2s infinite;}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
-  .today-games{font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 12px;max-width:420px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .tabs{display:flex;gap:2px;padding:14px 28px 0;border-bottom:1px solid var(--border);}
-  .tab{font-family:'DM Mono',monospace;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;padding:9px 18px;border:1px solid transparent;border-bottom:none;border-radius:6px 6px 0 0;cursor:pointer;color:var(--muted);background:transparent;transition:all 0.15s;}
-  .tab.active{color:var(--gold);border-color:var(--border2);background:var(--surface);border-bottom:1px solid var(--surface);margin-bottom:-1px;}
+  .today-games{font-family:'Space Grotesk',sans-serif;font-size:11px;color:var(--muted);background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:7px 0;max-width:min(560px,44vw);display:flex;flex-direction:column;gap:6px;overflow:hidden;}
+  .games-row{display:flex;align-items:center;gap:6px;flex-wrap:nowrap;overflow-x:auto;padding:0 12px;-webkit-overflow-scrolling:touch;}
+  .games-row::-webkit-scrollbar{height:3px;}
+  .games-row::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
+  .games-row .league-tag{flex-shrink:0;font-size:9px;letter-spacing:1px;padding:1px 5px;border-radius:3px;}
+  .games-row .league-tag.nba{color:var(--gold);background:rgba(212,168,68,0.12);}
+  .games-row .league-tag.wnba{color:#c77dff;background:rgba(199,125,255,0.12);}
+  .ticker-track{display:flex;align-items:center;gap:4px;flex-shrink:0;}
+  .ticker-item{flex-shrink:0;white-space:nowrap;color:var(--text);padding:3px 9px;border-radius:12px;background:var(--surface2);border:1px solid var(--border);}
+  .ticker-item .t-time{color:var(--gold);margin-left:5px;}
+  .ticker-empty{flex-shrink:0;white-space:nowrap;color:var(--muted);font-style:italic;}
+  .tabs{display:flex;gap:2px;padding:14px 28px 0;border-bottom:1px solid var(--border);overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;}
+  .tab{font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;padding:9px 18px;border:1px solid transparent;border-bottom:none;border-radius:6px 6px 0 0;cursor:pointer;color:var(--muted);background:transparent;transition:all 0.15s;flex-shrink:0;white-space:nowrap;}
+  .tab.active{color:var(--gold);border-color:var(--border2);background:var(--surface);border-bottom:1px solid var(--surface);margin-bottom:-1px;box-shadow:inset 0 2px 0 0 var(--gold),0 -3px 10px -2px rgba(212,168,68,0.4);}
   .tab:hover:not(.active){color:var(--text);}
   .panel{display:none;padding:24px 28px;}
   .panel.active{display:block;}
-  .analyzer-grid{display:grid;grid-template-columns:340px 1fr;gap:20px;max-width:1200px;}
+  .analyzer-grid{display:grid;grid-template-columns:340px 1fr;gap:20px;max-width:1360px;margin:0 auto;}
   .input-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:22px;display:flex;flex-direction:column;gap:16px;}
-  .card-label{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:4px;}
+  .card-label{font-family:'Space Grotesk',sans-serif;font-size:10px;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:4px;display:flex;align-items:center;justify-content:space-between;}
   .field-group{display:flex;flex-direction:column;gap:5px;}
-  .field-group label{font-size:10px;color:var(--muted);font-family:'DM Mono',monospace;letter-spacing:1px;}
-  .field-group input,.field-group select{background:var(--surface2);border:1px solid var(--border2);border-radius:7px;padding:9px 12px;color:var(--text);font-family:'DM Mono',monospace;font-size:13px;outline:none;transition:border-color 0.15s;width:100%;}
+  .field-group label{font-size:10px;color:var(--muted);font-family:'Space Grotesk',sans-serif;letter-spacing:1px;display:flex;align-items:center;gap:6px;}
+  .field-group input,.field-group select{background:var(--surface2);border:1px solid var(--border2);border-radius:7px;padding:9px 12px;color:var(--text);font-family:'Space Grotesk',sans-serif;font-size:13px;outline:none;transition:border-color 0.15s;width:100%;}
   .field-group input:focus,.field-group select:focus{border-color:var(--gold);}
   .field-group select option{background:#18181f;}
   .field-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
   .field-wrap{position:relative;}
   .suggestion-box{position:absolute;background:var(--surface2);border:1px solid var(--border2);border-radius:7px;margin-top:2px;z-index:200;width:100%;max-height:180px;overflow-y:auto;display:none;}
   .suggestion-box.open{display:block;}
-  .suggestion-item{padding:9px 12px;font-family:'DM Mono',monospace;font-size:12px;cursor:pointer;}
+  .suggestion-item{padding:9px 12px;font-family:'Space Grotesk',sans-serif;font-size:12px;cursor:pointer;}
   .suggestion-item:hover{background:var(--surface);color:var(--gold);}
-  .analyze-btn{background:var(--gold);color:#0a0a0f;border:none;border-radius:8px;padding:13px;font-family:'Bebas Neue',cursive;font-size:17px;letter-spacing:2px;cursor:pointer;transition:all 0.15s;margin-top:4px;}
-  .analyze-btn:hover:not(:disabled){background:var(--gold2);transform:translateY(-1px);}
+  .analyze-btn{background:var(--gold);color:#0b1220;border:none;border-radius:8px;padding:13px;font-family:'Space Grotesk',sans-serif;font-size:17px;letter-spacing:2px;cursor:pointer;transition:all 0.15s;margin-top:4px;box-shadow:0 0 0 rgba(212,168,68,0);display:flex;align-items:center;justify-content:center;gap:8px;}
+  .analyze-btn:hover:not(:disabled){background:var(--gold2);transform:translateY(-1px);box-shadow:0 4px 24px rgba(212,168,68,0.35);}
   .analyze-btn:disabled{opacity:0.4;cursor:not-allowed;}
+  .analyze-btn .sparkle{font-size:14px;opacity:0.8;}
+
+  /* Field decorations: search icon + chevron affordance on lookup inputs */
+  .field-search-icon{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:13px;pointer-events:none;}
+  .field-chevron{position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:11px;pointer-events:none;}
+  .field-wrap input.has-icons,.field-lookup input.has-icons{padding-left:34px;padding-right:30px;}
+  .verified-badge{display:none;align-items:center;gap:4px;font-size:9px;color:var(--green);letter-spacing:0.5px;font-weight:600;}
+  .verified-badge.show{display:inline-flex;}
+  .verified-badge .vb-dot{width:12px;height:12px;border-radius:50%;background:rgba(46,204,113,0.15);display:inline-flex;align-items:center;justify-content:center;font-size:8px;}
+  .help-icon{width:13px;height:13px;border-radius:50%;background:var(--surface2);border:1px solid var(--border2);color:var(--muted);font-size:8px;display:inline-flex;align-items:center;justify-content:center;cursor:help;flex-shrink:0;}
+
+  .data-feed-status{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border);flex-wrap:wrap;}
+  .dfs-label{display:flex;align-items:center;gap:6px;font-family:'Space Grotesk',sans-serif;font-size:9px;letter-spacing:1px;color:var(--muted);}
+  .dfs-synced{display:flex;align-items:center;gap:5px;font-family:'Space Grotesk',sans-serif;font-size:9px;letter-spacing:1px;padding:3px 9px;border-radius:20px;background:rgba(46,204,113,0.1);border:1px solid rgba(46,204,113,0.25);color:var(--green);}
+  .dfs-synced .dfs-dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:pulse 2s infinite;}
+
+  .matchup-banner{display:none;align-items:center;gap:8px;font-family:'Space Grotesk',sans-serif;font-size:11px;padding:9px 12px;border-radius:8px;margin-top:2px;}
+  .matchup-banner.confirmed{display:flex;background:rgba(46,204,113,0.08);border:1px solid rgba(46,204,113,0.25);color:var(--green);}
+  .matchup-banner.warn{display:flex;background:rgba(243,156,18,0.08);border:1px solid rgba(243,156,18,0.25);color:var(--amber);}
+  .matchup-banner.muted{display:flex;background:var(--surface2);border:1px solid var(--border);color:var(--muted);}
   .result-area{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;min-height:460px;display:flex;flex-direction:column;}
   .result-placeholder{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:var(--muted);}
   .placeholder-icon{font-size:40px;opacity:0.2;}
-  .placeholder-text{font-family:'DM Mono',monospace;font-size:11px;letter-spacing:1px;text-align:center;line-height:2;}
+  .placeholder-text{font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:1px;text-align:center;line-height:2;}
 
   /* DATA SOURCE BANNER */
-  .data-source-banner{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:1px;}
-  .data-source-banner .banner-title{color:var(--gold);margin-bottom:6px;}
   .data-source-grid{display:flex;flex-wrap:wrap;gap:6px;}
   .source-tag{padding:3px 8px;border-radius:4px;font-size:10px;}
   .source-tag.live{background:rgba(46,204,113,0.12);color:var(--green);border:1px solid rgba(46,204,113,0.2);}
@@ -61,50 +89,125 @@
   .ai-disclaimer{background:rgba(243,156,18,0.06);border:1px solid rgba(243,156,18,0.2);border-radius:8px;padding:12px 14px;margin:14px 0;font-size:11px;line-height:1.7;color:var(--amber);}
   .ai-disclaimer strong{color:var(--gold);}
 
-  .data-strip{display:flex;gap:8px;flex-wrap:wrap;background:rgba(212,168,68,0.06);border:1px solid rgba(212,168,68,0.15);border-radius:8px;padding:10px 14px;margin-bottom:14px;}
-  .data-badge{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:1px;padding:3px 8px;border-radius:4px;background:rgba(255,255,255,0.05);color:var(--muted);}
   .data-badge.live{color:var(--gold);background:rgba(212,168,68,0.1);}
-  .stats-row{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0;}
-  .stat-chip{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;text-align:center;min-width:70px;}
-  .stat-chip .sv{font-family:'DM Mono',monospace;font-size:18px;font-weight:500;color:var(--text);}
-  .stat-chip .sl{font-size:10px;color:var(--muted);font-family:'DM Mono',monospace;margin-top:2px;}
+  /* Balanced 3-per-row grid (was one crowded flex row that wrapped
+     unevenly) — each chip gets consistent width and a touch more room to
+     breathe, matching the calmer, more card-like look we're moving toward. */
+  .key-stats-card{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin:8px 0;}
+  .key-stats-title{font-family:'Space Grotesk',sans-serif;font-size:10px;letter-spacing:1.5px;color:var(--gold);text-transform:uppercase;margin-bottom:10px;}
+  /* 4-per-row for 8 chips (was 3, for 6) — and each chip shrunk down a
+     touch so 8 fit comfortably without feeling bulky. */
+  .stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
+  @media(max-width:520px){.stats-row{grid-template-columns:repeat(2,1fr);}}
+  .stat-chip{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:7px 5px;text-align:center;transition:border-color 0.15s;}
+  .stat-chip .sv{font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:500;color:var(--text);}
+  .stat-chip .sl{font-size:8px;color:var(--muted);font-family:'Space Grotesk',sans-serif;margin-top:2px;letter-spacing:0.3px;}
   .stat-chip.verified{border-color:rgba(46,204,113,0.3);}
-  .stat-chip .src{font-size:9px;color:var(--green);font-family:'DM Mono',monospace;margin-top:1px;}
+  .stat-chip .src{font-size:7px;color:var(--green);font-family:'Space Grotesk',sans-serif;margin-top:1px;}
+  .stat-chip.proj{border-color:rgba(212,168,68,0.4);background:rgba(212,168,68,0.06);}
+  .stat-chip.proj .sv{color:var(--gold);}
 
   /* LIVE STAT TABLE */
-  .live-stat-table{width:100%;border-collapse:collapse;font-family:'DM Mono',monospace;font-size:11px;margin:8px 0;}
+  .live-stat-table{width:100%;border-collapse:collapse;font-family:'Space Grotesk',sans-serif;font-size:11px;margin:8px 0;}
   .live-stat-table th{color:var(--muted);letter-spacing:1px;text-align:left;padding:5px 8px;border-bottom:1px solid var(--border);}
   .live-stat-table td{padding:6px 8px;color:var(--text);border-bottom:1px solid rgba(255,255,255,0.03);}
   .live-stat-table .verified-cell{color:var(--green);}
   .live-stat-table tr:hover td{background:var(--surface2);}
 
-  .mini-table{width:100%;border-collapse:collapse;font-family:'DM Mono',monospace;font-size:11px;margin:8px 0;}
+  .mini-table{width:100%;border-collapse:collapse;font-family:'Space Grotesk',sans-serif;font-size:11px;margin:8px 0;}
   .mini-table th{color:var(--muted);letter-spacing:1px;text-align:left;padding:5px 8px;border-bottom:1px solid var(--border);}
   .mini-table td{padding:6px 8px;color:var(--text);border-bottom:1px solid rgba(255,255,255,0.03);}
   .mini-table tr:hover td{background:var(--surface2);}
 
-  .verdict-badge{display:inline-flex;align-items:center;gap:8px;padding:8px 18px;border-radius:100px;font-family:'Bebas Neue',cursive;font-size:20px;letter-spacing:3px;}
+  .verdict-badge{display:inline-flex;align-items:center;gap:8px;padding:8px 18px;border-radius:100px;font-family:'Space Grotesk',sans-serif;font-size:20px;letter-spacing:3px;}
   .verdict-badge.over{background:rgba(46,204,113,0.12);color:var(--green);border:1px solid rgba(46,204,113,0.25);}
   .verdict-badge.under{background:rgba(231,76,60,0.12);color:var(--red);border:1px solid rgba(231,76,60,0.25);}
   .verdict-badge.pass{background:rgba(243,156,18,0.12);color:var(--amber);border:1px solid rgba(243,156,18,0.25);}
   .conf-wrap{margin:10px 0 16px;}
-  .conf-labels{display:flex;justify-content:space-between;font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);margin-bottom:5px;}
+  .conf-labels{display:flex;justify-content:space-between;font-family:'Space Grotesk',sans-serif;font-size:10px;color:var(--muted);margin-bottom:5px;}
   .conf-bar{height:5px;background:var(--surface2);border-radius:3px;overflow:hidden;}
   .conf-fill{height:100%;border-radius:3px;transition:width 0.8s cubic-bezier(0.4,0,0.2,1);}
   .conf-fill.over{background:var(--green);}
   .conf-fill.under{background:var(--red);}
   .conf-fill.pass{background:var(--amber);}
-  .factor-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0;}
-  .factor-pill{background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:8px 11px;display:flex;align-items:flex-start;gap:8px;}
+
+  /* PROP EDGE MODEL — filterable game-log bar chart + confidence gauge */
+  .edge-model-row{display:flex;gap:14px;align-items:stretch;margin:14px 0;flex-wrap:wrap;}
+  .edge-model-chart{flex:1;min-width:260px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;}
+  .edge-model-side{display:flex;flex-direction:column;gap:8px;align-items:center;justify-content:center;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;min-width:120px;}
+  .gl-tabs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px;}
+  .gl-tab{font-family:'Space Grotesk',sans-serif;font-size:9px;letter-spacing:1px;padding:5px 9px;border-radius:5px;background:var(--surface);border:1px solid var(--border);color:var(--muted);cursor:pointer;transition:all 0.15s;}
+  .gl-tab:hover{color:var(--text);}
+  .gl-tab.active{color:var(--gold);border-color:rgba(212,168,68,0.35);background:rgba(212,168,68,0.08);}
+  .gl-tab-n{opacity:0.6;}
+  .gl-chart{position:relative;display:flex;align-items:flex-end;gap:6px;height:120px;padding-top:14px;margin-top:20px;}
+  .gl-bar-col{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;flex:1;height:100%;min-width:16px;cursor:default;}
+  .gl-bar-val{font-family:'Space Grotesk',sans-serif;font-size:9px;color:var(--muted);margin-bottom:3px;}
+  .gl-bar-track{position:relative;width:100%;max-width:22px;height:100%;background:rgba(255,255,255,0.03);border-radius:3px 3px 0 0;overflow:hidden;display:flex;align-items:flex-end;}
+  .gl-bar-fill{width:100%;border-radius:3px 3px 0 0;transition:height 0.4s ease;}
+  .gl-bar-fill.over{background:var(--green);}
+  .gl-bar-fill.under{background:var(--red);}
+  .gl-bar-label{font-family:'Space Grotesk',sans-serif;font-size:8px;color:var(--muted);margin-top:4px;white-space:nowrap;}
+  .gl-line-ref{position:absolute;left:0;right:0;border-top:1px dashed var(--gold);}
+  .gl-line-ref span{position:absolute;right:0;top:-14px;font-family:'Space Grotesk',sans-serif;font-size:8px;color:var(--gold);letter-spacing:0.5px;}
+  .gl-tooltip{position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);background:#0d1526;border:1px solid var(--border2);border-radius:7px;padding:8px 10px;min-width:150px;opacity:0;visibility:hidden;transition:opacity 0.15s;pointer-events:none;z-index:50;box-shadow:0 6px 20px rgba(0,0,0,0.4);}
+  .gl-bar-col:hover .gl-tooltip{opacity:1;visibility:visible;}
+  .gl-bar-col:first-child .gl-tooltip,.gl-bar-col:nth-child(2) .gl-tooltip{left:0;transform:translateX(0);}
+  .gl-bar-col:last-child .gl-tooltip,.gl-bar-col:nth-last-child(2) .gl-tooltip{left:auto;right:0;transform:translateX(0);}
+  .gl-tooltip-hdr{font-family:'Space Grotesk',sans-serif;font-size:9px;color:var(--gold);margin-bottom:5px;white-space:nowrap;}
+  .gl-tooltip-box{display:grid;grid-template-columns:1fr 1fr;gap:3px 10px;font-family:'Space Grotesk',sans-serif;font-size:9px;color:var(--muted);white-space:nowrap;}
+  .gl-tooltip-box b{color:var(--text);font-weight:600;}
+
+  /* DATA INTEGRITY banner (collapsible) */
+  .data-integrity{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:10px;font-family:'Space Grotesk',sans-serif;font-size:11px;}
+  .data-integrity-hdr{display:flex;align-items:center;justify-content:space-between;cursor:pointer;gap:10px;flex-wrap:wrap;}
+  .data-integrity-title{color:var(--muted);letter-spacing:0.5px;}
+  .data-integrity-title b{color:var(--green);}
+  .data-integrity-toggle{color:var(--gold);font-size:10px;letter-spacing:1px;white-space:nowrap;}
+  .data-integrity-details{display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);}
+  .data-integrity-details.open{display:block;}
+
+  /* 2-column analysis split — middle (math/chart) + right (shot charts + textual analysis) */
+  /* min-width:0 on both grid items — without it, a grid item's default
+     min-width:auto lets any non-wrapping content inside (e.g. a flex row
+     of stat spans) force the column past its track, blowing the whole
+     grid out past its container. Same root cause as the shot-chart
+     overflow, hardened here at the outer grid too since everything else
+     nests inside these two columns. */
+  /* True 3rd column: mid (math/game-log/shot-charts) | insights (AI textual
+     analysis + key factors, dedicated instead of sharing space with charts). */
+  .result-split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,320px);gap:16px;align-items:start;margin:14px 0;}
+  @media(max-width:1150px){.result-split{grid-template-columns:1fr;}}
+  .result-col-mid{min-width:0;}
+  .result-col-insights{display:flex;flex-direction:column;gap:4px;min-width:0;}
+  .textual-analysis-hdr{font-family:'Space Grotesk',sans-serif;font-size:10px;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin:14px 0 10px;}
+  /* Insight cards — each a distinct bordered card with a colored left
+     accent, instead of plain stacked text with just a colored title.
+     Reads as "three things AI is telling you" rather than a wall of text. */
+  .ta-block{background:var(--surface2);border:1px solid var(--border);border-left:3px solid var(--blue);border-radius:8px;padding:10px 12px;margin-bottom:10px;}
+  .ta-block-title{font-family:'Space Grotesk',sans-serif;font-size:9px;letter-spacing:1.5px;color:var(--blue);text-transform:uppercase;margin-bottom:5px;display:flex;align-items:center;gap:6px;}
+  .ta-block-body{font-size:11.5px;line-height:1.7;color:var(--text);opacity:0.9;}
+  .ta-block.risk{border-left-color:var(--red);}
+  .ta-block.risk .ta-block-title{color:var(--red);}
+  .ta-block.matchup{border-left-color:var(--amber);}
+  .ta-block.matchup .ta-block-title{color:var(--amber);}
+
+  .recommend-box{background:rgba(212,168,68,0.05);border:1px solid rgba(212,168,68,0.18);border-left:3px solid var(--gold);border-radius:8px;padding:12px 14px;margin:14px 0;}
+  .recommend-title{font-family:'Space Grotesk',sans-serif;font-size:10px;letter-spacing:2px;color:var(--gold);margin-bottom:8px;display:flex;align-items:center;gap:6px;}
+  .recommend-row{margin-bottom:8px;font-size:12px;line-height:1.6;}
+  .recommend-row:last-child{margin-bottom:0;}
+  .recommend-label{font-family:'Space Grotesk',sans-serif;font-size:9px;letter-spacing:1px;color:var(--muted);display:block;margin-bottom:2px;}
+
+  .factor-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;margin:12px 0;}
+  .factor-pill{background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:8px 11px;display:flex;align-items:flex-start;gap:8px;min-width:0;}
   .fi{width:22px;height:22px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;}
   .fi.pos{background:rgba(46,204,113,0.12);color:var(--green);}
   .fi.neg{background:rgba(231,76,60,0.12);color:var(--red);}
   .factor-txt{font-size:11px;color:var(--text);line-height:1.5;}
-  .section-divider{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin:14px 0 8px;display:flex;align-items:center;gap:8px;}
+  .section-divider{font-family:'Space Grotesk',sans-serif;font-size:10px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin:14px 0 8px;display:flex;align-items:center;gap:8px;}
   .section-divider::after{content:'';flex:1;height:1px;background:var(--border);}
   .analysis-box{background:var(--surface2);border-radius:8px;padding:12px 14px;font-size:12px;line-height:1.8;color:var(--text);opacity:0.9;}
   .analysis-text{font-size:13px;line-height:1.85;color:var(--text);opacity:0.85;white-space:pre-wrap;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);}
-  .bottom-line{margin-top:14px;padding:12px 14px;border-left:3px solid var(--gold);background:rgba(212,168,68,0.05);border-radius:0 8px 8px 0;font-family:'DM Mono',monospace;font-size:12px;color:var(--gold);line-height:1.6;}
   .outlier-strip{margin:8px 0;background:rgba(212,168,68,0.06);border:1px solid rgba(212,168,68,0.2);border-radius:8px;padding:10px 14px;display:flex;align-items:center;gap:12px;}
   .outlier-strip p{font-size:12px;line-height:1.6;}
   .outlier-strip strong{color:var(--gold);}
@@ -112,23 +215,166 @@
   .spinner{width:36px;height:36px;border:2px solid var(--border2);border-top-color:var(--gold);border-radius:50%;animation:spin 0.8s linear infinite;}
   @keyframes spin{to{transform:rotate(360deg)}}
   .loading-steps{display:flex;flex-direction:column;gap:4px;align-items:center;}
-  .ls{font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);letter-spacing:1px;opacity:0;transition:opacity 0.25s;}
+  .ls{font-family:'Space Grotesk',sans-serif;font-size:11px;color:var(--muted);letter-spacing:1px;opacity:0;transition:opacity 0.25s;}
   .ls.on{opacity:1;color:var(--gold);}
   .ls.done{opacity:0.35;color:var(--muted);}
   .schedule-strip{display:flex;gap:8px;overflow-x:auto;padding:16px 0 4px;margin-bottom:20px;}
-  .game-chip{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 14px;white-space:nowrap;cursor:pointer;font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);transition:all 0.15s;flex-shrink:0;}
+  .game-chip{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 14px;white-space:nowrap;cursor:pointer;font-family:'Space Grotesk',sans-serif;font-size:11px;color:var(--muted);transition:all 0.15s;flex-shrink:0;}
   .game-chip:hover{border-color:var(--gold);color:var(--gold);}
   .matchup-input-row{display:flex;gap:10px;align-items:flex-end;margin-bottom:20px;flex-wrap:wrap;}
-  .matchup-input-row input{background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:9px 14px;color:var(--text);font-family:'DM Mono',monospace;font-size:13px;outline:none;flex:1;min-width:180px;}
-  .scan-btn{background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:9px 16px;color:var(--gold);font-family:'DM Mono',monospace;font-size:12px;letter-spacing:1px;cursor:pointer;white-space:nowrap;transition:all 0.15s;}
+  .matchup-input-row input{background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:9px 14px;color:var(--text);font-family:'Space Grotesk',sans-serif;font-size:13px;outline:none;flex:1;min-width:180px;}
+  .scan-btn{background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:9px 16px;color:var(--gold);font-family:'Space Grotesk',sans-serif;font-size:12px;letter-spacing:1px;cursor:pointer;white-space:nowrap;transition:all 0.15s;}
   .scan-btn:hover{border-color:var(--gold);background:rgba(212,168,68,0.08);}
   .matchup-result{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;min-height:280px;}
+
+  /* Daily Matchups — week day picker */
+  .day-picker{display:flex;align-items:center;gap:6px;margin-bottom:6px;}
+  .day-nav{background:var(--surface2);border:1px solid var(--border2);color:var(--muted);width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:14px;flex-shrink:0;line-height:1;}
+  .day-nav:hover{color:var(--gold);border-color:var(--gold);}
+  .day-strip{display:flex;gap:6px;overflow-x:auto;flex:1;}
+  .day-chip{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:7px 14px;text-align:center;font-family:'Space Grotesk',sans-serif;font-size:11px;color:var(--muted);cursor:pointer;flex-shrink:0;min-width:56px;transition:all 0.15s;}
+  .day-chip:hover{border-color:var(--border2);color:var(--text);}
+  .day-chip.active{border-color:var(--gold);color:var(--gold);background:rgba(212,168,68,0.08);}
+  .chip-league{font-size:8px;color:var(--gold);margin-right:4px;letter-spacing:0.5px;}
+  .matchup-input-row select{background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:9px 10px;color:var(--text);font-family:'Space Grotesk',sans-serif;font-size:12px;outline:none;}
+
+  /* Daily Matchups — result dashboard */
+  .tc-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px;}
+  .tc-title{font-family:'Space Grotesk',sans-serif;font-size:20px;letter-spacing:1px;}
+  .tc-winprob{display:flex;align-items:center;gap:10px;background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:8px 14px;}
+  .tc-winprob-label{font-family:'Space Grotesk',sans-serif;font-size:9px;color:var(--muted);letter-spacing:1px;}
+  .tc-winprob-val{font-family:'Space Grotesk',sans-serif;font-size:16px;color:var(--gold);}
+  .tc-compare-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(170px,210px) minmax(0,1fr);gap:14px;align-items:start;margin-bottom:16px;}
+  @media(max-width:820px){.tc-compare-grid{grid-template-columns:1fr;}}
+  .tc-team-card{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;min-width:0;}
+  .tc-team-name{font-family:'Space Grotesk',sans-serif;font-size:15px;letter-spacing:0.5px;margin-bottom:2px;}
+  .tc-team-record{font-family:'Space Grotesk',sans-serif;font-size:10px;color:var(--muted);margin-bottom:10px;}
+  .tc-stat-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+  .tc-stat{background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:6px 8px;min-width:0;}
+  .tc-stat-val{font-family:'Space Grotesk',sans-serif;font-size:13px;color:var(--text);white-space:nowrap;}
+  .tc-stat-label{font-family:'Space Grotesk',sans-serif;font-size:8px;color:var(--muted);letter-spacing:0.5px;margin-top:1px;}
+  .tc-stat-rank{font-family:'Space Grotesk',sans-serif;font-size:8px;color:var(--gold);margin-left:4px;}
+  .h2h-table{width:100%;border-collapse:collapse;font-family:'Space Grotesk',sans-serif;font-size:10.5px;}
+  .h2h-table th{text-align:left;color:var(--muted);font-size:9px;letter-spacing:0.5px;padding:4px 6px;border-bottom:1px solid var(--border);}
+  .h2h-table td{padding:5px 6px;border-bottom:1px solid var(--border);color:var(--text);white-space:nowrap;}
+  .h2h-table tr:last-child td{border-bottom:none;}
+  .h2h-win{color:var(--green);}
+  .h2h-loss{color:var(--red);}
+  .tc-last5-team{margin-bottom:14px;}
+  .tc-last5-team:last-child{margin-bottom:0;}
+  .tc-last5-label{font-family:'Space Grotesk',sans-serif;font-size:10px;color:var(--muted);margin-bottom:2px;}
+  .tc-last5-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+
+  /* Daily Matchups — AI breakdown restructure */
+  .mu-section-title{font-family:'Space Grotesk',sans-serif;font-size:10px;letter-spacing:1.5px;color:var(--gold);text-transform:uppercase;margin:18px 0 10px;}
+  .mu-data-quality{background:var(--surface2);border:1px solid rgba(243,156,18,0.3);border-radius:10px;padding:14px;margin-bottom:6px;}
+  .mu-dq-flag{font-family:'Space Grotesk',sans-serif;font-size:10px;color:var(--amber);letter-spacing:1px;margin-bottom:8px;}
+  .mu-dq-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);font-family:'Space Grotesk',sans-serif;font-size:11px;flex-wrap:wrap;}
+  .mu-dq-row:last-child{border-bottom:none;}
+  .mu-dq-team{color:var(--text);}
+  .mu-dq-tag.live{color:var(--green);}
+  .mu-dq-tag.warn{color:var(--amber);}
+  .mu-dq-note{font-family:'Space Grotesk',sans-serif;font-size:9.5px;color:var(--muted);margin-top:8px;line-height:1.6;}
+  .mu-target-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;}
+  .mu-target-card{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;min-width:0;}
+  .mu-target-hdr{display:flex;align-items:center;gap:10px;}
+  .mu-avatar{width:32px;height:32px;border-radius:50%;background:rgba(212,168,68,0.15);color:var(--gold);display:flex;align-items:center;justify-content:center;font-family:'Space Grotesk',sans-serif;font-size:13px;flex-shrink:0;}
+  .mu-target-name{font-size:13px;font-weight:500;}
+  .mu-target-meta{font-family:'Space Grotesk',sans-serif;font-size:9px;color:var(--muted);}
+  .mu-target-note{font-size:11.5px;color:var(--text);line-height:1.6;}
+  .mu-target-btn{align-self:flex-start;font-family:'Space Grotesk',sans-serif;font-size:9px;color:var(--gold);background:rgba(212,168,68,0.08);border:1px solid rgba(212,168,68,0.3);border-radius:6px;padding:5px 10px;cursor:pointer;}
+  .mu-target-btn:hover{background:rgba(212,168,68,0.2);}
+  .mu-avoid-list{display:flex;flex-direction:column;gap:8px;}
+  .mu-avoid-row{display:flex;align-items:center;gap:10px;background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:9px 12px;flex-wrap:wrap;}
+  .mu-avoid-x{color:var(--red);font-size:14px;flex-shrink:0;}
+  .mu-avoid-name{font-size:12.5px;font-weight:500;white-space:nowrap;}
+  .mu-avoid-reason{font-family:'Space Grotesk',sans-serif;font-size:9.5px;color:var(--muted);flex:1;min-width:120px;}
+  .mu-avoid-status{font-family:'Space Grotesk',sans-serif;font-size:9px;padding:2px 8px;border-radius:100px;white-space:nowrap;}
+  .mu-avoid-status.out{color:var(--red);background:rgba(231,76,60,0.1);}
+  .mu-avoid-status.gtd{color:var(--amber);background:rgba(243,156,18,0.1);}
+  .mu-two-col{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  @media(max-width:820px){.mu-two-col{grid-template-columns:1fr;}}
+  .mu-info-card{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;min-width:0;}
+  .mu-info-card.risk{border-left:3px solid var(--amber);}
+  .mu-risk-badge{display:inline-block;font-family:'Space Grotesk',sans-serif;font-size:13px;letter-spacing:1px;padding:3px 10px;border-radius:100px;margin-bottom:8px;}
+  .mu-risk-badge.low{color:var(--green);background:rgba(46,204,113,0.12);}
+  .mu-risk-badge.moderate{color:var(--amber);background:rgba(243,156,18,0.12);}
+  .mu-risk-badge.high{color:var(--red);background:rgba(231,76,60,0.12);}
+  /* Collapsible accordion — everything below the odds banner */
+  .mu-accordion-item{border:1px solid var(--border);border-radius:10px;margin-bottom:10px;background:var(--surface2);overflow:hidden;}
+  .mu-accordion-header{display:flex;align-items:center;justify-content:space-between;padding:13px 16px;cursor:pointer;user-select:none;}
+  .mu-accordion-header:hover{background:rgba(255,255,255,0.02);}
+  .mu-accordion-title{font-family:'Space Grotesk',sans-serif;font-size:10px;letter-spacing:1.5px;color:var(--gold);text-transform:uppercase;}
+  .mu-accordion-chevron{color:var(--muted);font-size:10px;transition:transform 0.2s;flex-shrink:0;margin-left:10px;}
+  .mu-accordion-item.open .mu-accordion-chevron{transform:rotate(180deg);}
+  .mu-accordion-body{max-height:0;overflow:hidden;transition:max-height 0.25s ease;padding:0 16px;}
+  .mu-accordion-item.open .mu-accordion-body{max-height:4000px;padding:0 16px 16px;}
+
+  .tc-favor-wrap{display:flex;align-items:center;gap:10px;}
+  .tc-favor-label{font-family:'Space Grotesk',sans-serif;font-size:9px;color:var(--muted);letter-spacing:1px;white-space:nowrap;}
+  .tc-favor-track{width:110px;height:8px;background:var(--surface);border-radius:100px;overflow:hidden;border:1px solid var(--border);flex-shrink:0;}
+  .tc-favor-fill{height:100%;background:linear-gradient(90deg,var(--gold),var(--blue));border-radius:100px;}
+  .tc-favor-pct{font-family:'Space Grotesk',sans-serif;font-size:15px;color:var(--gold);white-space:nowrap;}
+
+  /* Key Betting Lines & Odds — top banner, real spread/moneyline/total (ESPN, free) */
+  .tc-odds-banner{display:flex;align-items:center;justify-content:space-around;gap:18px;background:var(--surface);border:1px solid var(--border2);border-radius:10px;padding:14px 20px;margin-bottom:14px;flex-wrap:wrap;}
+  .tc-odds-item{text-align:center;}
+  .tc-odds-label{font-family:'Space Grotesk',sans-serif;font-size:9px;letter-spacing:1.5px;color:var(--gold);text-transform:uppercase;margin-bottom:4px;}
+  .tc-odds-value{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:14px;color:var(--text);white-space:nowrap;}
+  .tc-odds-sub{font-family:'Space Grotesk',sans-serif;font-size:9px;color:var(--muted);margin-top:1px;}
+  .tc-odds-unavailable{font-family:'Space Grotesk',sans-serif;font-size:10.5px;color:var(--muted);text-align:center;padding:10px;background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:14px;}
+  .tc-odds-provider{font-family:'Space Grotesk',sans-serif;font-size:8px;color:var(--muted);text-align:center;width:100%;margin-top:6px;letter-spacing:0.5px;}
+
+  /* Team Stats comparison table */
+  .tc-stat-table{width:100%;border-collapse:collapse;font-family:'Space Grotesk',sans-serif;font-size:11px;}
+  .tc-stat-table th{text-align:center;padding:6px 4px;color:var(--muted);font-size:9px;letter-spacing:0.5px;border-bottom:1px solid var(--border2);}
+  .tc-stat-table th:first-child, .tc-stat-table th:last-child{color:var(--text);font-size:10px;}
+  .tc-stat-table td{text-align:center;padding:6px 4px;border-bottom:1px solid var(--border);white-space:nowrap;}
+  .tc-stat-table td.tc-metric-name{color:var(--muted);font-size:9px;letter-spacing:0.5px;}
+  .tc-stat-table .rank{font-size:8px;color:var(--gold);margin-left:2px;}
+  .tc-stat-table tr:last-child td{border-bottom:none;}
+
+  /* Last 5 Games — official table (W/L pill, date, opponent, score, high scorer) */
+  .tc-last5-official{width:100%;border-collapse:collapse;font-family:'Space Grotesk',sans-serif;font-size:11px;margin-top:6px;}
+  .tc-last5-official th{text-align:left;color:var(--muted);font-weight:normal;padding:5px 8px;border-bottom:1px solid var(--border2);font-size:8.5px;letter-spacing:1px;text-transform:uppercase;}
+  .tc-last5-official td{padding:7px 8px;border-bottom:1px solid var(--border);color:var(--text);white-space:nowrap;}
+  .tc-last5-official tr:last-child td{border-bottom:none;}
+  .tc-wl-pill{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:5px;font-weight:700;font-size:11px;font-family:'Space Grotesk',sans-serif;}
+  .tc-wl-pill.w{background:rgba(46,204,113,0.18);color:var(--green);}
+  .tc-wl-pill.l{background:rgba(231,76,60,0.18);color:var(--red);}
+
+  .tc-target-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);}
+  .tc-target-row:last-child{border-bottom:none;}
+  .tc-headshot{width:36px;height:36px;border-radius:50%;object-fit:cover;background:var(--surface);border:1px solid var(--border2);flex-shrink:0;}
+  .tc-avatar-fallback{width:36px;height:36px;border-radius:50%;background:rgba(212,168,68,0.15);color:var(--gold);display:flex;align-items:center;justify-content:center;font-family:'Space Grotesk',sans-serif;font-size:13px;flex-shrink:0;}
+  .result-headshot{width:64px;height:64px;border-radius:50%;object-fit:cover;background:var(--surface);border:2px solid var(--border2);flex-shrink:0;}
+  .result-avatar-fallback{width:64px;height:64px;border-radius:50%;background:rgba(212,168,68,0.15);color:var(--gold);display:flex;align-items:center;justify-content:center;font-family:'Space Grotesk',sans-serif;font-size:22px;flex-shrink:0;}
+  .result-player-header{display:flex;align-items:center;gap:14px;}
+  .tc-target-info{flex:1;min-width:0;}
+  .tc-target-name{font-size:12.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .tc-target-meta{font-family:'Space Grotesk',sans-serif;font-size:9px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .tc-target-lean{font-family:'Space Grotesk',sans-serif;font-size:8.5px;padding:2px 7px;border-radius:100px;white-space:nowrap;flex-shrink:0;}
+  .tc-target-lean.over{color:var(--green);background:rgba(46,204,113,0.1);}
+  .tc-target-lean.under{color:var(--red);background:rgba(231,76,60,0.1);}
+  .tc-target-lean.neutral{color:var(--muted);background:rgba(255,255,255,0.04);}
+
+  .tc-lineup-cols{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  @media(max-width:520px){.tc-lineup-cols{grid-template-columns:1fr;}}
+  .tc-lineup-team{font-family:'Space Grotesk',sans-serif;font-size:9px;color:var(--gold);letter-spacing:1px;margin-bottom:6px;}
+  .tc-lineup-row{display:flex;align-items:center;gap:6px;padding:4px 0;}
+  .tc-lineup-pos{font-family:'Space Grotesk',sans-serif;font-size:8.5px;color:var(--muted);width:14px;text-align:center;flex-shrink:0;}
+  .tc-lineup-name{font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
+  .tc-gameflow-cols{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  @media(max-width:700px){.tc-gameflow-cols{grid-template-columns:1fr;}}
+  .tc-gameflow-team{font-family:'Space Grotesk',sans-serif;font-size:13px;letter-spacing:0.5px;margin-bottom:6px;}
+  .tc-gameflow-body{font-size:12px;line-height:1.85;color:var(--text);white-space:pre-wrap;}
   .history-list{display:flex;flex-direction:column;gap:8px;margin-top:4px;}
   .history-item{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;transition:border-color 0.15s;}
   .history-item:hover{border-color:var(--border2);}
   .h-player{font-weight:500;font-size:14px;}
-  .h-meta{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);margin-top:3px;letter-spacing:0.5px;}
-  .h-verdict{font-family:'Bebas Neue',cursive;font-size:15px;letter-spacing:2px;padding:3px 12px;border-radius:100px;}
+  .h-meta{font-family:'Space Grotesk',sans-serif;font-size:10px;color:var(--muted);margin-top:3px;letter-spacing:0.5px;}
+  .h-verdict{font-family:'Space Grotesk',sans-serif;font-size:15px;letter-spacing:2px;padding:3px 12px;border-radius:100px;}
   .h-verdict.over{color:var(--green);background:rgba(46,204,113,0.1);}
   .h-verdict.under{color:var(--red);background:rgba(231,76,60,0.1);}
   .h-verdict.pass{color:var(--amber);background:rgba(243,156,18,0.1);}
@@ -143,49 +389,134 @@
   .h-verdict.lean-under{color:var(--red);background:rgba(231,76,60,0.08);}
   /* Betslip / Prop list */
   .stat-summary-box{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 14px;min-width:80px;}
-  .ssb-label{font-family:'DM Mono',monospace;font-size:9px;color:var(--muted);letter-spacing:1px;margin-bottom:4px;}
-  .ssb-val{font-family:'DM Mono',monospace;font-size:16px;color:var(--text);font-weight:500;}
-  .mini-btn{background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:6px 12px;color:var(--muted);font-family:'DM Mono',monospace;font-size:10px;cursor:pointer;letter-spacing:1px;}
+  .ssb-label{font-family:'Space Grotesk',sans-serif;font-size:9px;color:var(--muted);letter-spacing:1px;margin-bottom:4px;}
+  .ssb-val{font-family:'Space Grotesk',sans-serif;font-size:16px;color:var(--text);font-weight:500;}
+  .mini-btn{background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:6px 12px;color:var(--muted);font-family:'Space Grotesk',sans-serif;font-size:10px;cursor:pointer;letter-spacing:1px;}
   .mini-btn:hover{color:var(--text);border-color:var(--gold);}
-  .result-btn{font-family:'DM Mono',monospace;font-size:9px;padding:3px 8px;border-radius:4px;border:1px solid var(--border2);background:var(--surface2);cursor:pointer;color:var(--muted);}
+  .result-btn{font-family:'Space Grotesk',sans-serif;font-size:9px;padding:3px 8px;border-radius:4px;border:1px solid var(--border2);background:var(--surface2);cursor:pointer;color:var(--muted);}
   .result-btn.active-win{border-color:rgba(46,204,113,0.5);color:var(--green);background:rgba(46,204,113,0.1);}
   .result-btn.active-loss{border-color:rgba(231,76,60,0.5);color:var(--red);background:rgba(231,76,60,0.1);}
   .result-btn.active-push{border-color:rgba(243,156,18,0.5);color:var(--amber);background:rgba(243,156,18,0.1);}
+
+  /* TOP-3 MOST CONFIDENT PLAYS */
+  .top-plays-box{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:18px;}
+  .top-plays-title{font-family:'Space Grotesk',sans-serif;font-size:10px;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;}
+  .top-plays-refresh{cursor:pointer;color:var(--muted);font-size:13px;}
+  .top-plays-refresh:hover{color:var(--gold);}
+  .top-plays-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;}
+  .top-play-card{background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:11px 13px;}
+  .top-play-rank{font-family:'Space Grotesk',sans-serif;font-size:22px;color:var(--gold);line-height:1;margin-right:8px;}
+  .top-play-player{font-size:13px;font-weight:500;}
+  .top-play-meta{font-family:'Space Grotesk',sans-serif;font-size:10px;color:var(--muted);margin-top:2px;}
+  .top-play-row{display:flex;align-items:center;justify-content:space-between;margin-top:8px;}
+  .top-play-dir{font-family:'Space Grotesk',sans-serif;font-size:14px;letter-spacing:1px;padding:2px 10px;border-radius:100px;}
+  .top-play-dir.over{color:var(--green);background:rgba(46,204,113,0.12);}
+  .top-play-dir.under{color:var(--red);background:rgba(231,76,60,0.12);}
+  .top-play-conf{font-family:'Space Grotesk',sans-serif;font-size:10px;color:var(--muted);}
+  .top-plays-empty{color:var(--muted);font-family:'Space Grotesk',sans-serif;font-size:11px;padding:6px 0;}
+
+  /* SHOT CHARTS */
+  /* min-width:0 on the grid item is required — without it, a grid item's
+     default min-width:auto lets wide content (the legend text below) force
+     the track past its 1fr share, blowing the card out past its container
+     (confirmed real overflow: the 2nd shot chart card was hanging ~97px
+     past its column's right edge). */
+  .shotchart-card{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;min-width:0;}
+  /* Single card with a dropdown filter (player shot chart ↔ opponent
+     defense by zone) instead of two cards side by side. */
+  .shotchart-title-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap;}
+  .shotchart-title-label{font-family:'Space Grotesk',sans-serif;font-size:10px;letter-spacing:1.5px;color:var(--gold);text-transform:uppercase;}
+  .shotchart-select{background:var(--surface);border:1px solid var(--border2);border-radius:6px;padding:5px 9px;color:var(--text);font-family:'Space Grotesk',sans-serif;font-size:10px;outline:none;cursor:pointer;max-width:100%;}
+  .shotchart-select:focus{border-color:var(--gold);}
+  .shotchart-svg{width:100%;height:auto;display:block;}
+  .sc-court-line{fill:none;stroke:rgba(255,255,255,0.55);stroke-width:2;}
+  .shotchart-legend{display:flex;flex-wrap:wrap;gap:6px 12px;margin-top:8px;font-family:'Space Grotesk',sans-serif;font-size:9px;color:var(--muted);}
+  .shotchart-legend span{display:inline-flex;align-items:center;gap:4px;}
+  .shotchart-dot{width:7px;height:7px;border-radius:50%;display:inline-block;flex-shrink:0;}
+
+  /* TODAY / HOME PAGE */
+  .today-layout{display:grid;grid-template-columns:220px 1fr;gap:20px;}
+  @media(max-width:860px){.today-layout{grid-template-columns:1fr;}}
+  .today-sidebar{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px;height:fit-content;position:sticky;top:90px;}
+  .today-sidebar select{width:100%;background:var(--surface2);border:1px solid var(--border2);border-radius:7px;padding:9px 12px;color:var(--text);font-family:'Space Grotesk',sans-serif;font-size:13px;outline:none;}
+  .today-main{display:flex;flex-direction:column;gap:14px;}
+  .game-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;}
+  .game-card-header{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:17px;letter-spacing:0.2px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;}
+  .game-card-matchup{display:flex;align-items:center;gap:8px;}
+  .game-card-logo{width:26px;height:26px;object-fit:contain;flex-shrink:0;}
+  .game-card-time{font-family:'Space Grotesk',sans-serif;font-size:10px;color:var(--muted);letter-spacing:1px;}
+  .team-pick-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;margin-top:8px;cursor:pointer;transition:border-color 0.15s;}
+  .team-pick-row:hover{border-color:var(--gold);}
+  .team-pick-team{font-family:'Space Grotesk',sans-serif;font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;}
+  .team-pick-player{font-size:13px;font-weight:500;margin-top:2px;}
+  .team-pick-meta{font-family:'Space Grotesk',sans-serif;font-size:10px;color:var(--muted);margin-top:2px;}
+  .team-pick-none{font-family:'Space Grotesk',sans-serif;font-size:10px;color:var(--muted);padding:10px 12px;font-style:italic;}
 </style>
 </head>
 <body>
 <header>
-  <div class="logo">WIN AI <span>NBA PROPS ENGINE</span></div>
+  <div class="logo">WIN AI <span>NBA + WNBA PROPS ENGINE</span></div>
   <div style="display:flex;align-items:center;gap:16px;">
-    <div class="today-games"><span class="live-dot"></span><span id="games-text">Loading today's games...</span></div>
+    <div class="today-games">
+      <div class="games-row"><span class="live-dot"></span><span class="league-tag nba">NBA</span><span id="games-text-nba">Loading...</span></div>
+      <div class="games-row"><span class="live-dot"></span><span class="league-tag wnba">WNBA</span><span id="games-text-wnba">Loading...</span></div>
+    </div>
   </div>
 </header>
 
 <div class="tabs">
-  <button class="tab active" onclick="switchTab('analyzer',this)">PROP ANALYZER</button>
+  <button class="tab active" onclick="switchTab('today',this)">TODAY</button>
+  <button class="tab" onclick="switchTab('analyzer',this)">NBA</button>
+  <button class="tab" onclick="switchTab('wnba',this)">WNBA</button>
   <button class="tab" onclick="switchTab('matchups',this)">DAILY MATCHUPS</button>
   <button class="tab" onclick="switchTab('history',this)">HISTORY / CLV</button>
   <button class="tab" onclick="switchTab('betslip',this)">PROP LIST <span id="betslip-count" style="display:none;background:var(--gold);color:#000;border-radius:10px;padding:1px 6px;font-size:9px;margin-left:4px;">0</span></button>
 </div>
 
-<div id="panel-analyzer" class="panel active">
+<div id="panel-today" class="panel active">
+  <div class="today-layout">
+    <div class="today-sidebar">
+      <div class="card-label" style="margin-bottom:8px;">All Games Today</div>
+      <div style="font-family:'Space Grotesk',sans-serif;font-size:10px;color:var(--muted2);line-height:1.8;">
+        Every NBA + WNBA game today and the single most confident pick per team, ranked by the same math projection engine used in the full analyzer. Click a pick to open the full breakdown.
+      </div>
+    </div>
+    <div class="today-main">
+      <div id="today-games-list"><div class="top-plays-empty">Loading today's slate...</div></div>
+    </div>
+  </div>
+</div>
+
+<div id="panel-analyzer" class="panel">
+  <div class="top-plays-box">
+    <div class="top-plays-title">Top 3 Most Confident — NBA <span class="top-plays-refresh" onclick="renderTopPlays('nba')" title="Refresh">⟳</span></div>
+    <div id="top-plays-nba" class="top-plays-grid"><div class="top-plays-empty">Loading tonight's slate...</div></div>
+  </div>
   <div class="analyzer-grid">
     <div class="input-card">
+      <div class="data-feed-status">
+        <span class="dfs-label"><span style="opacity:0.7;">📶</span> DATA FEED STATUS</span>
+        <span class="dfs-synced"><span class="dfs-dot"></span> DATA SYNCED</span>
+      </div>
       <div class="card-label">Player Prop Input</div>
       <div class="field-group">
-        <label>PLAYER NAME</label>
-        <div class="field-wrap">
-          <input type="text" id="player-name" placeholder="e.g. Anthony Edwards" autocomplete="off" oninput="onPlayerInput(this.value)" />
+        <label>PLAYER NAME <span class="verified-badge" id="player-verified"><span class="vb-dot">✓</span> verified</span></label>
+        <div class="field-wrap field-lookup">
+          <span class="field-search-icon">🔍</span>
+          <input type="text" id="player-name" class="has-icons" placeholder="e.g. Anthony Edwards" autocomplete="off" oninput="onPlayerInput(this.value)" />
+          <span class="field-chevron">▾</span>
           <div class="suggestion-box" id="player-suggestions"></div>
         </div>
       </div>
       <div class="field-group">
-        <label>OPPOSING TEAM <span id="opp-auto-label" style="color:var(--green);font-size:9px;letter-spacing:1px;margin-left:6px;"></span></label>
-        <div style="position:relative;">
-          <input type="text" id="opp-team" placeholder="Auto-detected from today's schedule..." maxlength="50" />
-          <div id="opp-status" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-family:'DM Mono',monospace;font-size:11px;color:var(--green);pointer-events:none;"></div>
+        <label>OPPOSING TEAM <span id="opp-auto-label" style="color:var(--green);font-size:9px;letter-spacing:1px;"></span></label>
+        <div class="field-lookup field-wrap" style="position:relative;">
+          <span class="field-search-icon">🔍</span>
+          <input type="text" id="opp-team" class="has-icons" placeholder="Auto-detected from today's schedule..." maxlength="50" autocomplete="off" oninput="onOppTeamInput(this.value)" onfocus="onOppTeamFocus()" />
+          <span class="field-chevron" id="opp-status">▾</span>
+          <div class="suggestion-box" id="opp-team-suggestions"></div>
         </div>
-        <div id="matchup-info" style="font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);margin-top:4px;min-height:14px;"></div>
+        <div id="matchup-info" class="matchup-banner"></div>
       </div>
       <div class="field-row">
         <div class="field-group">
@@ -219,10 +550,10 @@
         </select>
       </div>
       <div class="field-group">
-        <label>NOTES (optional)</label>
+        <label>NOTES (optional) <span class="help-icon" title="Anything the math model can't see — a confirmed inactive, a revenge-game narrative, a role change. Claude factors this in; it isn't fed to the math projection.">?</span></label>
         <input type="text" id="extra-context" placeholder="e.g. star teammate out, revenge game..." />
       </div>
-      <button class="analyze-btn" id="analyze-btn" onclick="analyzeProp()">ANALYZE PROP</button>
+      <button class="analyze-btn" id="analyze-btn" onclick="analyzeProp()"><span class="sparkle">✨</span> ANALYZE PROP</button>
     </div>
     <div class="result-area" id="result-area">
       <div class="result-placeholder">
@@ -233,19 +564,105 @@
   </div>
 </div>
 
+<div id="panel-wnba" class="panel">
+  <div class="top-plays-box">
+    <div class="top-plays-title">Top 3 Most Confident — WNBA <span class="top-plays-refresh" onclick="renderTopPlays('wnba')" title="Refresh">⟳</span></div>
+    <div id="top-plays-wnba" class="top-plays-grid"><div class="top-plays-empty">Loading tonight's slate...</div></div>
+  </div>
+  <div class="analyzer-grid">
+    <div class="input-card">
+      <div class="data-feed-status">
+        <span class="dfs-label"><span style="opacity:0.7;">📶</span> DATA FEED STATUS</span>
+        <span class="dfs-synced"><span class="dfs-dot"></span> DATA SYNCED</span>
+      </div>
+      <div class="card-label">WNBA Player Prop Input</div>
+      <div class="field-group">
+        <label>PLAYER NAME <span class="verified-badge" id="player-verified-wnba"><span class="vb-dot">✓</span> verified</span></label>
+        <div class="field-wrap field-lookup">
+          <span class="field-search-icon">🔍</span>
+          <input type="text" id="player-name-wnba" class="has-icons" placeholder="e.g. A'ja Wilson" autocomplete="off" oninput="onPlayerInput(this.value,'wnba')" />
+          <span class="field-chevron">▾</span>
+          <div class="suggestion-box" id="player-suggestions-wnba"></div>
+        </div>
+      </div>
+      <div class="field-group">
+        <label>OPPOSING TEAM <span id="opp-auto-label-wnba" style="color:var(--green);font-size:9px;letter-spacing:1px;"></span></label>
+        <div class="field-lookup field-wrap" style="position:relative;">
+          <span class="field-search-icon">🔍</span>
+          <input type="text" id="opp-team-wnba" class="has-icons" placeholder="Auto-detected from today's schedule..." maxlength="50" autocomplete="off" oninput="onOppTeamInput(this.value,'wnba')" onfocus="onOppTeamFocus('wnba')" />
+          <span class="field-chevron" id="opp-status-wnba">▾</span>
+          <div class="suggestion-box" id="opp-team-suggestions-wnba"></div>
+        </div>
+        <div id="matchup-info-wnba" class="matchup-banner"></div>
+      </div>
+      <div class="field-row">
+        <div class="field-group">
+          <label>PROP TYPE</label>
+          <select id="prop-type-wnba">
+            <option value="points">Points</option>
+            <option value="rebounds">Rebounds</option>
+            <option value="assists">Assists</option>
+            <option value="3pm">3-Pointers Made</option>
+            <option value="pra">Pts + Reb + Ast</option>
+            <option value="pr">Pts + Reb</option>
+            <option value="pa">Pts + Ast</option>
+            <option value="ra">Reb + Ast</option>
+            <option value="steals">Steals</option>
+            <option value="blocks">Blocks</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <label>LINE</label>
+          <input type="number" id="prop-line-wnba" step="0.5" placeholder="24.5" />
+        </div>
+      </div>
+      <div class="field-group">
+        <label>GAME CONTEXT</label>
+        <select id="game-context-wnba">
+          <option value="unknown">Let AI assess</option>
+          <option value="close">Projected close game</option>
+          <option value="blowout-likely">Blowout likely (-12+)</option>
+          <option value="underdog">Team is heavy underdog</option>
+          <option value="back-to-back">Back-to-back game</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <label>NOTES (optional) <span class="help-icon" title="Anything the math model can't see — a confirmed inactive, a revenge-game narrative, a role change. Claude factors this in; it isn't fed to the math projection.">?</span></label>
+        <input type="text" id="extra-context-wnba" placeholder="e.g. star teammate out, revenge game..." />
+      </div>
+      <button class="analyze-btn" id="analyze-btn-wnba" onclick="analyzeProp('wnba')"><span class="sparkle">✨</span> ANALYZE PROP</button>
+    </div>
+    <div class="result-area" id="result-area-wnba">
+      <div class="result-placeholder">
+        <div class="placeholder-icon">◈</div>
+        <div class="placeholder-text">ENTER A PLAYER + OPPONENT + LINE<br>REAL ESPN WNBA DATA FEEDS EVERY ANALYSIS<br><br>NO PUBLIC SOURCE EXISTS YET FOR WNBA PLAYTYPE/TRACKING DATA<br>SO CONFIDENCE RUNS LOWER THAN NBA — L10 + H2H + LIVE ODDS ONLY</div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div id="panel-matchups" class="panel">
-  <div class="card-label" style="margin-bottom:8px;">Today's Schedule</div>
+  <div class="card-label" style="margin-bottom:8px;">Select A Day</div>
+  <div class="day-picker">
+    <button class="day-nav" onclick="shiftMatchupWeek(-1)">‹</button>
+    <div class="day-strip" id="day-strip"></div>
+    <button class="day-nav" onclick="shiftMatchupWeek(1)">›</button>
+  </div>
   <div class="schedule-strip" id="schedule-strip"><div class="game-chip">Loading...</div></div>
   <div class="card-label" style="margin-bottom:8px;margin-top:8px;">Matchup Scanner</div>
   <div class="matchup-input-row">
-    <input type="text" id="matchup-team1" placeholder="Team 1 (e.g. OKC Thunder)" />
-    <div style="font-family:'Bebas Neue',cursive;font-size:18px;color:var(--muted);padding-bottom:9px;">VS</div>
-    <input type="text" id="matchup-team2" placeholder="Team 2 (e.g. Denver Nuggets)" />
+    <select id="matchup-league" onchange="populateMatchupTeamSelects()">
+      <option value="nba">NBA</option>
+      <option value="wnba">WNBA</option>
+    </select>
+    <select id="matchup-team1"></select>
+    <div style="font-family:'Space Grotesk',sans-serif;font-size:18px;color:var(--muted);padding-bottom:9px;">VS</div>
+    <select id="matchup-team2"></select>
     <button class="scan-btn" onclick="analyzeMatchup()">SCAN MATCHUP →</button>
   </div>
   <div class="matchup-result" id="matchup-result">
-    <div style="display:flex;align-items:center;justify-content:center;height:220px;color:var(--muted);font-family:'DM Mono',monospace;font-size:11px;letter-spacing:1px;flex-direction:column;gap:10px;">
-      <div style="font-size:32px;opacity:0.15;">⬡</div>CLICK A GAME ABOVE OR ENTER TWO TEAMS
+    <div style="display:flex;align-items:center;justify-content:center;height:220px;color:var(--muted);font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:1px;flex-direction:column;gap:10px;">
+      <div style="font-size:32px;opacity:0.15;">⬡</div>CLICK A GAME ABOVE OR PICK TWO TEAMS
     </div>
   </div>
 </div>
@@ -253,14 +670,14 @@
 <div id="panel-history" class="panel">
   <div class="card-label" style="margin-bottom:14px;">Analysis History</div>
   <div class="history-list" id="history-list">
-    <div style="color:var(--muted);font-family:'DM Mono',monospace;font-size:11px;letter-spacing:1px;padding:16px 0;">NO ANALYSES YET</div>
+    <div style="color:var(--muted);font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:1px;padding:16px 0;">NO ANALYSES YET</div>
   </div>
 </div>
 
 
 <div id="panel-betslip" class="panel">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
-    <div class="card-label">PROP LIST <span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);font-weight:normal;letter-spacing:1px;">— save props you like today</span></div>
+    <div class="card-label">PROP LIST <span style="font-family:'Space Grotesk',sans-serif;font-size:10px;color:var(--muted);font-weight:normal;letter-spacing:1px;">— save props you like today</span></div>
     <div style="display:flex;gap:8px;">
       <button class="mini-btn" onclick="exportBetslip()">EXPORT CSV</button>
       <button class="mini-btn" onclick="clearBetslip()" style="color:var(--red);">CLEAR ALL</button>
@@ -268,7 +685,7 @@
   </div>
   <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;" id="betslip-summary-bar"></div>
   <div id="betslip-list">
-    <div style="color:var(--muted);font-family:'DM Mono',monospace;font-size:11px;padding:20px 0;text-align:center;">
+    <div style="color:var(--muted);font-family:'Space Grotesk',sans-serif;font-size:11px;padding:20px 0;text-align:center;">
       NO PROPS SAVED YET<br><span style="font-size:10px;opacity:0.6;">Analyze a prop then click + ADD TO LIST</span>
     </div>
   </div>
@@ -277,107 +694,195 @@
 
 <script>
 const analysisHistory = [];
-const NBA_PLAYERS = ['LeBron James','Stephen Curry','Kevin Durant','Giannis Antetokounmpo','Luka Doncic','Shai Gilgeous-Alexander','Joel Embiid','Nikola Jokic','Jayson Tatum','Damian Lillard','Anthony Davis','Jimmy Butler','Anthony Edwards','Devin Booker','Trae Young','Donovan Mitchell','Paul George','Kawhi Leonard','Zion Williamson','Ja Morant','Bam Adebayo','Karl-Anthony Towns','Darius Garland','Cade Cunningham','Tyrese Haliburton','Jalen Brunson','De\'Aaron Fox','Lauri Markkanen','Evan Mobley','Paolo Banchero','Franz Wagner','Scottie Barnes','Victor Wembanyama','Chet Holmgren','Alperen Sengun','Brandon Ingram','Dejounte Murray','Mikal Bridges','Jaylen Brown','Kristaps Porzingis','OG Anunoby','RJ Barrett'];
+// Small star-player fallback shown until the real full roster list (every
+// active player, ~580 NBA / ~190 WNBA) loads from /api/players — the app
+// can genuinely analyze any of them, but autocomplete used to only ever
+// suggest from this short list, so anyone else needed to know the exact
+// spelling already.
+let NBA_PLAYERS = ['LeBron James','Stephen Curry','Kevin Durant','Giannis Antetokounmpo','Luka Doncic','Shai Gilgeous-Alexander','Joel Embiid','Nikola Jokic','Jayson Tatum','Damian Lillard','Anthony Davis','Jimmy Butler','Anthony Edwards','Devin Booker','Trae Young','Donovan Mitchell','Paul George','Kawhi Leonard','Zion Williamson','Ja Morant','Bam Adebayo','Karl-Anthony Towns','Darius Garland','Cade Cunningham','Tyrese Haliburton','Jalen Brunson','De\'Aaron Fox','Lauri Markkanen','Evan Mobley','Paolo Banchero','Franz Wagner','Scottie Barnes','Victor Wembanyama','Chet Holmgren','Alperen Sengun','Brandon Ingram','Dejounte Murray','Mikal Bridges','Jaylen Brown','Kristaps Porzingis','OG Anunoby','RJ Barrett'];
+let WNBA_PLAYERS = ['A\'ja Wilson','Breanna Stewart','Napheesa Collier','Caitlin Clark','Sabrina Ionescu','Kelsey Plum','Jackie Young','Chelsea Gray','Alyssa Thomas','Arike Ogunbowale','Kelsey Mitchell','Angel Reese','Paige Bueckers','Satou Sabally','Jonquel Jones','Kahleah Copper','Rhyne Howard','Jewell Loyd','Skylar Diggins','DeWanna Bonner','Nneka Ogwumike','Brittney Griner','Aliyah Boston','Dearica Hamby'];
+async function loadFullPlayerLists() {
+  try {
+    const [n, w] = await Promise.all([apiGet('/api/players?league=nba'), apiGet('/api/players?league=wnba')]);
+    if (n?.players?.length) NBA_PLAYERS = n.players;
+    if (w?.players?.length) WNBA_PLAYERS = w.players;
+  } catch (_) { /* keep the star-player fallback list */ }
+}
+// Real full team lists — 30 NBA, 15 WNBA (mirrors WNBA_ABBR_TO_NAME in server.js).
+const NBA_TEAMS = ['Atlanta Hawks','Boston Celtics','Brooklyn Nets','Charlotte Hornets','Chicago Bulls','Cleveland Cavaliers','Dallas Mavericks','Denver Nuggets','Detroit Pistons','Golden State Warriors','Houston Rockets','Indiana Pacers','LA Clippers','Los Angeles Lakers','Memphis Grizzlies','Miami Heat','Milwaukee Bucks','Minnesota Timberwolves','New Orleans Pelicans','New York Knicks','Oklahoma City Thunder','Orlando Magic','Philadelphia 76ers','Phoenix Suns','Portland Trail Blazers','Sacramento Kings','San Antonio Spurs','Toronto Raptors','Utah Jazz','Washington Wizards'];
+const WNBA_TEAMS = ['Atlanta Dream','Chicago Sky','Connecticut Sun','Dallas Wings','Golden State Valkyries','Indiana Fever','Las Vegas Aces','Los Angeles Sparks','Minnesota Lynx','New York Liberty','Phoenix Mercury','Portland Fire','Seattle Storm','Toronto Tempo','Washington Mystics'];
+
+// ESPN team-logo abbreviations (mirrors ESPN_TEAM_MAP / WNBA_TEAM_MAP in
+// server.js) — used only to build https://a.espncdn.com logo URLs client-side.
+const NBA_TEAM_ABBR = {
+  'atlanta hawks':'atl','boston celtics':'bos','brooklyn nets':'bkn','charlotte hornets':'cha','chicago bulls':'chi',
+  'cleveland cavaliers':'cle','dallas mavericks':'dal','denver nuggets':'den','detroit pistons':'det',
+  'golden state warriors':'gs','houston rockets':'hou','indiana pacers':'ind','la clippers':'lac',
+  'los angeles lakers':'lal','memphis grizzlies':'mem','miami heat':'mia','milwaukee bucks':'mil',
+  'minnesota timberwolves':'min','new orleans pelicans':'no','new york knicks':'ny','oklahoma city thunder':'okc',
+  'orlando magic':'orl','philadelphia 76ers':'phi','phoenix suns':'phx','portland trail blazers':'por',
+  'sacramento kings':'sac','san antonio spurs':'sa','toronto raptors':'tor','utah jazz':'utah','washington wizards':'wsh',
+};
+const WNBA_TEAM_ABBR = {
+  'atlanta dream':'atl','chicago sky':'chi','connecticut sun':'con','dallas wings':'dal',
+  'golden state valkyries':'gs','indiana fever':'ind','las vegas aces':'lv','los angeles sparks':'la',
+  'minnesota lynx':'min','new york liberty':'ny','phoenix mercury':'phx','portland fire':'por',
+  'seattle storm':'sea','toronto tempo':'tor','washington mystics':'wsh',
+};
+function teamLogoUrl(league, teamName) {
+  const map = league === 'wnba' ? WNBA_TEAM_ABBR : NBA_TEAM_ABBR;
+  const abbr = map[(teamName || '').toLowerCase().trim()];
+  return abbr ? `https://a.espncdn.com/i/teamlogos/${league}/500/${abbr}.png` : '';
+}
 
 window.addEventListener('DOMContentLoaded', () => {
   loadTodaysGames();
-  document.addEventListener('click', e => { if (!e.target.closest('.field-wrap')) closeSuggestions(); });
-
-  // Clear auto-filled flag when user manually edits opponent
-  const oppInput = document.getElementById('opp-team');
-  if (oppInput) {
-    oppInput.addEventListener('input', () => {
-      oppInput.dataset.autoFilled = 'false';
-      document.getElementById('opp-auto-label').textContent = '';
-      document.getElementById('opp-status').textContent = '';
-    });
-  }
+  loadFullPlayerLists();
+  renderTodayPage();
+  initMatchupDayPicker();
+  populateMatchupTeamSelects();
+  document.addEventListener('click', e => {
+    if (e.target.closest('.field-wrap') || e.target.closest('.field-lookup')) return;
+    closeSuggestions('nba'); closeSuggestions('wnba');
+    closeOppSuggestions('nba'); closeOppSuggestions('wnba');
+  });
 });
 
+// Non-wrapping pill chips for the header ticker — replaces the old
+// comma-joined text blob, which wrapped awkwardly across multiple lines
+// once more than a couple games were scheduled.
+function renderGamesTicker(games) {
+  if (!games.length) return '<span class="ticker-empty">No games today</span>';
+  return games.map(g => {
+    const away = escapeHtml((g.away || '').split(' ').pop());
+    const home = escapeHtml((g.home || '').split(' ').pop());
+    const time = g.gameTime ? `<span class="t-time">${escapeHtml(g.gameTime)}</span>` : '';
+    return `<span class="ticker-item">${away} @ ${home}${time}</span>`;
+  }).join('');
+}
+
 async function loadTodaysGames() {
+  // NBA
   try {
     const data = await apiGet('/api/today');
     const games = data.games || [];
-    document.getElementById('games-text').textContent = games.length
-      ? games.map(g => `${g.away.split(' ').pop()} @ ${g.home.split(' ').pop()} ${g.gameTime?'('+g.gameTime+')':''}`).join('  ·  ')
-      : 'No games today';
-    const strip = document.getElementById('schedule-strip');
-    strip.innerHTML = games.length
-      ? games.map(g => `<div class="game-chip" onclick="prefillMatchup('${g.away}','${g.home}')"><div>${g.away.split(' ').slice(-1)[0]} @ ${g.home.split(' ').slice(-1)[0]}</div><div style="font-size:9px;color:var(--muted);margin-top:2px;">${g.gameTime||g.status||'TBD'}</div></div>`).join('')
-      : '<div class="game-chip">No games today</div>';
+    document.getElementById('games-text-nba').innerHTML = renderGamesTicker(games);
   } catch (err) {
-    console.error('Games load error:', err.message);
-    document.getElementById('games-text').textContent = 'Could not load schedule — check server';
+    console.error('NBA games load error:', err.message);
+    document.getElementById('games-text-nba').textContent = 'Could not load schedule — check server';
     // Try debug endpoint to give user more info
     fetch('/api/debug').then(r=>r.json()).then(d=>{
       if (!d.balldontlie?.ok) {
-        document.getElementById('games-text').textContent = 
+        document.getElementById('games-text-nba').textContent =
           `BallDontLie API error: ${d.balldontlie?.status || 'no response'} — check API key`;
       }
     }).catch(()=>{
-      document.getElementById('games-text').textContent = 'Server not running — start node server.js';
+      document.getElementById('games-text-nba').textContent = 'Server not running — start node server.js';
     });
   }
-}
 
-function onPlayerInput(val) {
-  const box = document.getElementById('player-suggestions');
-  if (val.length < 2) { box.classList.remove('open'); return; }
-  const matches = NBA_PLAYERS.filter(p => p.toLowerCase().includes(val.toLowerCase())).slice(0, 6);
-  if (!matches.length) { box.classList.remove('open'); return; }
-  box.innerHTML = matches.map(p => `<div class="suggestion-item" onclick="selectPlayer('${p}')">${p}</div>`).join('');
-  box.classList.add('open');
-  // Also trigger matchup lookup for manual typing (debounced 800ms)
-  clearTimeout(_matchupTimer);
-  if (val.length >= 5) {
-    _matchupTimer = setTimeout(() => lookupTodayMatchup(val), 800);
+  // WNBA
+  try {
+    const data = await apiGet('/api/wnba/today');
+    document.getElementById('games-text-wnba').innerHTML = renderGamesTicker(data.games || []);
+  } catch (err) {
+    console.error('WNBA games load error:', err.message);
+    document.getElementById('games-text-wnba').textContent = 'Could not load schedule';
   }
 }
-function selectPlayer(name) {
-  document.getElementById('player-name').value = name;
-  closeSuggestions();
-  clearTimeout(_matchupTimer);
-  lookupTodayMatchup(name);
-  // Immediately clear old matchup info and trigger lookup
-  document.getElementById('matchup-info').textContent = 'Finding today\'s matchup...';
-  document.getElementById('matchup-info').style.color = 'var(--muted)';
-  document.getElementById('opp-status').textContent = '⟳';
-  clearTimeout(_matchupTimer);
-  // No delay — run immediately on selection
-  lookupTodayMatchup(name);
+
+// Element ids are suffixed "-wnba" for the WNBA tab, bare for NBA — this
+// resolver is the only place that needs to know that.
+function idFor(league, base) { return league === 'wnba' ? `${base}-wnba` : base; }
+function elFor(league, base) { return document.getElementById(idFor(league, base)); }
+
+function onPlayerInput(val, league='nba') {
+  const box = elFor(league, 'player-suggestions');
+  const list = league === 'wnba' ? WNBA_PLAYERS : NBA_PLAYERS;
+  if (val.length < 2) { box.classList.remove('open'); return; }
+  const matches = list.filter(p => p.toLowerCase().includes(val.toLowerCase())).slice(0, 6);
+  if (!matches.length) { box.classList.remove('open'); return; }
+  box.innerHTML = matches.map(p => `<div class="suggestion-item" onclick="selectPlayer('${p}','${league}')">${p}</div>`).join('');
+  box.classList.add('open');
+  // Also trigger matchup lookup for manual typing (debounced 800ms)
+  clearTimeout(_matchupTimer[league]);
+  if (val.length >= 5) {
+    _matchupTimer[league] = setTimeout(() => lookupTodayMatchup(val, league), 800);
+  }
 }
-function closeSuggestions() { document.getElementById('player-suggestions').classList.remove('open'); }
+function selectPlayer(name, league='nba') {
+  elFor(league, 'player-name').value = name;
+  closeSuggestions(league);
+  clearTimeout(_matchupTimer[league]);
+  // Immediately clear old matchup info and trigger lookup
+  elFor(league, 'matchup-info').className = 'matchup-banner muted';
+  elFor(league, 'matchup-info').textContent = 'Finding today\'s matchup...';
+  elFor(league, 'opp-status').textContent = '⟳';
+  lookupTodayMatchup(name, league);
+}
+function closeSuggestions(league='nba') { elFor(league, 'player-suggestions').classList.remove('open'); }
+
+// ── OPPONENT TEAM DROPDOWN — all real league teams, filterable ────
+function onOppTeamInput(val, league='nba') {
+  const box = elFor(league, 'opp-team-suggestions');
+  if (!box) return;
+  const list = league === 'wnba' ? WNBA_TEAMS : NBA_TEAMS;
+  const matches = val.length < 1 ? list : list.filter(t => t.toLowerCase().includes(val.toLowerCase()));
+  if (!matches.length) { box.classList.remove('open'); return; }
+  box.innerHTML = matches.map(t => `<div class="suggestion-item" onclick="selectOppTeam('${t.replace(/'/g,"\\'")}','${league}')">${escapeHtml(t)}</div>`).join('');
+  box.classList.add('open');
+}
+function onOppTeamFocus(league='nba') {
+  onOppTeamInput(elFor(league, 'opp-team').value || '', league);
+}
+function selectOppTeam(name, league='nba') {
+  const oppInput = elFor(league, 'opp-team');
+  oppInput.value = name;
+  oppInput.dataset.autoFilled = 'false';
+  elFor(league, 'opp-auto-label').textContent = '';
+  elFor(league, 'opp-status').textContent = '▾';
+  elFor(league, 'matchup-info').className = '';
+  elFor(league, 'matchup-info').textContent = '';
+  closeOppSuggestions(league);
+}
+function closeOppSuggestions(league='nba') { elFor(league, 'opp-team-suggestions')?.classList.remove('open'); }
 
 // ── AUTO-DETECT TODAY'S OPPONENT ─────────────────────────────────
-let _matchupTimer = null;
-let _lastMatchupPlayer = '';
+let _matchupTimer = { nba: null, wnba: null };
 
-async function lookupTodayMatchup(playerName) {
+async function lookupTodayMatchup(playerName, league='nba') {
   if (!playerName || playerName.length < 4) return;
-  _lastMatchupPlayer = playerName;
 
-  const statusEl = document.getElementById('opp-status');
-  const infoEl   = document.getElementById('matchup-info');
-  const oppInput = document.getElementById('opp-team');
-  const labelEl  = document.getElementById('opp-auto-label');
+  const statusEl   = elFor(league, 'opp-status');
+  const infoEl     = elFor(league, 'matchup-info');
+  const oppInput   = elFor(league, 'opp-team');
+  const labelEl    = elFor(league, 'opp-auto-label');
+  const verifiedEl = elFor(league, 'player-verified');
 
-  statusEl.textContent     = '⟳';
-  infoEl.style.color       = 'var(--muted)';
-  infoEl.textContent       = 'Looking up today\'s schedule...';
+  statusEl.textContent = '⟳';
+  infoEl.className = 'matchup-banner muted';
+  infoEl.textContent = 'Looking up today\'s schedule...';
+  verifiedEl?.classList.remove('show');
 
   try {
-    const data = await apiGet(`/api/player-matchup?name=${encodeURIComponent(playerName)}`);
+    const route = league === 'wnba' ? '/api/wnba/player-matchup' : '/api/player-matchup';
+    const data = await apiGet(`${route}?name=${encodeURIComponent(playerName)}`);
 
     if (!data.found) {
-      statusEl.textContent = '';
-      infoEl.textContent   = 'Player not found in schedule';
+      statusEl.textContent = '▾';
+      infoEl.className = '';
+      infoEl.textContent = '';
       return;
     }
 
+    // A resolvable player found in today's live schedule data is as close
+    // to "verified real player" as this app can confirm client-side.
+    verifiedEl?.classList.add('show');
+
     if (!data.playing) {
       statusEl.textContent = '—';
-      infoEl.style.color   = 'var(--amber)';
-      infoEl.textContent   = `${data.team} has no game today — enter opponent manually`;
+      infoEl.className = 'matchup-banner warn';
+      infoEl.textContent = `⚠ ${data.team} has no game today — enter opponent manually`;
       oppInput.placeholder = 'Enter opponent manually...';
       return;
     }
@@ -387,31 +892,42 @@ async function lookupTodayMatchup(playerName) {
     oppInput.dataset.autoFilled = 'true';
     labelEl.textContent         = '✓ AUTO';
     statusEl.textContent        = '✓';
-    infoEl.style.color          = 'var(--green)';
-    infoEl.textContent          = `${data.team} ${data.isHome ? 'vs' : '@'} ${data.opponent} · ${data.gameTime}`;
+    infoEl.className            = 'matchup-banner confirmed';
+    infoEl.textContent          = `🏀 ${data.team} ${data.isHome ? 'vs' : '@'} ${data.opponent} · ${data.gameTime}`;
 
   } catch (err) {
-    statusEl.textContent = '';
-    infoEl.textContent   = 'Could not load schedule — enter opponent manually';
+    statusEl.textContent = '▾';
+    infoEl.className = 'matchup-banner warn';
+    infoEl.textContent = '⚠ Could not load schedule — enter opponent manually';
   }
 }
 
 // Clear auto-filled flag when user manually edits opponent
 document.addEventListener('DOMContentLoaded', () => {
-  const oppInput = document.getElementById('opp-team');
-  if (oppInput) {
-    oppInput.addEventListener('input', () => {
-      oppInput.dataset.autoFilled = 'false';
-      document.getElementById('opp-auto-label').textContent = '';
-    });
-  }
+  ['nba','wnba'].forEach(league => {
+    const oppInput = elFor(league, 'opp-team');
+    if (oppInput) {
+      oppInput.addEventListener('input', () => {
+        oppInput.dataset.autoFilled = 'false';
+        elFor(league, 'opp-auto-label').textContent = '';
+        elFor(league, 'opp-status').textContent = '▾';
+        elFor(league, 'matchup-info').className = '';
+        elFor(league, 'matchup-info').textContent = '';
+      });
+    }
+  });
 });
 
 // ── BUILD PROMPT WITH STRICT DATA LABELING ────────────
-function buildEnrichedPrompt(player, opp, propType, line, context, extra, ctx) {
+function buildEnrichedPrompt(player, opp, propType, line, context, extra, ctx, league='nba', playerShotChart=null, oppShotChart=null) {
   const stats = ctx.playerStats;
   const hasRealStats = stats && !stats.error;
   const da = ctx.dataAvailable || {};
+  const statsSourceLabel = stats?.dataSource || (league === 'wnba' ? 'ESPN WNBA' : 'BallDontLie');
+  // wnba.com's own stats site calls the same shared stats.nba.com API under
+  // the hood (LeagueID=10) — there's no independent WNBA-only API — so this
+  // is the accurate, brand-correct label for WNBA context.
+  const statsDomainLabel = league === 'wnba' ? 'wnba.com' : 'stats.nba.com';
 
   // ESPN roster helpers
   const oppRoster    = ctx.oppRoster?.players || [];
@@ -421,32 +937,33 @@ function buildEnrichedPrompt(player, opp, propType, line, context, extra, ctx) {
   // Build a clear data inventory for Claude
   const dataInventory = `
 DATA AVAILABILITY FOR THIS ANALYSIS:
-  Rolling averages (BallDontLie): ${hasRealStats ? 'YES — use these numbers directly' : 'NO'}
-  Team pace / off-def rating (nba.com): ${ctx.oppAdvanced ? 'YES' : 'NO'}
-  Opponent shooting % allowed (nba.com): ${ctx.oppShooting ? 'YES' : 'NO'}
-  Paint defense stats (nba.com): ${ctx.oppPaintDef ? 'YES' : 'NO'}
-  Player paint touches (nba.com): ${ctx.playerPaintStats ? 'YES' : 'NO'}
+  Rolling averages (${statsSourceLabel}): ${hasRealStats ? 'YES — use these numbers directly' : 'NO'}
+  Team pace / off-def rating (${statsDomainLabel}): ${ctx.oppAdvanced ? 'YES' : 'NO'}
+  Opponent shooting % allowed (${statsDomainLabel}): ${ctx.oppShooting ? 'YES' : 'NO'}
+  Paint defense stats (nba.com tracking — NBA only): ${ctx.oppPaintDef ? 'YES' : 'NO'}
+  Player paint touches (nba.com tracking — NBA only): ${ctx.playerPaintStats ? 'YES' : 'NO'}
   Live prop lines: ${ctx.propLines?.softestLine ? 'YES' : 'NO'}
   ESPN opponent roster (post-trade): ${hasOppRoster ? 'YES' : 'NO'}
   ESPN player team roster (post-trade): ${playerRoster.length > 0 ? 'YES' : 'NO'}
-  Player advanced stats (nba.com): ${ctx.playerAdvancedStats ? 'YES' : 'NO'}
-  Player playtypes (Synergy): ${Object.keys(ctx.playerPlaytypes||{}).length > 0 ? 'YES (' + Object.keys(ctx.playerPlaytypes).length + ' play types)' : 'NO'}
-  Player tracking (nba.com): ${Object.keys(ctx.playerTracking||{}).length > 0 ? 'YES (' + Object.keys(ctx.playerTracking).length + ' categories)' : 'NO'}
-  Player shot dashboard (nba.com): ${ctx.playerShotDash?.general ? 'YES' : 'NO'}
-  Opponent defense by playtype: ${Object.keys(ctx.oppDefPlaytypes||{}).length > 0 ? 'YES (' + Object.keys(ctx.oppDefPlaytypes).length + ' play types)' : 'NO'}
-  Opponent four factors (nba.com): ${ctx.oppFourFact ? 'YES' : 'NO'}
-  Opponent misc stats (paint pts, FB): ${ctx.oppMisc ? 'YES' : 'NO'}
-  Hustle stats (nba.com): ${ctx.playerHustle ? 'YES' : 'NO'}
+  Player advanced stats (${statsDomainLabel}): ${ctx.playerAdvancedStats ? 'YES' : 'NO'}
+  Player playtypes (Synergy — NBA only, no WNBA source exists): ${Object.keys(ctx.playerPlaytypes||{}).length > 0 ? 'YES (' + Object.keys(ctx.playerPlaytypes).length + ' play types)' : 'NO'}
+  Player tracking / SportVU (NBA only, no WNBA source exists): ${Object.keys(ctx.playerTracking||{}).length > 0 ? 'YES (' + Object.keys(ctx.playerTracking).length + ' categories)' : 'NO'}
+  Player shot chart by zone vs league average (${statsDomainLabel}): ${playerShotChart && !playerShotChart.error ? 'YES — use these zone ratings directly, do not say this is unavailable' : 'NO'}
+  Opponent defense by zone vs league average (${statsDomainLabel}): ${oppShotChart && !oppShotChart.error ? 'YES — use these zone ratings directly, do not say this is unavailable' : 'NO'}
+  Opponent defense by playtype (Synergy — NBA only): ${Object.keys(ctx.oppDefPlaytypes||{}).length > 0 ? 'YES (' + Object.keys(ctx.oppDefPlaytypes).length + ' play types)' : 'NO'}
+  Opponent four factors (${statsDomainLabel}): ${ctx.oppFourFact ? 'YES' : 'NO'}
+  Opponent misc stats — paint pts, FB (${statsDomainLabel}): ${ctx.oppMisc ? 'YES' : 'NO'}
+  Hustle stats (NBA only, no WNBA source exists): ${ctx.playerHustle ? 'YES' : 'NO'}
   Today confirmed game: ${ctx.todayGame ? 'YES' : 'NO'}`;
 
   // Real numbers block
   let realDataBlock = '';
   if (hasRealStats) {
     const last5 = (stats.last5Games || []).map(g =>
-      `  ${g.date} vs ${g.opponent || 'Opp'}: ${g.pts}pts ${g.reb}reb ${g.ast}ast (${g.min}min, ${g.fg_pct} FG)`
+      `  ${g.date} vs ${g.opponent || 'Opp'}: ${g.pts}pts ${g.reb}reb ${g.ast}ast ${g.fg3m}/${g.fg3a ?? '?'} 3PM (${g.min}min, ${g.fg_pct} FG)`
     ).join('\n');
     realDataBlock += `
-PLAYER ROLLING STATS — SOURCE: BallDontLie API (VERIFIED LIVE):
+PLAYER ROLLING STATS — SOURCE: ${statsSourceLabel} (VERIFIED LIVE):
   Name: ${stats.player?.name} | Team: ${stats.player?.team} | Pos: ${stats.player?.position} | Height: ${stats.player?.height}
   Form: ${stats.form} | Minutes Stability: ${stats.minutesStability}
   L10 Averages: ${stats.averages.pts}pts / ${stats.averages.reb}reb / ${stats.averages.ast}ast / ${stats.averages.fg3m} 3PM / ${stats.averages.min}min / ${stats.averages.fg_pct} FG%
@@ -656,12 +1173,28 @@ PLAYER HUSTLE — SOURCE: nba.com (VERIFIED LIVE):
   Loose Balls Rec/g: ${h.LOOSE_BALLS_RECOVERED}`;
   }
 
-  // ── PLAYER SHOT DASHBOARD ─────────────────────────────────────
-  if (ctx.playerShotDash?.general) {
-    const sg = ctx.playerShotDash.general;
+  // ── PLAYER SHOT CHART BY ZONE — real per-zone FG% vs league average ──
+  if (playerShotChart && !playerShotChart.error && playerShotChart.zones?.length) {
+    const zoneLines = playerShotChart.zones
+      .filter(z => z.rating)
+      .map(z => `  ${z.zone}: ${z.fgm}/${z.fga} (${z.fgPct}%) vs league avg ${z.leagueAvgPct}% — rated ${z.rating.toUpperCase()}`)
+      .join('\n');
     realDataBlock += `
-PLAYER SHOT DASHBOARD (General) — SOURCE: nba.com (VERIFIED LIVE):
-  (Use to understand shot distribution by zone — see shot location breakdown)`;
+PLAYER SHOT CHART BY ZONE — SOURCE: ${statsDomainLabel} (VERIFIED LIVE, ${playerShotChart.totalShots} shots this season):
+${zoneLines}
+  (GREEN = shoots notably above league average for that zone, GRAY = average, RED = notably below)`;
+  }
+
+  // ── OPPONENT DEFENSE BY ZONE — real per-zone FG% allowed vs league avg ─
+  if (oppShotChart && !oppShotChart.error && oppShotChart.zones?.length) {
+    const zoneLines = oppShotChart.zones
+      .filter(z => z.rating)
+      .map(z => `  ${z.zone}: ${z.fgm}/${z.fga} allowed (${z.fgPct}%) vs league avg ${z.leagueAvgPct}% — rated ${z.rating.toUpperCase()}`)
+      .join('\n');
+    realDataBlock += `
+OPPONENT DEFENSE BY ZONE — SOURCE: ${statsDomainLabel} (VERIFIED LIVE, ${oppShotChart.totalShotsFaced} shots faced this season):
+${zoneLines}
+  (GREEN = easy to score there — opponent allows above-average FG% in that zone, GRAY = average, RED = hard to score there)`;
   }
 
   // ── OPPONENT TEAM FOUR FACTORS ────────────────────────────────
@@ -714,17 +1247,36 @@ OPPONENT HUSTLE — SOURCE: nba.com (VERIFIED LIVE):
 
   // Math projection block - passed to Claude as ground truth
   const mp = ctx.mathProjection;
+  let mpOverPct = null;
+  if (mp?.stdDev && line) {
+    const z = (parseFloat(line) - (mp.medianProjection ?? mp.projection)) / mp.stdDev;
+    const t = 1 / (1 + 0.2316419 * Math.abs(z));
+    const dz = 0.3989423 * Math.exp(-z*z/2);
+    let p = dz*t*(0.3193815+t*(-0.3565638+t*(1.781478+t*(-1.821256+t*1.330274))));
+    if (z <= 0) p = 1 - p;
+    mpOverPct = Math.round(p * 100);
+  }
   const mathBlock = mp ? `
 ════════════════════════════════
 MATHEMATICAL PROJECTION (calculated server-side, independent of posted line)
+Model: ${mp.decomposed ? 'minutes → shot opportunity → shooting efficiency (points decomposition)' : 'minutes → per-minute rate (general model)'}
 ════════════════════════════════
-Projection: ${mp.projection} ${propType}
-  L5 Average: ${mp.l5Avg} | L10 Average: ${mp.l10Avg}
+Projection: ${mp.projection} ${propType} (baseline was ${mp.l10Avg}, ${mp.baselineSource})
+  Projected Minutes: ${mp.projectedMinutes ?? 'N/A'} (baseline ${mp.baselineMinutes ?? 'N/A'})
   Pace Adjustment: Opp pace ${mp.oppPace || 'N/A'} vs league avg 99.5
   Defensive Coefficient: ${mp.dvpCoeff} (opp def rating ${mp.oppDefRtg || 'N/A'})
-  Usage Multiplier: ${mp.usageMult} (teammate injuries factored)
+  Usage Multiplier: ${mp.usageMult} (teammate injuries factored — split between minutes and per-minute rate, not double-counted)
   Form: ${mp.form}
-  Math Confidence: ${mp.confidence}%
+  Math Confidence (data quality/reliability, NOT probability): ${mp.confidence}%
+  Sample size: ${mp.sampleSize} recent games, ${mp.seasonGames} season games
+
+REAL DISTRIBUTION (not just a point estimate):
+  Estimated range (~80%): ${mp.lowerBound} – ${mp.upperBound}
+  Standard deviation: ±${mp.stdDev}
+  ${mpOverPct != null ? `P(Over ${line}): ${mpOverPct}% | P(Under ${line}): ${100-mpOverPct}% — this is a REAL probability from the model's distribution, use it, don't invent your own` : ''}
+
+WHY THE PROJECTION MOVED FROM THE ${mp.l10Avg} BASELINE (real computed deltas, cite these specifically instead of vague reasoning):
+${(mp.drivers||[]).map(d => `  ${d.value>0?'+':''}${d.value} ${propType} — ${d.label}`).join('\n') || '  (no material adjustments beyond baseline)'}
 
 EDGE vs POSTED LINE:
   Posted Line: ${line}
@@ -732,10 +1284,10 @@ EDGE vs POSTED LINE:
   Raw Edge: ${((mp.projection - parseFloat(line)) / parseFloat(line) * 100).toFixed(1)}%
   Direction: ${mp.projection > parseFloat(line) ? 'OVER favored by math' : mp.projection < parseFloat(line) ? 'UNDER favored by math' : 'LINE appears fair'}
 
-IMPORTANT: Your projection in the response MUST be close to ${mp.projection} — this is calculated from real rolling averages, pace, and defensive data. Do NOT anchor your projection to the posted line of ${line}. The line is what we are evaluating AGAINST the projection, not a target to reverse-engineer.
+IMPORTANT: Your projection in the response MUST be close to ${mp.projection} — this is calculated from real rolling averages, minutes projection, pace, and defensive data. Do NOT anchor your projection to the posted line of ${line}. The line is what we are evaluating AGAINST the projection, not a target to reverse-engineer. When discussing confidence, keep "math confidence" (data reliability) and "P(Over/Under)" (probability) conceptually separate — they answer different questions.
 ════════════════════════════════` : `No math projection available — use your best estimate from the data above.`;
 
-  return `You are WIN AI, an elite NBA prop betting analyst. You have access to real-time verified data AND a server-calculated mathematical projection.
+  return `You are WIN AI, an elite ${league === 'wnba' ? 'WNBA' : 'NBA'} prop betting analyst. You have access to real-time verified data AND a server-calculated mathematical projection.
 
 CRITICAL INSTRUCTION — DATA SOURCING RULES:
 You MUST label every specific statistic you cite in your analysis with one of these tags:
@@ -781,15 +1333,26 @@ KEY FACTORS:
 - [risk — tag source as LIVE or AI]
 - [risk — tag source as LIVE or AI]
 
+MATHEMATICAL OUTLOOK:
+- [1-2 bullets on what the server-calculated math projection says and the strongest driver behind it — tag source as LIVE or AI]
+
+MATCHUP & CONSISTENCY:
+- [1-2 bullets on how this specific matchup fits the player's profile, and how consistent/volatile their recent performance has been — tag source as LIVE or AI]
+
+RISK FACTORS:
+- [1-2 bullets on what could make this bet wrong — injury uncertainty, small sample, variance, role change — tag source as LIVE or AI]
+
 OUTLIER FLAG: [YES / NO / PARTIAL]
 
 DATA GAPS: [List any stats you could not verify from live data that would change this analysis]
 
 BLOWOUT SCENARIO: [2-3 sentences with source tags]
 
-SHOT CHART vs DEFENSE: [2-3 sentences. If zone data not in feed, say so and tag AI]
+SHOT CHART vs DEFENSE: [2-3 sentences comparing the PLAYER SHOT CHART BY ZONE and OPPONENT DEFENSE BY ZONE blocks above if present — call out specific zone overlaps (e.g. player rated GREEN in a zone where the opponent is also rated GREEN/easy-to-score = a real overlap worth flagging). Only say zone data is unavailable if those blocks are genuinely absent from the feed above — do not assume they're missing.]
 
 H2H INSIGHT: [1-2 sentences with source tags]
+
+ALTERNATIVE PLAYS: [1-2 bullets suggesting a different prop type, direction, or angle on this same player/game worth considering instead — grounded in the data above, not invented]
 
 FULL ANALYSIS:
 [3-4 paragraphs. Every specific number tagged LIVE or AI. Flag any AI numbers for nba.com verification.]
@@ -798,39 +1361,31 @@ BOTTOM LINE: [One sentence. Direct take.]`;
 }
 
 // ── ANALYZE ───────────────────────────────────────────
-async function analyzeProp() {
-  const player = document.getElementById('player-name').value.trim();
-  let opp = document.getElementById('opp-team').value.trim();
-  const propType = document.getElementById('prop-type').value;
-  const line = document.getElementById('prop-line').value;
-  const context = document.getElementById('game-context').value;
-  const extra = document.getElementById('extra-context').value.trim();
+async function analyzeProp(league='nba') {
+  const matchupRoute = league === 'wnba' ? '/api/wnba/player-matchup' : '/api/player-matchup';
+  const contextRoute = league === 'wnba' ? '/api/wnba/prop-context'  : '/api/prop-context';
+
+  const player   = elFor(league,'player-name').value.trim();
+  let   opp      = elFor(league,'opp-team').value.trim();
+  const propType = elFor(league,'prop-type').value;
+  const line     = elFor(league,'prop-line').value;
+  const context  = elFor(league,'game-context').value;
+  const extra    = elFor(league,'extra-context').value.trim();
   if (!player || !line) { alert('Fill in player name and prop line.'); return; }
-  if (!opp) {
-    try {
-      const m = await apiGet('/api/player-matchup?name='+encodeURIComponent(player));
-      if (m.playing && m.opponent) {
-        opp = m.opponent;
-        document.getElementById('opp-team').value = opp;
-        const lbl = document.getElementById('opp-auto-label');
-        if(lbl) lbl.textContent = '✓ AUTO';
-      } else { alert('No game found today for '+player+'. Enter opponent manually.'); return; }
-    } catch(e) { alert('Enter the opposing team manually.'); return; }
-  }
   if (parseFloat(line) <= 0) { alert('Line must be a positive number.'); return; }
 
   // Auto-detect opponent if field is empty
   if (!opp) {
     try {
-      const matchup = await apiGet(`/api/player-matchup?name=${encodeURIComponent(player)}`);
+      const matchup = await apiGet(`${matchupRoute}?name=${encodeURIComponent(player)}`);
       if (matchup.playing && matchup.opponent) {
         opp = matchup.opponent;
-        document.getElementById('opp-team').value = opp;
-        document.getElementById('opp-auto-label').textContent = '✓ AUTO';
-        document.getElementById('opp-status').textContent = '✓';
-        document.getElementById('matchup-info').textContent =
+        elFor(league,'opp-team').value = opp;
+        elFor(league,'opp-auto-label').textContent = '✓ AUTO';
+        elFor(league,'opp-status').textContent = '✓';
+        elFor(league,'matchup-info').textContent =
           `${matchup.team} ${matchup.isHome ? 'vs' : '@'} ${matchup.opponent} · ${matchup.gameTime}`;
-        document.getElementById('matchup-info').style.color = 'var(--green)';
+        elFor(league,'matchup-info').style.color = 'var(--green)';
       } else if (matchup.found && !matchup.playing) {
         alert(`${player}'s team has no game today. Enter opponent manually.`);
         return;
@@ -844,35 +1399,41 @@ async function analyzeProp() {
     }
   }
 
-  const btn = document.getElementById('analyze-btn');
+  const btn = elFor(league,'analyze-btn');
   btn.disabled = true; btn.textContent = 'FETCHING...';
-  showLoading();
+  showLoading(league);
 
   try {
-    updateStep(0);
-    const ctx = await apiGet(`/api/prop-context?player=${encodeURIComponent(player)}&opponent=${encodeURIComponent(opp)}&propType=${propType}`);
-    updateStep(1);
-    const prompt = buildEnrichedPrompt(player, opp, propType, line, context, extra, ctx);
-    updateStep(2);
+    updateStep(0, league);
+    // Shot charts are fetched here — before the Claude call — and the same
+    // fetched object is used both in the prompt and in the rendered charts,
+    // so Claude can never claim this data is missing while it's on screen.
+    const [ctx, { playerData: playerShotChart, defData: oppShotChart }] = await Promise.all([
+      apiGet(`${contextRoute}?player=${encodeURIComponent(player)}&opponent=${encodeURIComponent(opp)}&propType=${propType}`),
+      fetchShotChartData(league, player, opp),
+    ]);
+    updateStep(1, league);
+    const prompt = buildEnrichedPrompt(player, opp, propType, line, context, extra, ctx, league, playerShotChart, oppShotChart);
+    updateStep(2, league);
     const claudeRes = await apiPost('/api/analyze', { prompt });
-    updateStep(3);
+    updateStep(3, league);
     const parsedVerdict = parseVerdict(claudeRes.response, { ...ctx, _postedLine: line });
-    document.getElementById('result-area').innerHTML = renderResult(claudeRes.response, player, opp, propType, line, ctx, parsedVerdict);
-    _currentAnalysis = { player, opp, propType, line, ctx, ...parsedVerdict };
-    analysisHistory.unshift({ player, opp, propType, line, ...parsedVerdict, raw: claudeRes.response, ctx, time: new Date(), result: null, closingLine: null, actualStat: null, clv: null });
+    elFor(league,'result-area').innerHTML = renderResult(claudeRes.response, player, opp, propType, line, ctx, parsedVerdict, league);
+    _currentAnalysis = { player, opp, propType, line, ctx, league, ...parsedVerdict };
+    analysisHistory.unshift({ player, opp, propType, line, league, ...parsedVerdict, raw: claudeRes.response, ctx, playerShotChart, oppShotChart, time: new Date(), result: null, closingLine: null, actualStat: null, clv: null });
     renderHistory();
+    renderShotChartsInto(league, player, opp, playerShotChart, oppShotChart);
   } catch (err) {
     const errMsg = err.message || 'Unknown error';
-    const isServerDown = errMsg.includes('Failed to fetch') || errMsg.includes('NetworkError') || errMsg.includes('500');
-    document.getElementById('result-area').innerHTML = `
+    elFor(league,'result-area').innerHTML = `
       <div class="result-placeholder">
         <div class="placeholder-icon" style="color:var(--red)">✕</div>
         <div class="placeholder-text" style="color:var(--red)">
           ERROR: ${errMsg}
         </div>
         <div style="margin-top:16px;background:var(--surface2);border-radius:8px;padding:14px;text-align:left;max-width:400px;">
-          <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--gold);letter-spacing:1px;margin-bottom:8px;">TROUBLESHOOTING</div>
-          <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);line-height:1.8;">
+          <div style="font-family:'Space Grotesk',sans-serif;font-size:10px;color:var(--gold);letter-spacing:1px;margin-bottom:8px;">TROUBLESHOOTING</div>
+          <div style="font-family:'Space Grotesk',sans-serif;font-size:11px;color:var(--muted);line-height:1.8;">
             1. Is node server.js running in Command Prompt?<br>
             2. Open <a href="http://localhost:3001/api/debug" target="_blank" style="color:var(--gold)">localhost:3001/api/debug</a> to check all connections<br>
             3. Check Command Prompt for error messages<br>
@@ -885,92 +1446,199 @@ async function analyzeProp() {
 }
 
 const STEPS = ['PULLING LIVE STATS...','LOADING DEFENSIVE DATA...','RUNNING AI ANALYSIS...','RENDERING...'];
-function showLoading() {
-  document.getElementById('result-area').innerHTML = `<div class="loading-state"><div class="spinner"></div><div class="loading-steps">${STEPS.map((s,i)=>`<div class="ls" id="ls${i}">${s}</div>`).join('')}</div></div>`;
+function showLoading(league='nba') {
+  elFor(league,'result-area').innerHTML = `<div class="loading-state"><div class="spinner"></div><div class="loading-steps">${STEPS.map((s,i)=>`<div class="ls" id="ls${i}-${league}">${s}</div>`).join('')}</div></div>`;
 }
-function updateStep(idx) {
+function updateStep(idx, league='nba') {
   STEPS.forEach((_,i) => {
-    const el = document.getElementById(`ls${i}`);
+    const el = document.getElementById(`ls${i}-${league}`);
     if (!el) return;
     if (i < idx) { el.classList.remove('on'); el.classList.add('done'); }
     else if (i === idx) el.classList.add('on');
   });
 }
 
+// ── PROP EDGE MODEL — filterable game-log bar chart ───────────────
+const PROP_STATKEY = { points:'pts', rebounds:'reb', assists:'ast', '3pm':'fg3m', steals:'stl', blocks:'blk' };
+const PROP_COMBO_KEYS = { pra:['pts','reb','ast'], pr:['pts','reb'], pa:['pts','ast'], ra:['reb','ast'] };
+function gameStatValue(g, propType) {
+  const combo = PROP_COMBO_KEYS[propType];
+  if (combo) return combo.reduce((s,k) => s + (parseFloat(g[k])||0), 0);
+  return parseFloat(g[PROP_STATKEY[propType] || 'pts']) || 0;
+}
+
+function renderGameLogBars(games, line, propType) {
+  if (!games || !games.length) return '<div class="top-plays-empty">No games available for this filter</div>';
+  const lineNum = parseFloat(line) || 0;
+  const vals = games.map(g => gameStatValue(g, propType));
+  const maxVal = Math.max(...vals, lineNum) * 1.15 || 1;
+  // Team name fits under the bar only for a small set (L5) — past that,
+  // dates are all that fit without overlapping; team still shows on hover.
+  const showTeamLabel = games.length <= 5;
+  const bars = games.map((g, i) => {
+    const v = vals[i];
+    const pct = Math.max(2, (v / maxVal) * 100);
+    const hit = lineNum ? (v > lineNum ? 'over' : 'under') : '';
+    const dateLabel = (g.date || '').slice(5) || '—';
+    const teamLabel = (g.opponent || '').split(' ').pop() || '—';
+    const label = showTeamLabel ? teamLabel : dateLabel;
+    const boxScore = [
+      ['PTS', g.pts], ['REB', g.reb], ['AST', g.ast], ['3PM', g.fg3m],
+      ['STL', g.stl], ['BLK', g.blk], ['TOV', g.tov], ['MIN', g.min],
+    ].filter(([,val]) => val != null).map(([k,val]) => `<span>${k} <b>${val}</b></span>`).join('');
+    return `
+      <div class="gl-bar-col">
+        <div class="gl-bar-val">${v}</div>
+        <div class="gl-bar-track"><div class="gl-bar-fill ${hit}" style="height:${pct}%"></div></div>
+        <div class="gl-bar-label">${escapeHtml(label)}</div>
+        <div class="gl-tooltip">
+          <div class="gl-tooltip-hdr">${escapeHtml(g.date||'')}${g.opponent?' vs '+escapeHtml(g.opponent):''}${g.home===false?' (Away)':g.home===true?' (Home)':''}</div>
+          <div class="gl-tooltip-box">${boxScore}</div>
+        </div>
+      </div>`;
+  }).join('');
+  const linePct = lineNum ? Math.min(96, (lineNum / maxVal) * 100) : null;
+  return `<div class="gl-chart">${bars}${linePct != null ? `<div class="gl-line-ref" style="bottom:${linePct}%;"><span>LINE ${line}</span></div>` : ''}</div>`;
+}
+
+window._glSets = {};
+function renderGameLogSection(ctx, propType, line, league) {
+  const stats = ctx?.playerStats;
+  if (!stats || stats.error) return '';
+  const h2hGames = ctx?.h2hStats?.games || ctx?.h2hStats?.recentGames || [];
+  const gl20 = stats.gameLog20 || stats.last10Games || [];
+  const sets = {
+    l5: stats.last5Games || [],
+    l10: stats.last10Games || [],
+    h2h: h2hGames,
+    away10: gl20.filter(g => g.home === false).slice(0, 10),
+    home10: gl20.filter(g => g.home === true).slice(0, 10),
+  };
+  window._glSets[league] = { sets, propType, line };
+  const tabs = [['l5','L5'], ['l10','L10'], ['h2h','H2H'], ['away10','AWAY L10'], ['home10','HOME L10']];
+  return `
+    <div class="edge-model-chart">
+      <div style="font-family:'Space Grotesk',sans-serif;font-size:10px;letter-spacing:1.5px;color:var(--gold);margin-bottom:8px;">PROP EDGE MODEL — GAME LOG</div>
+      <div class="gl-tabs" id="gl-tabs-${league}">
+        ${tabs.map(([k,label]) => `<div class="gl-tab ${k==='l5'?'active':''}" data-key="${k}" onclick="switchGameLogTab('${league}','${k}')">${label} <span class="gl-tab-n">(${sets[k].length})</span></div>`).join('')}
+      </div>
+      <div id="gl-chart-${league}">${renderGameLogBars(sets.l5, line, propType)}</div>
+    </div>`;
+}
+
+function switchGameLogTab(league, key) {
+  const entry = window._glSets[league];
+  if (!entry) return;
+  document.querySelectorAll(`#gl-tabs-${league} .gl-tab`).forEach(el => el.classList.toggle('active', el.dataset.key === key));
+  const box = document.getElementById(`gl-chart-${league}`);
+  if (box) box.innerHTML = renderGameLogBars(entry.sets[key], entry.line, entry.propType);
+}
+
+function renderConfGauge(confidence, vc) {
+  // Sized so the text block (value + "CONF" label) sits comfortably inside
+  // the ring's inner radius instead of crowding/overflowing it.
+  const size = 84, cx = size/2, cy = size/2, r = 33, circumference = 2*Math.PI*r;
+  const pct = Math.max(0, Math.min(100, confidence)) / 100;
+  const offset = circumference * (1 - pct);
+  const color = (vc==='over'||vc==='lean-over') ? 'var(--green)' : (vc==='under'||vc==='lean-under') ? 'var(--red)' : 'var(--gold)';
+  const fontSize = confidence >= 100 ? 15 : 17;
+  return `
+    <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+      <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--border2)" stroke-width="5"/>
+      <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${color}" stroke-width="5" stroke-linecap="round"
+        stroke-dasharray="${circumference.toFixed(1)}" stroke-dashoffset="${offset.toFixed(1)}" transform="rotate(-90 ${cx} ${cy})"/>
+      <text x="${cx}" y="${cy-2}" text-anchor="middle" dominant-baseline="middle" font-family="'Space Grotesk',sans-serif" font-size="${fontSize}" fill="var(--text)">${confidence}%</text>
+      <text x="${cx}" y="${cy+12}" text-anchor="middle" dominant-baseline="middle" font-family="'Space Grotesk',sans-serif" font-size="6.5" fill="var(--muted)" letter-spacing="1">CONF</text>
+    </svg>`;
+}
+
 // ── RENDER RESULT ─────────────────────────────────────
-function renderResult(raw, player, opp, propType, line, ctx, precomputedVerdict) {
+function renderResult(raw, player, opp, propType, line, ctx, precomputedVerdict, league='nba') {
   const { verdict, confidence, edge, projection } = precomputedVerdict || parseVerdict(raw, ctx);
   const vcMap={'OVER':'over','LEAN_OVER':'lean-over','UNDER':'under','LEAN_UNDER':'lean-under','PASS':'pass'};
   const vc = vcMap[verdict] || 'pass';
   const stats = ctx?.playerStats;
   const hasStats = stats && !stats.error;
   const da = ctx?.dataAvailable || {};
+  const statsSourceLabel = stats?.dataSource || 'BallDontLie';
+  const statsDomainLabel = league === 'wnba' ? 'wnba.com' : 'stats.nba.com';
 
   const factors = extractFactors(raw);
-  const dataGaps = extractSection(raw, 'DATA GAPS');
   const outlier = extractSection(raw, 'OUTLIER FLAG');
   const blowout = extractSection(raw, 'BLOWOUT SCENARIO');
   const shotChart = extractSection(raw, 'SHOT CHART VS DEFENSE');
   const h2h = extractSection(raw, 'H2H INSIGHT');
   const fullAnalysis = extractSection(raw, 'FULL ANALYSIS');
   const bottomLine = extractSection(raw, 'BOTTOM LINE');
+  const mathOutlook = extractSection(raw, 'MATHEMATICAL OUTLOOK');
+  const matchupConsistency = extractSection(raw, 'MATCHUP & CONSISTENCY');
+  const riskFactors = extractSection(raw, 'RISK FACTORS');
+  const alternativePlays = extractSection(raw, 'ALTERNATIVE PLAYS');
   const isElite = outlier.toLowerCase().startsWith('yes');
 
   // Data source banner
   const sourceTags = [
-    { label: 'Rolling Avgs (BallDontLie)',      live: hasStats },
-    { label: 'Player Advanced (nba.com)',        live: !!ctx?.playerAdvancedStats },
-    { label: 'Player Playtypes (Synergy)',       live: Object.keys(ctx?.playerPlaytypes||{}).length > 0 },
-    { label: 'Player Tracking (nba.com)',        live: Object.keys(ctx?.playerTracking||{}).length > 0 },
-    { label: 'Player Shot Dashboard (nba.com)',  live: !!ctx?.playerShotDash?.general },
-    { label: 'Opp Defense by Playtype',          live: Object.keys(ctx?.oppDefPlaytypes||{}).length > 0 },
-    { label: 'Opp Pace / Ratings (nba.com)',     live: !!ctx?.oppAdvanced },
-    { label: 'Opp Paint Defense (nba.com)',      live: !!ctx?.oppPaintDef },
-    { label: 'Opp Four Factors (nba.com)',       live: !!ctx?.oppFourFact },
-    { label: 'Opp Misc / Paint Pts (nba.com)',   live: !!ctx?.oppMisc },
-    { label: 'Opp Shot Defense (nba.com)',        live: !!ctx?.oppShotDefense?.general },
-    { label: 'Hustle Stats (nba.com)',           live: !!ctx?.playerHustle },
+    { label: `Rolling Avgs (${statsSourceLabel})`,      live: hasStats },
+    { label: `Player Advanced (${statsDomainLabel})`,  live: !!ctx?.playerAdvancedStats },
+    { label: 'Player Playtypes (Synergy, NBA only)', live: Object.keys(ctx?.playerPlaytypes||{}).length > 0 },
+    { label: 'Player Tracking (SportVU, NBA only)',  live: Object.keys(ctx?.playerTracking||{}).length > 0 },
+    { label: `Player Shot Zones (${statsDomainLabel})`, live: !!ctx?.playerShotDash?.general },
+    { label: 'Opp Defense by Playtype (NBA only)', live: Object.keys(ctx?.oppDefPlaytypes||{}).length > 0 },
+    { label: `Opp Pace / Ratings (${statsDomainLabel})`, live: !!ctx?.oppAdvanced },
+    { label: 'Opp Paint Defense (tracking, NBA only)', live: !!ctx?.oppPaintDef },
+    { label: `Opp Four Factors (${statsDomainLabel})`, live: !!ctx?.oppFourFact },
+    { label: `Opp Misc / Paint Pts (${statsDomainLabel})`, live: !!ctx?.oppMisc },
+    { label: 'Opp Shot Defense (nba.com, NBA only)',        live: !!ctx?.oppShotDefense?.general },
+    { label: 'Hustle Stats (NBA only)',           live: !!ctx?.playerHustle },
     { label: 'Live Prop Lines',                  live: !!ctx?.propLines?.softestLine },
     { label: 'ESPN Opp Roster (post-trade)',     live: !!(ctx?.oppRoster?.players?.length > 0) },
     { label: 'ESPN Team Roster (post-trade)',    live: !!(ctx?.playerRoster?.players?.length > 0) },
   ];
 
+  const liveCount = sourceTags.filter(t => t.live).length;
+  const inferredCount = sourceTags.length - liveCount;
   const sourceBanner = `
-    <div class="data-source-banner">
-      <div class="banner-title">DATA SOURCES FOR THIS ANALYSIS</div>
-      <div class="data-source-grid">
-        ${sourceTags.map(t => `<span class="source-tag ${t.live ? 'live' : 'missing'}">${t.live ? '✓' : '✗'} ${t.label}</span>`).join('')}
-        <span class="source-tag inferred">⚠ AI = inferred from training</span>
+    <div class="data-integrity">
+      <div class="data-integrity-hdr" onclick="document.getElementById('di-details-${league}').classList.toggle('open'); this.querySelector('.data-integrity-toggle').textContent = document.getElementById('di-details-${league}').classList.contains('open') ? 'HIDE DETAILS ▲' : 'SHOW DETAILS ▼';">
+        <span class="data-integrity-title">DATA INTEGRITY <span style="color:var(--gold);">[Green Check]</span>: <b>${liveCount} Live Feed${liveCount!==1?'s':''}</b> / ${inferredCount} AI Inferred</span>
+        <span class="data-integrity-toggle">SHOW DETAILS ▼</span>
+      </div>
+      <div class="data-integrity-details" id="di-details-${league}">
+        <div class="data-source-grid">
+          ${sourceTags.map(t => `<span class="source-tag ${t.live ? 'live' : 'missing'}">${t.live ? '✓' : '✗'} ${t.label}</span>`).join('')}
+          <span class="source-tag inferred">⚠ AI = inferred from training</span>
+        </div>
       </div>
     </div>`;
 
-  // AI disclaimer if any gaps
-  const missingCount = sourceTags.filter(t => !t.live).length;
-  const disclaimer = missingCount > 0 ? `
-    <div class="ai-disclaimer">
-      <strong>⚠ DATA NOTICE:</strong> ${missingCount} data source${missingCount > 1 ? 's are' : ' is'} not in the live feed.
-      Stats tagged <strong>[AI]</strong> in the analysis below are from Claude's training data and may be outdated.
-      ${dataGaps ? `<br><strong>Key gaps:</strong> ${dataGaps}` : ''}
-      Always verify [AI]-tagged numbers on <strong>nba.com</strong> before placing a bet.
-    </div>` : '';
 
   const chips = hasStats ? `
-    <div class="stats-row">
-      <div class="stat-chip verified"><div class="sv">${stats.averages.pts}</div><div class="sl">PTS L10</div><div class="src">✓ LIVE</div></div>
-      <div class="stat-chip verified"><div class="sv">${stats.averages.reb}</div><div class="sl">REB L10</div><div class="src">✓ LIVE</div></div>
-      <div class="stat-chip verified"><div class="sv">${stats.averages.ast}</div><div class="sl">AST L10</div><div class="src">✓ LIVE</div></div>
-      <div class="stat-chip verified"><div class="sv">${stats.averages.fg3m}</div><div class="sl">3PM L10</div><div class="src">✓ LIVE</div></div>
-      <div class="stat-chip verified"><div class="sv">${stats.averages.min}</div><div class="sl">MIN L10</div><div class="src">✓ LIVE</div></div>
-      <div class="stat-chip"><div class="sv">${projection}</div><div class="sl">PROJ</div></div>
+    <div class="key-stats-card">
+      <div class="key-stats-title">Key Stats Overview</div>
+      <div class="stats-row">
+        <div class="stat-chip proj"><div class="sv">${projection}</div><div class="sl">PROJ</div></div>
+        <div class="stat-chip verified"><div class="sv">${stats.averages.pts}</div><div class="sl">PTS L10</div><div class="src">✓ LIVE</div></div>
+        <div class="stat-chip verified"><div class="sv">${stats.averages.reb}</div><div class="sl">REB L10</div><div class="src">✓ LIVE</div></div>
+        <div class="stat-chip verified"><div class="sv">${stats.averages.ast}</div><div class="sl">AST L10</div><div class="src">✓ LIVE</div></div>
+        <div class="stat-chip verified"><div class="sv">${stats.averages.fg3m}</div><div class="sl">3PM L10</div><div class="src">✓ LIVE</div></div>
+        <div class="stat-chip verified"><div class="sv">${stats.averages.min}</div><div class="sl">MIN L10</div><div class="src">✓ LIVE</div></div>
+        <div class="stat-chip verified"><div class="sv">${stats.averages.fg_pct}%</div><div class="sl">FG% L10</div><div class="src">✓ LIVE</div></div>
+        <div class="stat-chip verified"><div class="sv">${stats.averages.fg3_pct ?? '—'}%</div><div class="sl">3PT% L10</div><div class="src">✓ LIVE</div></div>
+      </div>
     </div>` : '';
 
   // Verified defensive stats
   const _rk = ctx?.oppRanks || {};
+  // Team count and top/bottom-5 cutoffs must scale to the actual league
+  // size — hardcoded "/30" and "bottom5 = rank>=26" previously mislabeled
+  // every WNBA rank (13 teams: bottom-5 is rank>=9, not >=26).
+  const _totalTeams = ctx?.totalTeamsInLeague || (league === 'wnba' ? 13 : 30);
   const _rb = (rank) => {
     if (!rank) return '<span style="color:var(--muted);font-size:9px;">—</span>';
-    const clr = rank<=5?'#2ecc71':rank>=26?'#e74c3c':'#7a7a8c';
-    const bg  = rank<=5?'rgba(46,204,113,0.12)':rank>=26?'rgba(231,76,60,0.12)':'rgba(255,255,255,0.05)';
-    return `<span style="font-size:10px;padding:2px 7px;border-radius:4px;background:${bg};color:${clr};font-weight:600;">#${rank}/30</span>`;
+    const isTop5 = rank <= 5, isBottom5 = rank > _totalTeams - 5;
+    const clr = isTop5?'#2ecc71':isBottom5?'#e74c3c':'#7a7a8c';
+    const bg  = isTop5?'rgba(46,204,113,0.12)':isBottom5?'rgba(231,76,60,0.12)':'rgba(255,255,255,0.05)';
+    return `<span style="font-size:10px;padding:2px 7px;border-radius:4px;background:${bg};color:${clr};font-weight:600;">#${rank}/${_totalTeams}</span>`;
   };
   const _stats = [
     ctx?.oppAdvanced   ? ['DEF RATING',       ctx.oppAdvanced.DEF_RATING,                                          _rk.defRating,   '#1 = best defense'] : null,
@@ -989,89 +1657,147 @@ function renderResult(raw, player, opp, propType, line, ctx, precomputedVerdict)
   const defStats = _stats.length ? `
     <div class="section-divider">
       Team Stats — ${opp||'Opponent'}
-      <span style="font-size:9px;color:var(--muted);margin-left:6px;font-family:'DM Mono',monospace;">Green=#top5 · Red=#bottom5 · #1/30=elite</span>
+      <span style="font-size:9px;color:var(--muted);margin-left:6px;font-family:'Space Grotesk',sans-serif;">Green=#top5 · Red=#bottom5 · #1/${_totalTeams}=elite</span>
     </div>
+    <div style="overflow-x:auto;">
     <table class="live-stat-table">
       <thead><tr><th>STAT</th><th>VALUE</th><th>RANK</th><th>CONTEXT</th></tr></thead>
       <tbody>${_stats.map(([s,v,r,c])=>`
         <tr><td style="color:var(--muted);font-size:10px;">${s}</td><td class="verified-cell">${v??'—'}</td><td>${_rb(r)}</td><td style="font-size:9px;color:var(--muted);">${c}</td></tr>`).join('')}
       </tbody>
-    </table>` : '<div style="color:var(--muted);font-size:11px;padding:8px 0;">Run fetch_stats.py to load team rankings</div>';
+    </table>
+    </div>` : '<div style="color:var(--muted);font-size:11px;padding:8px 0;">Run fetch_stats.py to load team rankings</div>';
 
   // ESPN roster display
-  const oppRosterDisplay = ctx?.oppRoster?.players?.length > 0 ? (() => {
-    const injured = ctx.oppRoster.injured || [];
-    const active  = ctx.oppRoster.players.filter(p => p.status === 'Active').slice(0, 12);
-    return `
-    <div class="section-divider">Opponent Roster — ESPN Live (Post-Trade)</div>
-    <div style="background:var(--surface2);border-radius:8px;padding:12px 14px;">
-      <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--gold);margin-bottom:8px;">
-        ${ctx.oppRoster.team?.toUpperCase()} · ${ctx.oppRoster.playerCount} PLAYERS · SOURCE: ESPN ✓
-      </div>
-      ${injured.length > 0 ? `<div style="background:rgba(231,76,60,0.08);border:1px solid rgba(231,76,60,0.2);border-radius:6px;padding:8px 10px;margin-bottom:8px;font-family:'DM Mono',monospace;font-size:11px;color:var(--red);">
-        INJURED/OUT: ${injured.map(p => p.name + ' (' + p.status + ')').join(' · ')}
-      </div>` : ''}
-      <div style="display:flex;flex-wrap:wrap;gap:4px;">
-        ${active.map(p => `<span style="background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:3px 8px;font-family:'DM Mono',monospace;font-size:10px;color:var(--text);">${p.name} <span style="color:var(--muted)">${p.position}</span></span>`).join('')}
-      </div>
-    </div>`;
-  })() : '';
+  // Only injured players are shown for each team (not the full ~14-player
+  // roster) — the healthy roster is noise for a prop analysis; what
+  // actually moves a projection is who's OUT.
+  const oppRosterDisplay = ctx?.oppRoster?.injured?.length > 0 ? `
+    <div class="section-divider">${escapeHtml(ctx.oppRoster.team || opp || 'Opponent')} — Injured/Out (ESPN Live)</div>
+    <div style="background:rgba(231,76,60,0.08);border:1px solid rgba(231,76,60,0.2);border-radius:8px;padding:10px 14px;font-family:'Space Grotesk',sans-serif;font-size:11px;color:var(--red);">
+      ${ctx.oppRoster.injured.map(p => escapeHtml(p.name) + ' — ' + escapeHtml(p.status) + ' <span style="color:var(--muted)">' + escapeHtml(p.position||'') + '</span>').join('<br>')}
+    </div>` : '';
 
   const playerTeamInjuries = ctx?.playerRoster?.injured?.length > 0 ? `
-    <div class="section-divider">Player Team Injuries — ESPN Live</div>
-    <div style="background:rgba(231,76,60,0.06);border:1px solid rgba(231,76,60,0.15);border-radius:8px;padding:10px 14px;font-family:'DM Mono',monospace;font-size:11px;color:var(--red);">
-      ${ctx.playerRoster.injured.map(p => p.name + ' — ' + p.status + (p.injuryNote ? ': ' + p.injuryNote.substring(0,80) : '')).join('<br>')}
+    <div class="section-divider">${escapeHtml(ctx?.playerStats?.player?.team || 'Player Team')} — Injured/Out (ESPN Live)</div>
+    <div style="background:rgba(231,76,60,0.06);border:1px solid rgba(231,76,60,0.15);border-radius:8px;padding:10px 14px;font-family:'Space Grotesk',sans-serif;font-size:11px;color:var(--red);">
+      ${ctx.playerRoster.injured.map(p => escapeHtml(p.name) + ' — ' + escapeHtml(p.status) + (p.injuryNote ? ': ' + escapeHtml(p.injuryNote.substring(0,80)) : '')).join('<br>')}
     </div>` : '';
 
   const last5Table = hasStats && stats.last5Games?.length ? `
-    <div class="section-divider">Last 5 Games — Source: BallDontLie ✓</div>
+    <div class="section-divider">Last 5 Games — Source: ${statsSourceLabel} ✓</div>
+    <div style="overflow-x:auto;">
     <table class="mini-table">
       <thead><tr><th>DATE</th><th>OPP</th><th>PTS</th><th>REB</th><th>AST</th><th>MIN</th><th>FG%</th></tr></thead>
       <tbody>${stats.last5Games.map(g => `<tr><td>${g.date}</td><td>${(g.opponent||'N/A').split(' ').pop()}</td><td>${g.pts}</td><td>${g.reb}</td><td>${g.ast}</td><td>${g.min}</td><td>${g.fg_pct}</td></tr>`).join('')}</tbody>
-    </table>` : '';
+    </table>
+    </div>` : '';
 
   const factorHTML = factors.map(f => `<div class="factor-pill"><div class="fi ${f.type}">${f.type==='pos'?'▲':'▼'}</div><div class="factor-txt">${f.text}</div></div>`).join('');
 
-  return `
-    ${sourceBanner}
-    ${disclaimer}
-    <div style="margin-bottom:6px;">
-      <div style="font-family:'Bebas Neue',cursive;font-size:26px;letter-spacing:2px;">${player}</div>
-      <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);margin-top:2px;">${propType.toUpperCase()} · LINE ${line} · PROJECTION ${projection}</div>
-    </div>
-    ${chips}
-    ${ctx?.mathProjection ? `
-    <div style="background:rgba(74,158,255,0.06);border:1px solid rgba(74,158,255,0.2);border-radius:8px;padding:10px 14px;margin:8px 0;font-family:'DM Mono',monospace;font-size:10px;">
+  const mathBreakdownBox = ctx?.mathProjection ? `
+    <div style="background:rgba(74,158,255,0.06);border:1px solid rgba(74,158,255,0.2);border-radius:8px;padding:10px 14px;margin:8px 0;font-family:'Space Grotesk',sans-serif;font-size:10px;">
       <div style="color:var(--blue);letter-spacing:1px;margin-bottom:6px;">MATH PROJECTION BREAKDOWN — SERVER CALCULATED</div>
       <div style="display:flex;flex-wrap:wrap;gap:8px;color:var(--muted);">
-        <span>L5: <span style="color:var(--text)">${ctx.mathProjection.l5Avg}</span></span>
-        <span>L10: <span style="color:var(--text)">${ctx.mathProjection.l10Avg}</span></span>
+        <span>Baseline: <span style="color:var(--text)">${ctx.mathProjection.l10Avg}</span> <span style="opacity:0.6;">(recent L10 average)</span></span>
+        <span>Projected minutes: <span style="color:var(--text)">${ctx.mathProjection.projectedMinutes ?? 'N/A'}</span></span>
         <span>Pace adj: <span style="color:var(--text)">${ctx.mathProjection.oppPace || 'N/A'}</span></span>
-        <span>DvP coeff: <span style="color:var(--text)">${ctx.mathProjection.dvpCoeff}x</span></span>
+        ${ctx.mathProjection.dvpCoeff != null ? `<span>DvP coeff: <span style="color:var(--text)">${ctx.mathProjection.dvpCoeff}x</span></span>` : ''}
         <span>Usage mult: <span style="color:var(--text)">${ctx.mathProjection.usageMult}x</span></span>
         <span>Form: <span style="color:${ctx.mathProjection.form==='HOT'?'var(--green)':ctx.mathProjection.form==='COLD'?'var(--red)':'var(--muted)'}">${ctx.mathProjection.form}</span></span>
         <span>Math conf: <span style="color:var(--blue)">${ctx.mathProjection.confidence}%</span></span>
       </div>
-    </div>` : ''}
-    <div style="margin:14px 0 8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
-      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-        <div class="verdict-badge ${vc}">${vc==='over'?'▲ OVER':vc==='lean-over'?'△ LEAN OVER':vc==='under'?'▼ UNDER':vc==='lean-under'?'▽ LEAN UNDER':'◈ PASS'}</div>
-      ${vc==='pass' && precomputedVerdict?.direction !== 'NEUTRAL' ? `<div style="font-family:'DM Mono',monospace;font-size:10px;padding:4px 10px;border-radius:5px;background:${precomputedVerdict.direction==='OVER_LEAN'?'rgba(46,204,113,0.08)':'rgba(231,76,60,0.08)'};color:${precomputedVerdict.direction==='OVER_LEAN'?'var(--green)':'var(--red)'};border:1px solid ${precomputedVerdict.direction==='OVER_LEAN'?'rgba(46,204,113,0.2)':'rgba(231,76,60,0.2)'}">${precomputedVerdict.direction==='OVER_LEAN'?'slight over lean':'slight under lean'}</div>` : ''}
+      ${ctx.mathProjection.stdDev ? (() => {
+        const sd = ctx.mathProjection.stdDev, med = ctx.mathProjection.medianProjection ?? projection;
+        const lb = ctx.mathProjection.lowerBound, ub = ctx.mathProjection.upperBound;
+        const lineNum = parseFloat(line);
+        let overPct = null;
+        if (lineNum && sd) {
+          const z = (lineNum - med) / sd;
+          const t = 1 / (1 + 0.2316419 * Math.abs(z));
+          const d = 0.3989423 * Math.exp(-z*z/2);
+          let p = d*t*(0.3193815+t*(-0.3565638+t*(1.781478+t*(-1.821256+t*1.330274))));
+          if (z <= 0) p = 1 - p;
+          overPct = Math.round(p * 100);
+        }
+        return `
+      <div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(74,158,255,0.15);display:flex;flex-wrap:wrap;gap:8px;color:var(--muted);">
+        <span>Range (~80%): <span style="color:var(--text)">${lb} – ${ub}</span></span>
+        <span>Std dev: <span style="color:var(--text)">±${sd}</span></span>
+        ${overPct != null ? `<span>P(Over ${line}): <span style="color:var(--green)">${overPct}%</span> <span style="color:var(--red)">/ Under ${100-overPct}%</span></span>` : ''}
+      </div>`;
+      })() : ''}
+    </div>
+    ${ctx.mathProjection.drivers?.length ? `
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin:8px 0;font-family:'Space Grotesk',sans-serif;font-size:10px;">
+      <div style="color:var(--gold);letter-spacing:1px;margin-bottom:6px;">MODEL DRIVERS — WHY THE NUMBER MOVED FROM BASELINE ${ctx.mathProjection.l10Avg}</div>
+      <div style="display:flex;flex-direction:column;gap:4px;">
+        ${ctx.mathProjection.drivers.map(d => `<div style="display:flex;justify-content:space-between;gap:10px;"><span style="color:var(--muted);">${d.label}</span><span style="color:${d.value>0?'var(--green)':'var(--red)'};">${d.value>0?'+':''}${d.value}</span></div>`).join('')}
       </div>
-      <button id="add-to-list-btn" onclick="addToBetslip()" style="font-family:'DM Mono',monospace;font-size:10px;padding:7px 16px;border-radius:7px;border:1px solid var(--gold);background:rgba(212,168,68,0.1);color:var(--gold);cursor:pointer;letter-spacing:1px;white-space:nowrap;" onmouseover="this.style.background='rgba(212,168,68,0.25)'" onmouseout="this.style.background='rgba(212,168,68,0.1)'">+ ADD TO LIST</button>
-      <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);">EDGE: <span style="color:${edge>0?'var(--green)':edge<0?'var(--red)':'var(--muted)'};">${edge>0?'+':''}${edge}</span></div>
+    </div>` : ''}` : '';
+
+  const taBlock = (icon, title, body, cls='') => body ? `<div class="ta-block ${cls}"><div class="ta-block-title"><span>${icon}</span>${title}</div><div class="ta-block-body">${body}</div></div>` : '';
+  const textualAnalysis = (mathOutlook || matchupConsistency || riskFactors) ? `
+    <div class="textual-analysis-hdr">Textual Analysis</div>
+    ${taBlock('📊', 'Mathematical Outlook', mathOutlook)}
+    ${taBlock('🎯', 'Matchup &amp; Consistency', matchupConsistency, 'matchup')}
+    ${taBlock('⚠️', 'Risk Factors', riskFactors, 'risk')}` : '';
+
+  const recommendations = (bottomLine || alternativePlays) ? `
+    <div class="recommend-box">
+      <div class="recommend-title"><span>💡</span>Recommendations</div>
+      ${bottomLine ? `<div class="recommend-row"><span class="recommend-label">KEY TAKEAWAY / OUTLOOK</span>${bottomLine}</div>` : ''}
+      ${alternativePlays ? `<div class="recommend-row"><span class="recommend-label">ALTERNATIVE PLAYS</span>${alternativePlays}</div>` : ''}
+    </div>` : '';
+
+  const playerId = ctx?.playerAdvancedStats?.PLAYER_ID || null;
+  return `
+    ${sourceBanner}
+    <div class="result-player-header" style="margin-bottom:6px;">
+      ${renderResultHeadshot(league, playerId, player)}
+      <div>
+        <div style="font-family:'Space Grotesk',sans-serif;font-size:26px;letter-spacing:2px;">${escapeHtml(player)}</div>
+        <div style="font-family:'Space Grotesk',sans-serif;font-size:11px;color:var(--muted);margin-top:2px;">${propType.toUpperCase()} · LINE ${line} · PROJECTION ${projection}</div>
+      </div>
     </div>
-    <div class="conf-wrap">
-      <div class="conf-labels"><span>CONFIDENCE</span><span>${confidence}%</span></div>
-      <div class="conf-bar"><div class="conf-fill ${vc}" style="width:${confidence}%"></div></div>
+    ${chips}
+    <div class="result-split">
+      <div class="result-col-mid">
+        <div style="margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <div class="verdict-badge ${vc}">${vc==='over'?'▲ OVER':vc==='lean-over'?'△ LEAN OVER':vc==='under'?'▼ UNDER':vc==='lean-under'?'▽ LEAN UNDER':'◈ PASS'}</div>
+          ${vc==='pass' && precomputedVerdict?.direction !== 'NEUTRAL' ? `<div style="font-family:'Space Grotesk',sans-serif;font-size:10px;padding:4px 10px;border-radius:5px;background:${precomputedVerdict.direction==='OVER_LEAN'?'rgba(46,204,113,0.08)':'rgba(231,76,60,0.08)'};color:${precomputedVerdict.direction==='OVER_LEAN'?'var(--green)':'var(--red)'};border:1px solid ${precomputedVerdict.direction==='OVER_LEAN'?'rgba(46,204,113,0.2)':'rgba(231,76,60,0.2)'}">${precomputedVerdict.direction==='OVER_LEAN'?'slight over lean':'slight under lean'}</div>` : ''}
+          </div>
+          <button id="add-to-list-btn" onclick="addToBetslip()" style="font-family:'Space Grotesk',sans-serif;font-size:10px;padding:7px 16px;border-radius:7px;border:1px solid var(--gold);background:rgba(212,168,68,0.1);color:var(--gold);cursor:pointer;letter-spacing:1px;white-space:nowrap;" onmouseover="this.style.background='rgba(212,168,68,0.25)'" onmouseout="this.style.background='rgba(212,168,68,0.1)'">+ ADD TO LIST</button>
+          <div style="font-family:'Space Grotesk',sans-serif;font-size:11px;color:var(--muted);">EDGE: <span style="color:${edge>0?'var(--green)':edge<0?'var(--red)':'var(--muted)'};">${edge>0?'+':''}${edge}</span></div>
+        </div>
+        <div class="conf-wrap">
+          <div class="conf-labels"><span>CONFIDENCE</span><span>${confidence}%</span></div>
+          <div class="conf-bar"><div class="conf-fill ${vc}" style="width:${confidence}%"></div></div>
+        </div>
+        <div class="edge-model-row">
+          ${renderGameLogSection(ctx, propType, line, league)}
+          <div class="edge-model-side">
+            ${renderConfGauge(confidence, vc)}
+            <div style="font-family:'Space Grotesk',sans-serif;font-size:19px;letter-spacing:1px;color:${edge>0?'var(--green)':edge<0?'var(--red)':'var(--muted)'};">${edge>0?'+':''}${edge}pt EDGE</div>
+          </div>
+        </div>
+        <div class="section-divider">Shot Charts</div>
+        <div id="shotchart-container-${league}"><div class="top-plays-empty">Loading shot charts...</div></div>
+        ${mathBreakdownBox}
+        ${oppRosterDisplay}
+        ${playerTeamInjuries}
+        ${isElite?`<div class="outlier-strip"><div style="font-size:20px;">★</div><p><strong>OUTLIER ALERT</strong> — ${escapeHtml(player)} is flagged as elite/matchup-resistant.</p></div>`:''}
+        ${recommendations}
+      </div>
+      <div class="result-col-insights">
+        ${textualAnalysis}
+        <div class="section-divider">Key Factors</div>
+        <div class="factor-grid" style="grid-template-columns:1fr;">${factorHTML}</div>
+      </div>
     </div>
-    ${isElite?`<div class="outlier-strip"><div style="font-size:20px;">★</div><p><strong>OUTLIER ALERT</strong> — ${player} is flagged as elite/matchup-resistant.</p></div>`:''}
-    ${oppRosterDisplay}
-    ${playerTeamInjuries}
     ${defStats}
     ${last5Table}
-    <div class="section-divider">Key Factors</div>
-    <div class="factor-grid">${factorHTML}</div>
     ${blowout?`<div class="section-divider">Blowout Scenario</div><div class="analysis-box">${blowout}</div>`:''}
     ${shotChart?`<div class="section-divider">Shot Chart vs Defense</div><div class="analysis-box">${shotChart}</div>`:''}
     ${(function(){
@@ -1133,104 +1859,553 @@ function renderResult(raw, player, opp, propType, line, ctx, precomputedVerdict)
     return out;
   }())}
     ${fullAnalysis?`<div class="analysis-text">${fullAnalysis}</div>`:''}
-    ${bottomLine?`<div class="bottom-line">${bottomLine}</div>`:''}
   `;
 }
 
 // ── MATCHUP SCANNER ───────────────────────────────────
-function prefillMatchup(t1, t2) {
-  switchTab('matchups', document.querySelectorAll('.tab')[1]);
-  document.getElementById('matchup-team1').value = t1;
-  document.getElementById('matchup-team2').value = t2;
+// ── DAILY MATCHUPS — week day picker ───────────────────────────────
+let matchupWindowStart = new Date();
+let matchupSelectedDate = new Date();
+// toISOString() converts to UTC before formatting, which rolls the date
+// over at UTC midnight — several hours before real local midnight in any
+// US timezone. Use local date components instead so "today" matches the
+// browser's actual local calendar day.
+function toDateStr(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function fmtDayLabel(d) { return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); }
+
+function initMatchupDayPicker() {
+  matchupWindowStart = new Date();
+  matchupSelectedDate = new Date();
+  renderDayStrip();
+  loadScheduleForDate(toDateStr(matchupSelectedDate));
+}
+
+function renderDayStrip() {
+  const strip = document.getElementById('day-strip');
+  if (!strip) return;
+  const days = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(matchupWindowStart);
+    d.setDate(d.getDate() + i);
+    days.push(d);
+  }
+  strip.innerHTML = days.map(d => {
+    const ds = toDateStr(d);
+    const isSel = ds === toDateStr(matchupSelectedDate);
+    return `<div class="day-chip ${isSel ? 'active' : ''}" onclick="selectMatchupDay('${ds}')">${fmtDayLabel(d)}</div>`;
+  }).join('');
+}
+
+function shiftMatchupWeek(dir) {
+  matchupWindowStart.setDate(matchupWindowStart.getDate() + dir);
+  renderDayStrip();
+}
+
+function selectMatchupDay(dateStr) {
+  matchupSelectedDate = new Date(dateStr + 'T00:00:00');
+  renderDayStrip();
+  loadScheduleForDate(dateStr);
+}
+
+async function loadScheduleForDate(dateStr) {
+  const strip = document.getElementById('schedule-strip');
+  strip.innerHTML = '<div class="game-chip">Loading...</div>';
+  try {
+    const data = await apiGet(`/api/schedule?date=${dateStr}`);
+    const games = data.games || [];
+    strip.innerHTML = games.length
+      ? games.map(g => `<div class="game-chip" onclick="prefillMatchup('${escapeJsStr(g.away)}','${escapeJsStr(g.home)}','${g.league}')"><div><span class="chip-league">${g.league.toUpperCase()}</span>${g.away.split(' ').slice(-1)[0]} @ ${g.home.split(' ').slice(-1)[0]}</div><div style="font-size:9px;color:var(--muted);margin-top:2px;">${g.gameTime||g.status||'TBD'}</div></div>`).join('')
+      : '<div class="game-chip">No games this day</div>';
+  } catch (err) {
+    strip.innerHTML = '<div class="game-chip">Could not load schedule</div>';
+  }
+}
+function escapeJsStr(s) { return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
+
+// ── DAILY MATCHUPS — team select dropdowns ─────────────────────────
+function populateMatchupTeamSelects() {
+  const league = document.getElementById('matchup-league').value;
+  const list = league === 'wnba' ? WNBA_TEAMS : NBA_TEAMS;
+  const opts = list.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
+  document.getElementById('matchup-team1').innerHTML = opts;
+  document.getElementById('matchup-team2').innerHTML = opts;
+  if (list.length > 1) document.getElementById('matchup-team2').selectedIndex = 1;
+}
+
+function prefillMatchup(t1, t2, league) {
+  switchTab('matchups', document.querySelectorAll('.tab')[3]);
+  const leagueSel = document.getElementById('matchup-league');
+  leagueSel.value = league || 'nba';
+  populateMatchupTeamSelects();
+  const t1Sel = document.getElementById('matchup-team1');
+  const t2Sel = document.getElementById('matchup-team2');
+  if ([...t1Sel.options].some(o => o.value === t1)) t1Sel.value = t1;
+  if ([...t2Sel.options].some(o => o.value === t2)) t2Sel.value = t2;
   analyzeMatchup();
 }
 
-async function analyzeMatchup() {
-  const t1 = document.getElementById('matchup-team1').value.trim();
-  const t2 = document.getElementById('matchup-team2').value.trim();
-  if (!t1 || !t2) { alert('Enter both teams.'); return; }
+// ── DAILY MATCHUPS — real-data dashboard ────────────────────────────
+function computeWinProb(s1, s2) {
+  if (!s1 || !s2 || s1.netRating == null || s2.netRating == null) return null;
+  const diff = s1.netRating - s2.netRating;
+  return 1 / (1 + Math.pow(10, -diff / 10));
+}
 
-  // Pull live data for both teams — stats + ESPN rosters in parallel
-  let liveData = '';
-  let rosterData = '';
+// Real spread/moneyline/total (ESPN, DraftKings-sourced, free — see
+// /api/game-odds) shown as a top banner so betting context is visible
+// before the projection breakdown, replacing the old radar chart + stat
+// table (removed — this is more directly useful for prop-betting context).
+function renderOddsBanner(odds, t1, t2) {
+  if (!odds?.available) {
+    return `<div class="tc-odds-unavailable">No live odds available for this matchup${odds?.gameDate ? '' : ' — teams aren\'t scheduled to play each other soon'}.</div>`;
+  }
+  const homeIsT1 = (odds.home?.name || '').toLowerCase() === (t1 || '').toLowerCase();
+  const t1Side = homeIsT1 ? odds.home : odds.away;
+  const t2Side = homeIsT1 ? odds.away : odds.home;
+  const t1Spread = homeIsT1 ? odds.spread?.home : odds.spread?.away;
+  const t2Spread = homeIsT1 ? odds.spread?.away : odds.spread?.home;
+  const t1ML = homeIsT1 ? odds.moneyline?.home : odds.moneyline?.away;
+  const t2ML = homeIsT1 ? odds.moneyline?.away : odds.moneyline?.home;
+  return `
+    <div class="tc-odds-banner">
+      <div class="tc-odds-item">
+        <div class="tc-odds-label">Spread</div>
+        <div class="tc-odds-value">${escapeHtml(shortTeam(t1))} ${t1Spread ?? '—'} | ${escapeHtml(shortTeam(t2))} ${t2Spread ?? '—'}</div>
+      </div>
+      <div class="tc-odds-item">
+        <div class="tc-odds-label">Moneyline</div>
+        <div class="tc-odds-value">${escapeHtml(shortTeam(t1))} ${t1ML ?? '—'} | ${escapeHtml(shortTeam(t2))} ${t2ML ?? '—'}</div>
+      </div>
+      <div class="tc-odds-item">
+        <div class="tc-odds-label">Total (O/U)</div>
+        <div class="tc-odds-value">${odds.total ?? '—'}</div>
+      </div>
+      ${odds.provider ? `<div class="tc-odds-provider">via ${escapeHtml(odds.provider)} (ESPN)</div>` : ''}
+    </div>`;
+}
+function shortTeam(name) { return (name || '').split(' ').pop(); }
+
+function renderFavorBar(s1, s2, t1, t2) {
+  const prob1 = computeWinProb(s1, s2);
+  if (prob1 == null) return '';
+  const pct = Math.round((prob1 >= 0.5 ? prob1 : 1 - prob1) * 100);
+  const name = prob1 >= 0.5 ? t1 : t2;
+  return `
+    <div class="tc-favor-wrap">
+      <div class="tc-favor-label">MODEL FAVORS<br>${escapeHtml(name)}</div>
+      <div class="tc-favor-track"><div class="tc-favor-fill" style="width:${pct}%"></div></div>
+      <div class="tc-favor-pct">${pct}%</div>
+    </div>`;
+}
+
+function playerAvatar(p) {
+  return p.headshot
+    ? `<img class="tc-headshot" src="${p.headshot}" alt="${escapeHtml(p.name)}" onerror="this.outerHTML='<div class=&quot;tc-avatar-fallback&quot;>${escapeHtml(initials(p.name))}</div>'">`
+    : `<div class="tc-avatar-fallback">${escapeHtml(initials(p.name))}</div>`;
+}
+
+// Bare content only — no title/wrapper box, since these render inside an
+// accordion body that already supplies both.
+function renderTargetBox(targets, t1, t2) {
+  if (!targets || !targets.length) {
+    return `<div class="top-plays-empty">Loading real usage + form data...</div>`;
+  }
+  const leanCls = (lean) => lean.includes('OVER') ? 'over' : lean.includes('UNDER') ? 'under' : 'neutral';
+  return targets.map(p => {
+    const opponent = p.team === t1 ? t2 : t1;
+    return `
+    <div class="tc-target-row" style="cursor:pointer;" onclick="jumpToAnalyzePlayer('${escapeJsStr(p.name)}','Points','${escapeJsStr(opponent)}','${p.league}')">
+      ${playerAvatar(p)}
+      <div class="tc-target-info">
+        <div class="tc-target-name">${escapeHtml(p.name)}</div>
+        <div class="tc-target-meta">${escapeHtml(p.team)} · ${p.usgPct}% USG · ${p.recentPpg ?? '—'} PPG L10 · ${p.form}</div>
+      </div>
+      <div class="tc-target-lean ${leanCls(p.lean)}">${escapeHtml(p.lean)}</div>
+    </div>`;
+  }).join('');
+}
+
+// Projected Starting Lineup — the real starters from each team's most
+// recent completed game, adjusted for the current live injury report (see
+// getProjectedStarters in server.js). No official pregame lineup feed
+// exists for either league, so this is the closest honest real-data proxy:
+// actual coaching decisions from the last game, not a season-usage guess.
+function renderLineupBox(t1, t2, starters1, starters2) {
+  const col = (list) => (list || []).map(p => `
+    <div class="tc-lineup-row">
+      ${playerAvatar(p)}
+      <span class="tc-lineup-pos">${escapeHtml(p.position || '')}</span>
+      <span class="tc-lineup-name">${escapeHtml(p.name)}</span>
+    </div>`).join('') || '<div class="top-plays-empty" style="padding:2px 0;">No data</div>';
+  return `
+    <div class="tc-lineup-cols">
+      <div><div class="tc-lineup-team">${escapeHtml(t1)}</div>${col(starters1)}</div>
+      <div><div class="tc-lineup-team">${escapeHtml(t2)}</div>${col(starters2)}</div>
+    </div>`;
+}
+
+function formatShortDate(iso) {
+  if (!iso) return '—';
   try {
-    const [d1, d2, r1, r2] = await Promise.all([
-      apiGet(`/api/nba-stats?team=${encodeURIComponent(t1)}`),
-      apiGet(`/api/nba-stats?team=${encodeURIComponent(t2)}`),
-      apiGet(`/api/roster?team=${encodeURIComponent(t1)}`),
-      apiGet(`/api/roster?team=${encodeURIComponent(t2)}`)
-    ]);
-    if (d1.advanced) liveData += `\n${t1} LIVE STATS (nba.com): Pace=${d1.advanced.PACE}, OffRtg=${d1.advanced.OFF_RATING}, DefRtg=${d1.advanced.DEF_RATING}`;
-    if (d2.advanced) liveData += `\n${t2} LIVE STATS (nba.com): Pace=${d2.advanced.PACE}, OffRtg=${d2.advanced.OFF_RATING}, DefRtg=${d2.advanced.DEF_RATING}`;
-    if (d1.oppShooting) liveData += `\n${t1} Opp FG% allowed: ${d1.oppShooting.OPP_FG_PCT}, Opp 3P%: ${d1.oppShooting.OPP_FG3_PCT}`;
-    if (d2.oppShooting) liveData += `\n${t2} Opp FG% allowed: ${d2.oppShooting.OPP_FG_PCT}, Opp 3P%: ${d2.oppShooting.OPP_FG3_PCT}`;
-    // ESPN rosters
-    if (r1?.players?.length) {
-      const inj1 = (r1.injured||[]).map(p => p.name + ' (' + p.status + ')').join(', ');
-      rosterData += `\n${t1} ROSTER (ESPN, post-trade): ${r1.players.map(p=>p.name).slice(0,10).join(', ')}`;
-      if (inj1) rosterData += ` | INJURED: ${inj1}`;
-    }
-    if (r2?.players?.length) {
-      const inj2 = (r2.injured||[]).map(p => p.name + ' (' + p.status + ')').join(', ');
-      rosterData += `\n${t2} ROSTER (ESPN, post-trade): ${r2.players.map(p=>p.name).slice(0,10).join(', ')}`;
-      if (inj2) rosterData += ` | INJURED: ${inj2}`;
-    }
-  } catch (_) {}
+    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/New_York' }).toUpperCase().replace(',', '');
+  } catch (_) { return '—'; }
+}
 
+// Last 5 Games — official table (W/L pill, date, opponent, score, high
+// scorer), replacing the old green/red bar chart with real per-game detail.
+function renderLast5Table(games, teamLabel) {
+  if (!games || !games.length) return `<div class="top-plays-empty">No recent games found for ${escapeHtml(teamLabel)}</div>`;
+  const rows = [...games].reverse().map(g => `
+    <tr>
+      <td><span class="tc-wl-pill ${g.win ? 'w' : 'l'}">${g.result}</span></td>
+      <td>${formatShortDate(g.date)}</td>
+      <td>${g.isHome ? 'vs' : '@'} ${escapeHtml(shortTeam(g.opponent))}</td>
+      <td>${g.ownScore}-${g.oppScore}</td>
+      <td>${g.highScorer ? `${escapeHtml(shortTeam(g.highScorer.name))} ${escapeHtml(g.highScorer.pts)} pts` : '—'}</td>
+    </tr>`).join('');
+  return `
+    <div class="tc-last5-scroll">
+      <table class="tc-last5-official">
+        <thead><tr><th>W/L</th><th>Date</th><th>Opponent</th><th>Score</th><th>High Scorer</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+// Real usage-rate + defense-by-position (NBA) + defense-by-zone (both
+// leagues, reusing the same shot-chart bridge already built) profile —
+// this used to be entirely absent from Daily Matchups, which only ever
+// looked at blunt team-wide PPG/pace/DefRtg.
+function renderStatTable(s1, s2, t1, t2) {
+  const cell = (val, rank, suffix='') => val == null
+    ? '—'
+    : `${val}${suffix}${rank ? `<span class="rank">#${rank}</span>` : ''}`;
+  const rows = [
+    ['PPG',     s1?.ppg,  s1?.ppgRank,  s2?.ppg,  s2?.ppgRank],
+    ['APG',     s1?.apg,  s1?.apgRank,  s2?.apg,  s2?.apgRank],
+    ['TOPG',    s1?.topg, s1?.topgRank, s2?.topg, s2?.topgRank],
+    ['FG%',     s1?.fgPct, s1?.fgPctRank, s2?.fgPct, s2?.fgPctRank, '%'],
+    ['PACE',    s1?.pace, s1?.paceRank, s2?.pace, s2?.paceRank],
+    ['DEF RTG', s1?.defRating, s1?.defRatingRank, s2?.defRating, s2?.defRatingRank],
+  ];
+  return `
+    <table class="tc-stat-table">
+      <thead><tr><th>${escapeHtml(t1)}</th><th>METRIC</th><th>${escapeHtml(t2)}</th></tr></thead>
+      <tbody>
+        <tr><td>${s1?.record||'—'}</td><td class="tc-metric-name">RECORD</td><td>${s2?.record||'—'}</td></tr>
+        ${rows.map(([label, v1, r1, v2, r2, suffix]) => `<tr><td>${cell(v1,r1,suffix)}</td><td class="tc-metric-name">${label}</td><td>${cell(v2,r2,suffix)}</td></tr>`).join('')}
+      </tbody>
+    </table>
+    ${(s1?.source || s2?.source) ? `<div style="font-family:'Space Grotesk',sans-serif;font-size:8px;color:var(--muted);margin-top:8px;">${s1?.source?`⚠ ${escapeHtml(t1)}: ${escapeHtml(s1.source)}`:''}${s1?.source&&s2?.source?' · ':''}${s2?.source?`⚠ ${escapeHtml(t2)}: ${escapeHtml(s2.source)}`:''}</div>` : ''}`;
+}
+
+// Collapsible accordion — wraps every section below the odds banner.
+// bodyHtml may be a placeholder (e.g. a loading spinner) that gets swapped
+// out later via document.getElementById(bodyId).innerHTML/.outerHTML.
+function renderAccordionItem(id, title, bodyHtml, openByDefault) {
+  return `
+    <div class="mu-accordion-item${openByDefault ? ' open' : ''}" id="${id}">
+      <div class="mu-accordion-header" onclick="toggleAccordion('${id}')">
+        <span class="mu-accordion-title">${escapeHtml(title)}</span>
+        <span class="mu-accordion-chevron">▼</span>
+      </div>
+      <div class="mu-accordion-body">${bodyHtml}</div>
+    </div>`;
+}
+function toggleAccordion(id) {
+  document.getElementById(id)?.classList.toggle('open');
+}
+
+function renderMatchupDashboard(compare, t1, t2, targets, r1, r2, odds) {
   const div = document.getElementById('matchup-result');
-  div.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:200px;gap:14px;"><div class="spinner"></div><div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);">SCANNING...</div></div>`;
+  const s1 = compare.team1.stats, s2 = compare.team2.stats;
+
+  const h2hRows = (compare.h2h || []).slice(-6).reverse().map(g => `
+    <tr><td>${formatShortDate(g.date)}</td><td>${g.isHome ? `vs ${escapeHtml(g.opponent)}` : `@ ${escapeHtml(g.opponent)}`}</td>
+    <td class="${g.win?'h2h-win':'h2h-loss'}">${g.ownScore}-${g.oppScore} ${g.win?'W':'L'}</td></tr>`).join('');
+
+  const realInjured = [
+    ...(r1?.injured||[]).map(p => ({ ...p, team: t1 })),
+    ...(r2?.injured||[]).map(p => ({ ...p, team: t2 })),
+  ];
+
+  const last5Body = `
+    <div class="tc-last5-team"><div class="tc-last5-label">${escapeHtml(t1)}</div>${renderLast5Table(compare.team1.last5, t1)}</div>
+    <div class="tc-last5-team"><div class="tc-last5-label">${escapeHtml(t2)}</div>${renderLast5Table(compare.team2.last5, t2)}</div>`;
+
+  const h2hBody = h2hRows
+    ? `<div class="tc-last5-scroll"><table class="h2h-table"><thead><tr><th>Date</th><th>Game</th><th>Result</th></tr></thead><tbody>${h2hRows}</tbody></table></div>`
+    : '<div class="top-plays-empty">No meetings yet this season</div>';
+
+  const gameflowLoadingBody = `<div class="top-plays-empty" style="padding:10px 0;"><div class="spinner" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:8px;"></div>Loading AI gameflow + defensive projection...</div>`;
+
+  div.innerHTML = `
+    <div class="tc-header">
+      <div class="tc-title">${escapeHtml(t1).toUpperCase()} VS ${escapeHtml(t2).toUpperCase()}</div>
+      ${renderFavorBar(s1, s2, t1, t2)}
+    </div>
+    ${renderOddsBanner(odds, t1, t2)}
+    ${renderAccordionItem('acc-stats', 'Team Stats', renderStatTable(s1, s2, t1, t2), true)}
+    ${renderDataQualityCard(s1, s2, t1, t2)}
+    ${renderAccordionItem('acc-gameflow', 'Gameflow & Defensive Breakdown', gameflowLoadingBody, false)}
+    ${renderAccordionItem('acc-injury', 'Injury & Availability Report', renderInjuryReport(realInjured), false)}
+    ${renderAccordionItem('acc-targets', 'Top Targets — by real usage + form', renderTargetBox(targets, t1, t2), false)}
+    ${renderAccordionItem('acc-lineups', 'Projected Starting Lineup', renderLineupBox(t1, t2, compare.team1.projectedStarters?.starters, compare.team2.projectedStarters?.starters), false)}
+    ${renderAccordionItem('acc-last5', 'Last 5 Games', last5Body, false)}
+    ${renderAccordionItem('acc-h2h', 'Head-to-Head (this season)', h2hBody, false)}`;
+}
+
+// ── Daily Matchups AI breakdown — structured cards, real data only ──
+const PROP_TYPE_MAP = {
+  points:'points', pts:'points', rebounds:'rebounds', reb:'rebounds', assists:'assists', ast:'assists',
+  '3-pointers made':'3pm', '3pm':'3pm', threes:'3pm', steals:'steals', stl:'steals', blocks:'blocks', blk:'blocks',
+};
+function mapPropType(text) { return PROP_TYPE_MAP[(text||'').toLowerCase().trim()] || 'points'; }
+function initials(name) { return (name||'').split(' ').filter(Boolean).map(w=>w[0]).slice(0,2).join('').toUpperCase(); }
+// Real headshot CDNs, keyed by the same stats.nba.com-style PLAYER_ID
+// already present in ctx.playerAdvancedStats (mirrors headshotUrl in server.js).
+function playerHeadshotUrl(league, playerId) {
+  if (!playerId) return null;
+  return league === 'wnba'
+    ? `https://cdn.wnba.com/headshots/wnba/latest/1040x760/${playerId}.png`
+    : `https://cdn.nba.com/headshots/nba/latest/1040x760/${playerId}.png`;
+}
+function renderResultHeadshot(league, playerId, name) {
+  const url = playerHeadshotUrl(league, playerId);
+  return url
+    ? `<img class="result-headshot" src="${url}" alt="${escapeHtml(name)}" onerror="this.outerHTML='<div class=&quot;result-avatar-fallback&quot;>${escapeHtml(initials(name))}</div>'">`
+    : `<div class="result-avatar-fallback">${escapeHtml(initials(name))}</div>`;
+}
+
+// Matchup-breakdown sections contain "PLAYER: X | TEAM: Y" lines whose
+// leading word ("PLAYER") itself matches the generic extractSection's
+// "next ALL-CAPS header" boundary pattern — that regex would (and did)
+// stop capturing after the very first player line. Bound instead by the
+// known list of section headers this prompt actually uses — passed in
+// explicitly since the two GAMEFLOW BREAKDOWN headers are per-team names,
+// not a fixed constant.
+function matchupSectionNames(t1, t2) {
+  return [`GAMEFLOW BREAKDOWN ${(t1||'').toUpperCase()}`, `GAMEFLOW BREAKDOWN ${(t2||'').toUpperCase()}`, 'DEFENSIVE SCHEME BREAKDOWN', 'BLOWOUT RISK'];
+}
+function extractMatchupSection(text, header, allSections) {
+  const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  const others = (allSections || []).filter(h => h !== header).map(esc).join('|');
+  // Allow an optional markdown prefix (#, *, etc.) before section headers —
+  // the model doesn't always emit plain-text headers as instructed.
+  const re = new RegExp(esc(header)+':?\\s*(.+?)(?=\\n+[#*\\s]*(?:'+others+'):|$)','is');
+  return (text.match(re)||[])[1]?.trim()||'';
+}
+
+function jumpToAnalyzePlayer(name, propText, opponent, league) {
+  const tabIdx = league === 'wnba' ? 2 : 1;
+  switchTab(league === 'wnba' ? 'wnba' : 'analyzer', document.querySelectorAll('.tab')[tabIdx]);
+  elFor(league, 'player-name').value = name;
+  const oppInput = elFor(league, 'opp-team');
+  oppInput.value = opponent;
+  oppInput.dataset.autoFilled = 'false';
+  const propSel = elFor(league, 'prop-type');
+  if (propSel) propSel.value = mapPropType(propText);
+}
+
+function renderDataQualityCard(s1, s2, t1, t2) {
+  const bothLive = s1?.pace != null && s2?.pace != null;
+  if (bothLive) return `<div class="ai-disclaimer" style="margin-bottom:14px;">✓ Live nba.com pace/ratings and ESPN rosters injected into this analysis.</div>`;
+  const row = (label, s) => {
+    const live = s?.pace != null && s?.offRating != null && s?.defRating != null;
+    return `<div class="mu-dq-row"><span class="mu-dq-team">${escapeHtml(label)}</span><span class="mu-dq-tag ${live?'live':'warn'}">${live ? '✓ Pace/Ratings LIVE (nba.com)' : '⚠ Pace/Ratings UNVERIFIED' + (s?.source ? ' — ' + escapeHtml(s.source) : '')}</span></div>`;
+  };
+  return `
+    <div class="mu-data-quality">
+      <div class="mu-dq-flag">⚠ DATA QUALITY FLAG</div>
+      ${row(t1, s1)}${row(t2, s2)}
+      <div class="mu-dq-note">Teams flagged unverified are missing pace/rating data from stats.nba.com (newer expansion teams aren't onboarded there yet) — those projections lean more on PPG/roster estimates and carry lower confidence.</div>
+    </div>`;
+}
+
+// Real injury/availability data only (ESPN roster feed) — no AI-suggested
+// fade commentary mixed in; healthy players don't belong on an injury report.
+function renderInjuryReport(realInjured) {
+  if (!realInjured.length) return '<div class="top-plays-empty">No players currently listed as injured or questionable.</div>';
+  const rows = realInjured.map(p => {
+    const cls = /out/i.test(p.status) ? 'out' : 'gtd';
+    return `<div class="mu-avoid-row"><span class="mu-avoid-x">✕</span><span class="mu-avoid-name">${escapeHtml(p.name)}</span><span class="mu-avoid-reason">${escapeHtml(p.team)} — injury report</span><span class="mu-avoid-status ${cls}">${escapeHtml(p.status)} · LIVE</span></div>`;
+  });
+  return `<div class="mu-avoid-list">${rows.join('')}</div>`;
+}
+
+function riskLevel(text) {
+  const t = (text||'').toUpperCase();
+  if (t.includes('HIGH')) return 'high';
+  if (t.includes('LOW')) return 'low';
+  return 'moderate';
+}
+
+// Combined Gameflow + Defensive Scheme Breakdown + Blowout Risk — one
+// accordion section instead of three, per-team gameflow prose on top and
+// the shared defensive read + risk badge below it.
+function renderGameflowDefenseCard(gameflow1, gameflow2, t1, t2, defenseText, blowoutText) {
+  const lvl = riskLevel(blowoutText);
+  return `
+    <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">[AI] projected, not real play-by-play data</div>
+    <div class="tc-gameflow-cols">
+      <div><div class="tc-gameflow-team">${escapeHtml(t1)}</div><div class="tc-gameflow-body">${escapeHtml(gameflow1 || 'Not flagged.')}</div></div>
+      <div><div class="tc-gameflow-team">${escapeHtml(t2)}</div><div class="tc-gameflow-body">${escapeHtml(gameflow2 || 'Not flagged.')}</div></div>
+    </div>
+    <div class="mu-two-col" style="margin-top:14px;">
+      <div class="mu-info-card">
+        <div class="mu-section-title" style="margin-top:0;">Defensive Scheme Breakdown</div>
+        <div style="font-size:12px;line-height:1.7;color:var(--text);white-space:pre-wrap;">${escapeHtml(defenseText || 'Not flagged.')}</div>
+      </div>
+      <div class="mu-info-card risk">
+        <div class="mu-section-title" style="margin-top:0;">Blowout Risk</div>
+        <div class="mu-risk-badge ${lvl}">${lvl.toUpperCase()}</div>
+        <div style="font-size:12px;line-height:1.7;color:var(--text);white-space:pre-wrap;">${escapeHtml(blowoutText || 'Not flagged.')}</div>
+      </div>
+    </div>`;
+}
+
+async function loadMatchupAIAnalysis(compare, t1, t2, league, zone1, zone2, r1, r2) {
+  const s1 = compare.team1.stats, s2 = compare.team2.stats;
+  let liveData = '';
+  if (s1) liveData += `\n${t1} LIVE STATS: Record=${s1.record}, Pace=${s1.pace ?? 'unavailable'}, OffRtg=${s1.offRating ?? 'unavailable'}, DefRtg=${s1.defRating ?? 'unavailable'}, PPG=${s1.ppg}`;
+  if (s2) liveData += `\n${t2} LIVE STATS: Record=${s2.record}, Pace=${s2.pace ?? 'unavailable'}, OffRtg=${s2.offRating ?? 'unavailable'}, DefRtg=${s2.defRating ?? 'unavailable'}, PPG=${s2.ppg}`;
+
+  // Real per-player usage rate.
+  const u1 = compare.team1.topUsage, u2 = compare.team2.topUsage;
+  if (u1?.length) liveData += `\n${t1} TOP USAGE (stats.nba.com, real season data): ` + u1.map(p => `${p.name} ${p.usgPct}% USG (${p.ppg ?? '—'} PPG, ${p.minutes} MIN)`).join(', ');
+  if (u2?.length) liveData += `\n${t2} TOP USAGE (stats.nba.com, real season data): ` + u2.map(p => `${p.name} ${p.usgPct}% USG (${p.ppg ?? '—'} PPG, ${p.minutes} MIN)`).join(', ');
+
+  // Real defense-by-position (NBA tracking data — null for WNBA, no
+  // fabricated numbers when the source doesn't exist).
+  const pd1 = compare.team1.positionDefense, pd2 = compare.team2.positionDefense;
+  if (pd1) liveData += `\n${t1} DEFENSE BY POSITION (stats.nba.com tracking data): ` + Object.entries(pd1).filter(([,v])=>v).map(([g,v]) => `vs ${g} allows ${v.defFgPct}% FG (league-normal ${v.normalFgPct}%)`).join(', ');
+  if (pd2) liveData += `\n${t2} DEFENSE BY POSITION (stats.nba.com tracking data): ` + Object.entries(pd2).filter(([,v])=>v).map(([g,v]) => `vs ${g} allows ${v.defFgPct}% FG (league-normal ${v.normalFgPct}%)`).join(', ');
+
+  // Real opponent-defense-by-zone — "where teams allow/don't allow points".
+  if (zone1?.zones?.length) liveData += `\n${t1} SHOT DEFENSE BY ZONE (real, verified): ` + zone1.zones.filter(z=>z.fga>0).map(z => `${z.zone} allows ${z.fgPct}% (league avg ${z.leagueAvgPct ?? '—'}%)`).join(', ');
+  if (zone2?.zones?.length) liveData += `\n${t2} SHOT DEFENSE BY ZONE (real, verified): ` + zone2.zones.filter(z=>z.fga>0).map(z => `${z.zone} allows ${z.fgPct}% (league avg ${z.leagueAvgPct ?? '—'}%)`).join(', ');
+
+  let rosterData = '';
+  if (r1?.players?.length) {
+    rosterData += `\n${t1} ROSTER (ESPN, live): ${r1.players.map(p=>p.name).slice(0,10).join(', ')}`;
+  }
+  if (r2?.players?.length) {
+    rosterData += `\n${t2} ROSTER (ESPN, live): ${r2.players.map(p=>p.name).slice(0,10).join(', ')}`;
+  }
+
+  const gameflowBody = document.querySelector('#acc-gameflow .mu-accordion-body');
 
   try {
-    const prompt = `You are WIN AI. Analyze ${t1} vs ${t2} for player prop betting.
-${liveData ? `\nVERIFIED LIVE DATA (nba.com):\n${liveData}` : ''}
-${rosterData ? `\nESPN ROSTERS (post-trade deadline, live):\n${rosterData}` : ''}
-${(liveData || rosterData) ? `\nUse verified data above and tag all stats as [LIVE] or [AI].` : ''}
+    const prompt = `You are WIN AI. Analyze ${t1} vs ${t2} (${league.toUpperCase()}) for player prop betting.
+${liveData ? `\nVERIFIED LIVE DATA:\n${liveData}` : ''}
+${rosterData ? `\nESPN ROSTERS (live):\n${rosterData}` : ''}
+${(liveData || rosterData) ? `\nUse verified data above and tag all stats as [LIVE] or [AI], EXCEPT in the GAMEFLOW BREAKDOWN sections — those must read as clean flowing prose with no bracketed citations at all.` : ''}
 
-Provide:
-1. PACE RATING — use live pace data above if available, tag source
-2. TOP PROP TARGETS — 4-5 players with strong value, cite specific stats with [LIVE] or [AI] tags
-3. AVOID LIST — 2-3 players to fade with reasons
-4. DEFENSIVE SCHEME BREAKDOWN — tag any specific numbers as [LIVE] or [AI]
-5. BLOWOUT RISK
-6. OUTLIER ALERT
+Respond with exactly these sections, in this order:
 
-Flag any [AI] stats that should be verified on nba.com before betting.`;
+GAMEFLOW BREAKDOWN ${t1.toUpperCase()}:
+ONE tight paragraph (3-4 sentences, no quarter-by-quarter breakdown, no [LIVE]/[AI] tags) covering exactly three things for ${t1}: their primary offensive strategy, the key matchup mismatch to watch against ${t2}, and expected bench impact. Write in natural flowing prose, using the stats as supporting facts rather than citations. End with a brief note that this is a projection, not a certainty.
+
+GAMEFLOW BREAKDOWN ${t2.toUpperCase()}:
+Same structure, for ${t2}.
+
+DEFENSIVE SCHEME BREAKDOWN:
+Prose, tag numbers as [LIVE] or [AI].
+
+BLOWOUT RISK:
+Start the line with LOW, MODERATE, or HIGH, then 1-2 sentences.`;
 
     const res = await apiPost('/api/analyze', { prompt });
-    div.innerHTML = `
-      <div style="font-family:'DM Mono',monospace;font-size:10px;letter-spacing:2px;color:var(--gold);margin-bottom:14px;">${t1.toUpperCase()} VS ${t2.toUpperCase()}</div>
-      ${liveData ? `<div class="ai-disclaimer" style="margin-bottom:14px;">✓ Live nba.com pace and defensive data injected into this analysis.</div>` : '<div class="ai-disclaimer" style="margin-bottom:14px;">⚠ No live data — run fetch_stats.py for verified numbers.</div>'}
-      <div style="font-size:13px;line-height:1.85;color:var(--text);white-space:pre-wrap;">${res.response}</div>`;
+    const raw = res.response;
+    const sections  = matchupSectionNames(t1, t2);
+    const gameflow1 = extractMatchupSection(raw, `GAMEFLOW BREAKDOWN ${t1.toUpperCase()}`, sections);
+    const gameflow2 = extractMatchupSection(raw, `GAMEFLOW BREAKDOWN ${t2.toUpperCase()}`, sections);
+    const defense   = extractMatchupSection(raw, 'DEFENSIVE SCHEME BREAKDOWN', sections);
+    const blowout   = extractMatchupSection(raw, 'BLOWOUT RISK', sections);
+
+    if (gameflowBody) gameflowBody.innerHTML = renderGameflowDefenseCard(gameflow1, gameflow2, t1, t2, defense, blowout);
   } catch (err) {
-    div.innerHTML = `<div style="color:var(--red);font-family:'DM Mono',monospace;font-size:12px;padding:20px;">ERROR: ${err.message}</div>`;
+    if (gameflowBody) gameflowBody.innerHTML = `<div style="color:var(--red);font-family:'Space Grotesk',sans-serif;font-size:11px;">AI analysis failed: ${escapeHtml(err.message)}</div>`;
   }
+}
+
+async function analyzeMatchup() {
+  const league = document.getElementById('matchup-league').value;
+  const t1 = document.getElementById('matchup-team1').value;
+  const t2 = document.getElementById('matchup-team2').value;
+  if (!t1 || !t2 || t1 === t2) { alert('Pick two different teams.'); return; }
+
+  const div = document.getElementById('matchup-result');
+  div.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:200px;gap:14px;"><div class="spinner"></div><div style="font-family:'Space Grotesk',sans-serif;font-size:11px;color:var(--muted);">SCANNING...</div></div>`;
+
+  const rosterRoute = league === 'wnba' ? '/api/wnba/roster' : '/api/roster';
+  let compare, zone1, zone2, targetsRes, r1, r2, odds;
+  try {
+    [compare, zone1, zone2, targetsRes, r1, r2, odds] = await Promise.all([
+      apiGet(`/api/team-compare?league=${league}&team1=${encodeURIComponent(t1)}&team2=${encodeURIComponent(t2)}`),
+      // Real opponent-defense-by-zone — same shot-chart bridge already used
+      // by the single-player analyzer. Failure here shouldn't sink the
+      // whole matchup (a team the bridge can't resolve just shows "not
+      // available" in that one card instead of erroring the page).
+      apiGet(`/api/shotchart?league=${league}&mode=defense&name=${encodeURIComponent(t1)}`).catch(() => null),
+      apiGet(`/api/shotchart?league=${league}&mode=defense&name=${encodeURIComponent(t2)}`).catch(() => null),
+      // Real, data-driven top-3 targets (usage + recent form) — see
+      // /api/matchup-targets. On NBA this fans out through the slow,
+      // serialized nba_api bridge, so it can take longer than the rest.
+      apiGet(`/api/matchup-targets?league=${league}&team1=${encodeURIComponent(t1)}&team2=${encodeURIComponent(t2)}`).catch(() => ({ targets: [] })),
+      apiGet(`${rosterRoute}?team=${encodeURIComponent(t1)}`).catch(() => null),
+      apiGet(`${rosterRoute}?team=${encodeURIComponent(t2)}`).catch(() => null),
+      // Real spread/moneyline/total (ESPN, free) — honest {available:false}
+      // when the teams aren't scheduled to play each other soon.
+      apiGet(`/api/game-odds?league=${league}&team1=${encodeURIComponent(t1)}&team2=${encodeURIComponent(t2)}`).catch(() => ({ available: false })),
+    ]);
+  } catch (err) {
+    div.innerHTML = `<div style="color:var(--red);font-family:'Space Grotesk',sans-serif;font-size:12px;padding:20px;">ERROR: ${err.message}</div>`;
+    return;
+  }
+
+  renderMatchupDashboard(compare, t1, t2, targetsRes?.targets, r1, r2, odds);
+  loadMatchupAIAnalysis(compare, t1, t2, league, zone1, zone2, r1, r2);
 }
 
 // ── HISTORY ───────────────────────────────────────────
 function renderHistory() {
   const el = document.getElementById('history-list');
-  if (!analysisHistory.length) { el.innerHTML = '<div style="color:var(--muted);font-family:\'DM Mono\',monospace;font-size:11px;padding:16px 0;">NO ANALYSES YET</div>'; return; }
+  if (!analysisHistory.length) { el.innerHTML = '<div style="color:var(--muted);font-family:\'Space Grotesk\',sans-serif;font-size:11px;padding:16px 0;">NO ANALYSES YET</div>'; return; }
   el.innerHTML = analysisHistory.map((h, i) => `
     <div class="history-item" onclick="loadHistory(${i})">
-      <div><div class="h-player">${h.player}</div><div class="h-meta">${h.propType?.toUpperCase()} ${h.line} · vs ${h.opp} · ${h.confidence}% · ${h.time?.toLocaleTimeString()}</div></div>
+      <div><div class="h-player">${escapeHtml(h.player)} <span style="font-family:'Space Grotesk',sans-serif;font-size:9px;color:${h.league==='wnba'?'#c77dff':'var(--gold)'};letter-spacing:1px;">${(h.league||'nba').toUpperCase()}</span></div><div class="h-meta">${h.propType?.toUpperCase()} ${h.line} · vs ${escapeHtml(h.opp)} · ${h.confidence}% · ${h.time?.toLocaleTimeString()}</div></div>
       <div class="h-verdict ${h.verdict?.toLowerCase()}">${h.verdict}</div>
     </div>`).join('');
 }
 
 function loadHistory(i) {
   const h = analysisHistory[i];
-  switchTab('analyzer', document.querySelectorAll('.tab')[0]);
-  document.getElementById('player-name').value = h.player;
-  document.getElementById('opp-team').value = h.opp;
-  document.getElementById('prop-line').value = h.line;
+  const league = h.league || 'nba';
+  const tabIdx = league === 'wnba' ? 2 : 1;
+  switchTab(league === 'wnba' ? 'wnba' : 'analyzer', document.querySelectorAll('.tab')[tabIdx]);
+  elFor(league,'player-name').value = h.player;
+  elFor(league,'opp-team').value = h.opp;
+  elFor(league,'prop-line').value = h.line;
   const hv = parseVerdict(h.raw, { ...(h.ctx||{}), _postedLine: h.line, mathProjection: h.ctx?.mathProjection });
-  document.getElementById('result-area').innerHTML = renderResult(h.raw, h.player, h.opp || '', h.propType, h.line, h.ctx || {}, hv);
+  elFor(league,'result-area').innerHTML = renderResult(h.raw, h.player, h.opp || '', h.propType, h.line, h.ctx || {}, hv, league);
+  if (h.playerShotChart) renderShotChartsInto(league, h.player, h.opp || '', h.playerShotChart, h.oppShotChart);
+  else loadShotCharts(league, h.player, h.opp || ''); // older history entries saved before shot charts were tracked
 }
 
 // ── HELPERS ───────────────────────────────────────────
+// User-typed text (player/opponent fields) reaches innerHTML in a few
+// places below — escape it there so it can only ever render as visible
+// text, never as markup/script, regardless of what someone types in.
+function escapeHtml(str) {
+  return String(str ?? '').replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+}
+
 async function apiGet(url) {
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`Server error ${res.status}`);
+  if (!res.ok) { const e = await res.json().catch(()=>({error:'Unknown'})); throw new Error(e.error || `Server error ${res.status}`); }
   return res.json();
 }
 async function apiPost(url, body) {
@@ -1282,21 +2457,370 @@ function extractFactors(text) {
   return f;
 }
 function extractSection(text, header) {
-  const re = new RegExp(header.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+':?\\s*(.+?)(?=\\n[A-Z][A-Z ]+:|$)','is');
+  // Boundary must allow "&" — "MATCHUP & CONSISTENCY:" wouldn't otherwise be
+  // recognized as the start of the next section, letting the previous
+  // section's content bleed into it.
+  const re = new RegExp(header.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+':?\\s*(.+?)(?=\\n[A-Z][A-Z &]+:|$)','is');
   return (text.match(re)||[])[1]?.trim()||'';
 }
 function switchTab(name, btn) {
   document.querySelectorAll('.tab').forEach((t,i) => {
-    const names=['analyzer','matchups','history','betslip'];
+    const names=['today','analyzer','wnba','matchups','history','betslip'];
     t.classList.toggle('active', names[i]===name);
   });
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.getElementById('panel-'+name)?.classList.add('active');
   if (name==='betslip') renderBetslip();
+  if (name==='analyzer') renderTopPlays('nba');
+  if (name==='wnba') renderTopPlays('wnba');
+  if (name==='today') renderTodayPage(document.getElementById('today-league-select')?.value || 'nba');
 }
 document.addEventListener('keydown', e => {
-  if (e.key==='Enter' && document.getElementById('panel-analyzer').classList.contains('active') && !document.getElementById('analyze-btn').disabled) analyzeProp();
+  if (e.key!=='Enter') return;
+  if (document.getElementById('panel-analyzer').classList.contains('active') && !document.getElementById('analyze-btn').disabled) analyzeProp('nba');
+  else if (document.getElementById('panel-wnba').classList.contains('active') && !document.getElementById('analyze-btn-wnba').disabled) analyzeProp('wnba');
 });
+
+// ── TODAY / HOME PAGE — today's games + a top pick per team ──────
+let _todayPicks = []; // flat list so onclick can reference by index (player names can contain quotes/apostrophes)
+
+async function renderTodayPage() {
+  const box = document.getElementById('today-games-list');
+  box.innerHTML = '<div class="top-plays-empty">Loading today\'s slate...</div>';
+  _todayPicks = [];
+  try {
+    const [nbaSchedule, nbaPicks, wnbaSchedule, wnbaPicks] = await Promise.all([
+      apiGet('/api/today').catch(() => ({ games: [] })),
+      apiGet('/api/team-picks?league=nba').catch(() => ({ games: [] })),
+      apiGet('/api/wnba/today').catch(() => ({ games: [] })),
+      apiGet('/api/team-picks?league=wnba').catch(() => ({ games: [] })),
+    ]);
+    const allGames = [
+      ...(nbaSchedule.games || []).map(g => ({ ...g, league: 'nba' })),
+      ...(wnbaSchedule.games || []).map(g => ({ ...g, league: 'wnba' })),
+    ];
+    if (!allGames.length) {
+      box.innerHTML = '<div class="top-plays-empty">No games scheduled today.</div>';
+      return;
+    }
+    const picksByGame = {};
+    (nbaPicks.games || []).forEach(g => { picksByGame[`nba|${g.away}@${g.home}`] = g.picks; });
+    (wnbaPicks.games || []).forEach(g => { picksByGame[`wnba|${g.away}@${g.home}`] = g.picks; });
+
+    box.innerHTML = allGames.map(g => {
+      const key = `${g.league}|${g.away}@${g.home}`;
+      const picks = picksByGame[key] || [];
+      const pickRows = picks.length
+        ? picks.map(p => {
+            const idx = _todayPicks.push({ league: g.league, ...p }) - 1;
+            return `
+              <div class="team-pick-row" onclick="goToTodayPick(${idx})">
+                <div>
+                  <div class="team-pick-team">${p.team}</div>
+                  <div class="team-pick-player">${p.player} — ${PROP_LABEL[p.propType]||p.propType.toUpperCase()} ${p.line}</div>
+                  <div class="team-pick-meta">vs ${p.opponent} · ${p.book}</div>
+                </div>
+                <div style="text-align:right;">
+                  <div class="top-play-dir ${p.direction.toLowerCase()}">${p.direction==='OVER'?'▲':'▼'} ${p.direction}</div>
+                  <div class="team-pick-meta">${p.confidence}% conf</div>
+                </div>
+              </div>`;
+          }).join('')
+        : '<div class="team-pick-none">No confident pick found for this game yet</div>';
+      const awayLogo = teamLogoUrl(g.league, g.away);
+      const homeLogo = teamLogoUrl(g.league, g.home);
+      return `
+        <div class="game-card">
+          <div class="game-card-header">
+            <span class="game-card-matchup">
+              ${awayLogo ? `<img class="game-card-logo" src="${awayLogo}" alt="" onerror="this.style.display='none'">` : ''}
+              ${escapeHtml(g.away)} @ ${escapeHtml(g.home)}
+              ${homeLogo ? `<img class="game-card-logo" src="${homeLogo}" alt="" onerror="this.style.display='none'">` : ''}
+            </span>
+            <span class="game-card-time">${escapeHtml(g.gameTime||g.status||'TBD')}</span>
+          </div>
+          ${pickRows}
+        </div>`;
+    }).join('');
+  } catch (err) {
+    box.innerHTML = `<div class="top-plays-empty">Could not load today's slate — ${err.message}</div>`;
+  }
+}
+
+function goToTodayPick(idx) {
+  const p = _todayPicks[idx];
+  if (!p) return;
+  const league = p.league;
+  const tabIdx = league === 'wnba' ? 2 : 1;
+  switchTab(league === 'wnba' ? 'wnba' : 'analyzer', document.querySelectorAll('.tab')[tabIdx]);
+  elFor(league,'player-name').value = p.player;
+  elFor(league,'opp-team').value = p.opponent;
+  elFor(league,'prop-type').value = p.propType;
+  elFor(league,'prop-line').value = p.line;
+  analyzeProp(league);
+}
+
+// ── TOP 3 MOST CONFIDENT PLAYS ────────────────────────
+const PROP_LABEL = {points:'PTS',rebounds:'REB',assists:'AST','3pm':'3PM',pra:'PRA',pr:'P+R',pa:'P+A',ra:'R+A',steals:'STL',blocks:'BLK'};
+async function renderTopPlays(league='nba') {
+  const box = document.getElementById(league==='wnba' ? 'top-plays-wnba' : 'top-plays-nba');
+  if (!box) return;
+  box.innerHTML = '<div class="top-plays-empty">Scanning tonight\'s live sportsbook lines...</div>';
+  try {
+    const data = await apiGet(`/api/top-plays?league=${league}`);
+    if (!data.topPlays?.length) {
+      box.innerHTML = `<div class="top-plays-empty">${data.scanned ? 'No plays cleared the edge threshold right now.' : 'No games/lines found for tonight\'s slate.'}</div>`;
+      return;
+    }
+    box.innerHTML = data.topPlays.map((p, i) => `
+      <div class="top-play-card">
+        <div style="display:flex;align-items:baseline;">
+          <span class="top-play-rank">#${i+1}</span>
+          <div>
+            <div class="top-play-player">${p.player}</div>
+            <div class="top-play-meta">${p.team} vs ${p.opponent} · ${PROP_LABEL[p.propType]||p.propType.toUpperCase()} ${p.line} · ${p.book}</div>
+          </div>
+        </div>
+        <div class="top-play-row">
+          <div class="top-play-dir ${p.direction.toLowerCase()}">${p.direction==='OVER'?'▲':'▼'} ${p.direction}</div>
+          <div class="top-play-conf">Proj ${p.projection} · Edge ${p.edge>0?'+':''}${p.edge} · ${p.confidence}% conf</div>
+        </div>
+      </div>`).join('');
+  } catch (err) {
+    box.innerHTML = `<div class="top-plays-empty">Could not load — ${err.message}</div>`;
+  }
+}
+
+// ── SHOT CHARTS — real LOC_X/LOC_Y from stats.nba.com (both leagues) ──
+// Court coordinate system: hoop at (0,0), x in [-250,250], y in [-47.5,~470].
+// Mapped to an SVG viewBox "0 0 500 470" via svgX = courtX+250, svgY = courtY+47.5,
+// so the hoop sits near the top and shots spread downward toward half court.
+function courtToSvg(x, y) { return [x + 250, y + 47.5]; }
+
+function arcPoints(cx, cy, r, a1, a2, steps = 24) {
+  const pts = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = a1 + (a2 - a1) * (i / steps);
+    pts.push(courtToSvg(cx + r * Math.cos(t), cy + r * Math.sin(t)));
+  }
+  return pts;
+}
+function pointsToPath(pts) { return pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' '); }
+
+function courtLinesSVG() {
+  const restrictedArc = pointsToPath(arcPoints(0, 0, 40, Math.PI, 0));
+  const thetaLeft  = Math.atan2(92.5, -220);
+  const thetaRight = Math.atan2(92.5, 220);
+  const threePtArc = pointsToPath(arcPoints(0, 0, 237.5, thetaLeft, thetaRight));
+  const [paintX1, paintY1] = courtToSvg(-80, -47.5);
+  const [paintX2, paintY2] = courtToSvg(80, 142.5);
+  const [hoopX, hoopY] = courtToSvg(0, 0);
+  const [bbX1, bbY1] = courtToSvg(-30, -7.5);
+  const [bbX2] = courtToSvg(30, -7.5);
+  const [ftX, ftY] = courtToSvg(0, 142.5);
+  const [c3lX1, c3lY1] = courtToSvg(-220, -47.5);
+  const [c3lX2, c3lY2] = courtToSvg(-220, 92.5);
+  const [c3rX1, c3rY1] = courtToSvg(220, -47.5);
+  const [c3rX2, c3rY2] = courtToSvg(220, 92.5);
+  return `
+    <rect x="0" y="0" width="500" height="470" class="sc-court-line" />
+    <rect x="${paintX1}" y="${paintY1}" width="${paintX2-paintX1}" height="${paintY2-paintY1}" class="sc-court-line" />
+    <circle cx="${ftX}" cy="${ftY}" r="60" class="sc-court-line" />
+    <circle cx="${hoopX}" cy="${hoopY}" r="7.5" class="sc-court-line" />
+    <line x1="${bbX1}" y1="${bbY1}" x2="${bbX2}" y2="${bbY1}" class="sc-court-line" />
+    <path d="${restrictedArc}" class="sc-court-line" />
+    <line x1="${c3lX1}" y1="${c3lY1}" x2="${c3lX2}" y2="${c3lY2}" class="sc-court-line" />
+    <line x1="${c3rX1}" y1="${c3rY1}" x2="${c3rX2}" y2="${c3rY2}" class="sc-court-line" />
+    <path d="${threePtArc}" class="sc-court-line" />
+  `;
+}
+
+// Real filled zone polygons (not floating anchor circles) — same physical
+// zones for both charts, judged from opposite sides of the ball. Built as
+// point arrays in SVG space (via courtToSvg/arcPoints) then joined into
+// path strings, using evenodd fill-rule wherever a zone has a hole cut
+// out of it (mid-range around the paint, above-the-break around
+// everything inside the arc).
+function zoneRestrictedAreaPts() { return arcPoints(0, 0, 40, Math.PI, 0); }
+
+function zonePaintNonRAPts() {
+  const arc = zoneRestrictedAreaPts(); // (-40,0) -> (0,40) -> (40,0)
+  return [
+    courtToSvg(-80, 142.5), courtToSvg(-80, -47.5), courtToSvg(-40, -47.5),
+    ...arc,
+    courtToSvg(40, -47.5), courtToSvg(80, -47.5), courtToSvg(80, 142.5),
+  ];
+}
+
+const THETA_LEFT_3PT  = Math.atan2(92.5, -220);
+const THETA_RIGHT_3PT = Math.atan2(92.5, 220);
+
+// Boundary of "everything inside the 3pt line, excluding the corners" —
+// used both as the outer ring for Mid-Range and as a hole for Above-the-Break.
+function insideArcBoundaryPts() {
+  const arc = arcPoints(0, 0, 237.5, THETA_LEFT_3PT, THETA_RIGHT_3PT);
+  return [courtToSvg(-220, -47.5), ...arc, courtToSvg(220, -47.5)];
+}
+function paintRectPts() {
+  return [courtToSvg(-80, -47.5), courtToSvg(-80, 142.5), courtToSvg(80, 142.5), courtToSvg(80, -47.5)];
+}
+function leftCorner3Pts()  { return [courtToSvg(-250, -47.5), courtToSvg(-250, 92.5), courtToSvg(-220, 92.5), courtToSvg(-220, -47.5)]; }
+function rightCorner3Pts() { return [courtToSvg(250, -47.5), courtToSvg(250, 92.5), courtToSvg(220, 92.5), courtToSvg(220, -47.5)]; }
+const FULL_RECT_PTS = [[0,0],[500,0],[500,470],[0,470]];
+
+function ringPath(...ptArrays) { return ptArrays.map(pts => pointsToPath(pts) + ' Z').join(' '); }
+
+const ZONE_FILL_PATHS = {
+  'Restricted Area':       () => ringPath(zoneRestrictedAreaPts()),
+  'In The Paint (Non-RA)': () => ringPath(zonePaintNonRAPts()),
+  'Mid-Range':             () => ringPath(insideArcBoundaryPts(), paintRectPts()),
+  'Left Corner 3':         () => ringPath(leftCorner3Pts()),
+  'Right Corner 3':        () => ringPath(rightCorner3Pts()),
+  'Above the Break 3':     () => ringPath(FULL_RECT_PTS, insideArcBoundaryPts(), leftCorner3Pts(), rightCorner3Pts()),
+};
+
+// Where to center each zone's label boxes (separate from the fill shape,
+// which follows the real boundary — the label just needs a sane spot
+// inside it).
+const ZONE_LABEL_ANCHOR = {
+  'Restricted Area':        [0, 20],
+  'In The Paint (Non-RA)':  [0, 95],
+  'Mid-Range':               [140, 155],
+  'Left Corner 3':           [-235, 20],
+  'Right Corner 3':          [235, 20],
+  'Above the Break 3':       [0, 300],
+};
+const RATING_FILL = { green: 'var(--green)', gray: 'var(--muted)', red: 'var(--red)' };
+const RATING_OPACITY = { green: 0.32, gray: 0.14, red: 0.32 };
+
+// Always white-box-black-text for the numbers, regardless of the zone
+// fill color underneath — guarantees readable contrast in every case
+// instead of trying to pick a text color that works against a variable
+// background.
+// Single, larger percentage label per zone (was two stacked boxes — a
+// fraction like "91/130" above a percentage below). One clean number reads
+// faster; sample size still shown, just as a small caption instead of a
+// fraction, so that context isn't lost entirely.
+function zoneLabelBox(cx, cy, pctText, sampleText) {
+  const w = Math.max(38, pctText.length * 9 + 12), h = 20;
+  const x = Math.max(2, Math.min(500 - w - 2, cx - w / 2));
+  const midX = x + w / 2;
+  return `
+    <rect x="${x.toFixed(1)}" y="${(cy - h/2).toFixed(1)}" width="${w.toFixed(1)}" height="${h}" rx="4" fill="#ffffff" opacity="0.96" />
+    <text x="${midX.toFixed(1)}" y="${(cy + 4.5).toFixed(1)}" text-anchor="middle" font-family="'Space Grotesk',sans-serif" font-size="14" fill="#111111">${pctText}</text>
+    ${sampleText ? `<text x="${midX.toFixed(1)}" y="${(cy + h/2 + 9).toFixed(1)}" text-anchor="middle" font-family="'Space Grotesk',sans-serif" font-size="7.5" fill="rgba(255,255,255,0.55)">${sampleText}</text>` : ''}`;
+}
+
+// Always render all 6 zones from the reference chart, in this fixed
+// order — a low-volume player with 0 corner-3 attempts should show an
+// honest "0/0" gap in that zone, not a silently-missing shape (a real
+// gap we found while testing: zones with no attempts this season were
+// dropped entirely instead of rendered as zero).
+const ZONE_ORDER = ['Restricted Area', 'In The Paint (Non-RA)', 'Mid-Range', 'Left Corner 3', 'Right Corner 3', 'Above the Break 3'];
+
+function renderZonesSVG(zones) {
+  const byName = {};
+  for (const z of (zones || [])) byName[z.zone] = z;
+  let fills = '', labels = '';
+  for (const zoneName of ZONE_ORDER) {
+    const buildFill = ZONE_FILL_PATHS[zoneName];
+    if (!buildFill) continue;
+    const z = byName[zoneName];
+    const color = z?.rating ? (RATING_FILL[z.rating] || 'var(--muted)') : 'var(--muted)';
+    const opacity = z?.rating ? (RATING_OPACITY[z.rating] ?? 0.2) : 0.08;
+    fills += `<path d="${buildFill()}" fill="${color}" opacity="${opacity}" fill-rule="evenodd" />`;
+    const anchor = ZONE_LABEL_ANCHOR[zoneName];
+    if (!anchor) continue;
+    const [cx, cy] = courtToSvg(...anchor);
+    const pctText = z && z.fga > 0 ? `${z.fgPct}%` : '—';
+    const sampleText = z && z.fga > 0 ? `${z.fga} FGA` : '0 FGA';
+    labels += zoneLabelBox(cx, cy, pctText, sampleText);
+  }
+  return fills + labels;
+}
+
+function renderPlayerShotChartSVG(data) {
+  const zones = renderZonesSVG(data.zones);
+  return `
+    <svg viewBox="0 0 500 470" class="shotchart-svg">${zones}${courtLinesSVG()}</svg>
+    <div class="shotchart-legend">
+      <span><span class="shotchart-dot" style="background:var(--green)"></span>Above league avg for zone</span>
+      <span><span class="shotchart-dot" style="background:var(--muted)"></span>Average</span>
+      <span><span class="shotchart-dot" style="background:var(--red)"></span>Below average</span>
+      <span>${data.totalShots || 0} shots this season</span>
+    </div>`;
+}
+
+function renderDefenseShotChartSVG(data) {
+  const zones = renderZonesSVG(data.zones);
+  return `
+    <svg viewBox="0 0 500 470" class="shotchart-svg">${zones}${courtLinesSVG()}</svg>
+    <div class="shotchart-legend">
+      <span><span class="shotchart-dot" style="background:var(--green)"></span>Easy to score (above avg allowed)</span>
+      <span><span class="shotchart-dot" style="background:var(--muted)"></span>Average</span>
+      <span><span class="shotchart-dot" style="background:var(--red)"></span>Hard to score (below avg allowed)</span>
+    </div>`;
+}
+
+// Fetches once, used for BOTH the Claude prompt and the rendered charts —
+// so the numbers Claude reasons about and the numbers on screen can never
+// drift apart (same principle as the earlier top-plays/analyzer fix).
+async function fetchShotChartData(league, playerName, opponentName) {
+  try {
+    const [playerData, defData] = await Promise.all([
+      apiGet(`/api/shotchart?league=${league}&mode=player&name=${encodeURIComponent(playerName)}`).catch(e => ({ error: e.message })),
+      opponentName ? apiGet(`/api/shotchart?league=${league}&mode=defense&name=${encodeURIComponent(opponentName)}`).catch(e => ({ error: e.message })) : Promise.resolve(null),
+    ]);
+    return { playerData, defData };
+  } catch (err) {
+    return { playerData: { error: err.message }, defData: null };
+  }
+}
+
+// Single card with a dropdown filter — switches between the selected
+// player's own shot chart and the opponent's defense-by-zone, rather than
+// showing both at once.
+window._scViews = {};
+function renderShotChartsInto(league, playerName, opponentName, playerData, defData) {
+  const container = document.getElementById(`shotchart-container-${league}`);
+  if (!container) return;
+  const playerBody = !playerData || playerData.error
+    ? `<div class="top-plays-empty">${escapeHtml(playerData?.error || 'No data')}</div>`
+    : renderPlayerShotChartSVG(playerData);
+  const defBody = !defData || defData.error
+    ? `<div class="top-plays-empty">${escapeHtml(defData?.error || 'No opponent specified')}</div>`
+    : renderDefenseShotChartSVG(defData);
+  window._scViews[league] = {
+    player: { label: `${playerName || 'Player'} — Shot Chart`, body: playerBody },
+    defense: { label: `${opponentName || 'Opponent'} — Defense by Zone`, body: defBody },
+  };
+  container.innerHTML = `
+    <div class="shotchart-card">
+      <div class="shotchart-title-row">
+        <span class="shotchart-title-label">Shot Chart</span>
+        <select class="shotchart-select" onchange="switchShotChartView('${league}', this.value)">
+          <option value="player">${escapeHtml(playerName || 'Player')} — Shot Chart</option>
+          <option value="defense">${escapeHtml(opponentName || 'Opponent')} — Defense by Zone</option>
+        </select>
+      </div>
+      <div id="shotchart-body-${league}">${playerBody}</div>
+    </div>`;
+}
+function switchShotChartView(league, view) {
+  const entry = window._scViews[league];
+  const body = document.getElementById(`shotchart-body-${league}`);
+  if (!entry || !body) return;
+  body.innerHTML = entry[view]?.body || '';
+}
+
+// Back-compat entry point for callers that just want to fetch+render
+// without needing the data for anything else (e.g. loadHistory fallback).
+async function loadShotCharts(league, playerName, opponentName) {
+  const container = document.getElementById(`shotchart-container-${league}`);
+  if (!container) return;
+  const { playerData, defData } = await fetchShotChartData(league, playerName, opponentName);
+  renderShotChartsInto(league, playerName, opponentName, playerData, defData);
+}
 
 // ══════════════════════════════════════════════════════
 // PROP BETSLIP
@@ -1332,7 +2856,7 @@ function renderBetslip() {
   const sb = document.getElementById('betslip-summary-bar');
   if (!el) return;
   if (!betslip.length) {
-    el.innerHTML='<div style="color:var(--muted);font-family:\'DM Mono\',monospace;font-size:11px;padding:20px 0;text-align:center;">NO PROPS SAVED YET<br><span style="font-size:10px;opacity:0.6;">Analyze a prop then click + ADD TO LIST</span></div>';
+    el.innerHTML='<div style="color:var(--muted);font-family:\'Space Grotesk\',sans-serif;font-size:11px;padding:20px 0;text-align:center;">NO PROPS SAVED YET<br><span style="font-size:10px;opacity:0.6;">Analyze a prop then click + ADD TO LIST</span></div>';
     if(sb) sb.innerHTML=''; return;
   }
   const graded=betslip.filter(b=>b.result);
@@ -1357,8 +2881,8 @@ function renderBetslip() {
     return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:8px;">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">
         <div>
-          <div style="font-family:'DM Mono',monospace;font-size:13px;color:var(--text);font-weight:500;">${b.player}</div>
-          <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);margin-top:2px;">${propLabel[b.propType]||b.propType?.toUpperCase()} ${b.line} · vs ${b.opp||'?'} · Proj: ${b.projection||'—'} · Edge: ${edgeStr} · ${b.addedAt}</div>
+          <div style="font-family:'Space Grotesk',sans-serif;font-size:13px;color:var(--text);font-weight:500;">${escapeHtml(b.player)}</div>
+          <div style="font-family:'Space Grotesk',sans-serif;font-size:10px;color:var(--muted);margin-top:2px;">${propLabel[b.propType]||b.propType?.toUpperCase()} ${b.line} · vs ${escapeHtml(b.opp)||'?'} · Proj: ${b.projection||'—'} · Edge: ${edgeStr} · ${b.addedAt}</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
           <div class="verdict-badge ${vc}" style="font-size:11px;">${vt}</div>
@@ -1366,15 +2890,15 @@ function renderBetslip() {
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
-        <span style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted);letter-spacing:1px;">RESULT:</span>
+        <span style="font-family:'Space Grotesk',sans-serif;font-size:9px;color:var(--muted);letter-spacing:1px;">RESULT:</span>
         <button class="result-btn ${b.result==='WIN'?'active-win':''}" onclick="markPropResult(${b.id},'WIN')">WIN</button>
         <button class="result-btn ${b.result==='LOSS'?'active-loss':''}" onclick="markPropResult(${b.id},'LOSS')">LOSS</button>
         <button class="result-btn ${b.result==='PUSH'?'active-push':''}" onclick="markPropResult(${b.id},'PUSH')">PUSH</button>
-        <span style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted);letter-spacing:1px;margin-left:8px;">ACTUAL:</span>
+        <span style="font-family:'Space Grotesk',sans-serif;font-size:9px;color:var(--muted);letter-spacing:1px;margin-left:8px;">ACTUAL:</span>
         <input type="number" step="0.5" value="${b.actualStat??''}" placeholder="stat"
-          style="width:60px;background:var(--surface2);border:1px solid var(--border2);border-radius:5px;padding:3px 7px;color:var(--text);font-family:'DM Mono',monospace;font-size:11px;"
+          style="width:60px;background:var(--surface2);border:1px solid var(--border2);border-radius:5px;padding:3px 7px;color:var(--text);font-family:'Space Grotesk',sans-serif;font-size:11px;"
           onchange="savePropActual(${b.id},this.value)" />
-        <span style="font-family:'DM Mono',monospace;font-size:9px;color:${b.confidence>=70?'var(--green)':b.confidence>=50?'var(--amber)':'var(--red)'};">${b.confidence||'—'}% CONF</span>
+        <span style="font-family:'Space Grotesk',sans-serif;font-size:9px;color:${b.confidence>=70?'var(--green)':b.confidence>=50?'var(--amber)':'var(--red)'};">${b.confidence||'—'}% CONF</span>
       </div>
     </div>`;
   }).join('');
@@ -1387,7 +2911,7 @@ function exportBetslip() {
   const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
   const a=document.createElement('a');
   a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
-  a.download='proplist_'+new Date().toISOString().split('T')[0]+'.csv';
+  a.download='proplist_'+toDateStr(new Date())+'.csv';
   a.click();
 }
 

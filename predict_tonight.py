@@ -6,7 +6,7 @@ Usage:
   python3 predict_tonight.py "Player Name" 2025-26
   python3 predict_tonight.py "Player Name" 2025-26 "Opponent Team"  <- H2H mode
 """
-import sys, json
+import sys, json, time
 
 try:
     from nba_api.stats.endpoints import playergamelog
@@ -165,9 +165,11 @@ def parse_min(m):
     except: return 0.0
 
 def row_to_game(row):
+    matchup = str(row.get('MATCHUP', ''))
     return {
         'date':       str(row.get('GAME_DATE', '')),
-        'matchup':    str(row.get('MATCHUP', '')),
+        'matchup':    matchup,
+        'home':       '@' not in matchup,  # nba_api MATCHUP is "TEAM vs. OPP" (home) or "TEAM @ OPP" (away)
         'wl':         str(row.get('WL', '')),
         'min':        str(row.get('MIN', '')),
         'pts':        si(row.get('PTS')),
@@ -205,9 +207,19 @@ def calc_avgs(games):
     if mins: avgs['min'] = round(sum(mins) / len(mins), 1)
     return avgs
 
-def get_log(pid, season):
-    log = playergamelog.PlayerGameLog(player_id=pid, season=season, timeout=30)
-    return log.get_data_frames()[0]
+def get_log(pid, season, max_attempts=2):
+    """Fetch a game log with 429/rate-limit backoff — mirrors fetch_stats.py's retry logic."""
+    for attempt in range(max_attempts):
+        try:
+            log = playergamelog.PlayerGameLog(player_id=pid, season=season, timeout=30)
+            return log.get_data_frames()[0]
+        except Exception as e:
+            msg = str(e)
+            is_last = attempt == max_attempts - 1
+            if not is_last and ('429' in msg or 'rate' in msg.lower()):
+                time.sleep((attempt + 1) * 4)
+                continue
+            raise
 
 def main():
     if len(sys.argv) < 2:
@@ -258,7 +270,9 @@ def main():
         if season != '2024-25': seasons_to_try.append('2024-25')
         if season != '2023-24': seasons_to_try.append('2023-24')
         # Only add 2022-23 if we really need more data (checked after current season)
-        for try_season in seasons_to_try:
+        for i, try_season in enumerate(seasons_to_try):
+            if i > 0:
+                time.sleep(0.6)  # space out sequential nba.com hits
             try:
                 df_s = get_log(pid, try_season)
                 if df_s.empty: continue
@@ -307,6 +321,9 @@ def main():
         return
 
     # ── REGULAR MODE ────────────────────────────────────────────────
+    # all_games already holds the full current-season log (nba_api fetches it
+    # in one call) — season-long averages are essentially free, just use them
+    # as a shrinkage baseline instead of throwing the rest of the season away.
     print(json.dumps({
         'player':     player['full_name'],
         'id':         pid,
@@ -315,7 +332,8 @@ def main():
         'gamesFound': len(all_games),
         'l5':         calc_avgs(all_games[:5]),
         'l10':        calc_avgs(all_games[:10]),
-        'games':      all_games[:10],
+        'season_avg': calc_avgs(all_games),
+        'games':      all_games[:20],  # bumped from 10 so the UI's home/away filters have enough games to draw from
     }))
 
 if __name__ == '__main__':

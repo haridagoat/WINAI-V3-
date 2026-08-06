@@ -21,9 +21,22 @@ from nba_api.stats.endpoints import (
 SEASON = '2025-26'
 SLEEP  = 2.5
 
+def _sanitize(obj):
+    """Python's json module writes bare NaN/Infinity by default, which is
+    NOT valid JSON — Node's JSON.parse rejects it outright, silently
+    breaking any file with a 0-attempt shooting split (0/0 -> NaN in
+    pandas). Replace with null so every consumer can actually parse it."""
+    if isinstance(obj, float) and (obj != obj or obj in (float('inf'), float('-inf'))):
+        return None
+    if isinstance(obj, dict):
+        return {k: _sanitize(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize(v) for v in obj]
+    return obj
+
 def save(filename, data):
     with open(filename, 'w') as f:
-        json.dump(data, f)
+        json.dump(_sanitize(data), f)
     print(f"  Saved {filename} ({len(data)} rows)")
 
 def safe_cols(df, wanted):
@@ -86,16 +99,20 @@ if df is not None:
 time.sleep(SLEEP)
 
 # ── PLAYER GENERAL ────────────────────────────────────────────────
-# measure_type_simple_nullable is correct for LeagueDashPlayerStats
+# measure_type_detailed_defense is correct for LeagueDashPlayerStats on
+# nba_api 1.11.4 — measure_type_simple_nullable doesn't exist on this
+# version and was silently failing every one of these fetches.
+# "Opponent" is not a valid measure type at player granularity (confirmed
+# KeyError on both NBA and WNBA) — it's a team-only concept, so it's
+# deliberately not in this list; player_opponent.json will never exist.
 for label, mtype, fname in [
     ("Player Traditional", "Base",     "player_stats.json"),
     ("Player Advanced",    "Advanced", "player_advanced.json"),
     ("Player Misc",        "Misc",     "player_misc.json"),
     ("Player Scoring",     "Scoring",  "player_scoring.json"),
-    ("Player Opponent",    "Opponent", "player_opponent.json"),
 ]:
     df = fetch(label, leaguedashplayerstats.LeagueDashPlayerStats,
-               season=SEASON, measure_type_simple_nullable=mtype)
+               season=SEASON, measure_type_detailed_defense=mtype)
     if df is not None:
         save(fname, df.to_dict('records'))
     time.sleep(SLEEP)
@@ -121,8 +138,8 @@ TRACKING = [
     ('PostTouch',               'tracking_posttouch_player.json'),
     ('SpeedDistance',           'tracking_speeddistance_player.json'),
     ('Efficiency',              'tracking_efficiency_player.json'),
-    ('OffensiveReboundChances', 'tracking_offrebound_player.json'),
-    ('DefensiveReboundChances', 'tracking_defrebound_player.json'),
+    ('OffensiveReboundChances', 'tracking_offensivereboundchances_player.json'),
+    ('DefensiveReboundChances', 'tracking_defensivereboundchances_player.json'),
 ]
 for pt_type, fname in TRACKING:
     df = fetch(f"Tracking {pt_type}", leaguedashptstats.LeagueDashPtStats,
