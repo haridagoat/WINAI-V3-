@@ -140,7 +140,7 @@
   .gl-tab:hover{color:var(--text);}
   .gl-tab.active{color:var(--gold);border-color:rgba(212,168,68,0.35);background:rgba(212,168,68,0.08);}
   .gl-tab-n{opacity:0.6;}
-  .gl-chart{position:relative;display:flex;align-items:flex-end;gap:6px;height:120px;padding-top:14px;margin-top:20px;}
+  .gl-chart{position:relative;display:flex;align-items:flex-end;gap:6px;height:120px;margin-top:34px;}
   .gl-bar-col{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;flex:1;height:100%;min-width:16px;cursor:default;}
   .gl-bar-val{font-family:'Space Grotesk',sans-serif;font-size:9px;color:var(--muted);margin-bottom:3px;}
   .gl-bar-track{position:relative;width:100%;max-width:22px;height:100%;background:rgba(255,255,255,0.03);border-radius:3px 3px 0 0;overflow:hidden;display:flex;align-items:flex-end;}
@@ -441,10 +441,19 @@
   .today-sidebar select{width:100%;background:var(--surface2);border:1px solid var(--border2);border-radius:7px;padding:9px 12px;color:var(--text);font-family:'Space Grotesk',sans-serif;font-size:13px;outline:none;}
   .today-main{display:flex;flex-direction:column;gap:14px;}
   .game-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;}
-  .game-card-header{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:17px;letter-spacing:0.2px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;}
+  .game-card-header{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:17px;letter-spacing:0.2px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;border-radius:8px;transition:background 0.15s;margin-left:-6px;margin-right:-6px;padding-left:6px;padding-right:6px;}
+  .game-card-header:hover{background:rgba(212,168,68,0.06);}
   .game-card-matchup{display:flex;align-items:center;gap:8px;}
   .game-card-logo{width:26px;height:26px;object-fit:contain;flex-shrink:0;}
   .game-card-time{font-family:'Space Grotesk',sans-serif;font-size:10px;color:var(--muted);letter-spacing:1px;}
+  /* On narrow screens the two-team matchup line was wrapping to 2 lines
+     while squeezed against the shrunk logo+time on the right — stack the
+     time below instead of fighting it for horizontal space. */
+  @media(max-width:480px){
+    .game-card-header{flex-direction:column;align-items:flex-start;gap:6px;}
+    .game-card-matchup{font-size:15px;}
+    .game-card-time{align-self:flex-start;}
+  }
   .team-pick-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;margin-top:8px;cursor:pointer;transition:border-color 0.15s;}
   .team-pick-row:hover{border-color:var(--gold);}
   .team-pick-team{font-family:'Space Grotesk',sans-serif;font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;}
@@ -549,10 +558,6 @@
           <option value="back-to-back">Back-to-back game</option>
         </select>
       </div>
-      <div class="field-group">
-        <label>NOTES (optional) <span class="help-icon" title="Anything the math model can't see — a confirmed inactive, a revenge-game narrative, a role change. Claude factors this in; it isn't fed to the math projection.">?</span></label>
-        <input type="text" id="extra-context" placeholder="e.g. star teammate out, revenge game..." />
-      </div>
       <button class="analyze-btn" id="analyze-btn" onclick="analyzeProp()"><span class="sparkle">✨</span> ANALYZE PROP</button>
     </div>
     <div class="result-area" id="result-area">
@@ -626,10 +631,6 @@
           <option value="back-to-back">Back-to-back game</option>
         </select>
       </div>
-      <div class="field-group">
-        <label>NOTES (optional) <span class="help-icon" title="Anything the math model can't see — a confirmed inactive, a revenge-game narrative, a role change. Claude factors this in; it isn't fed to the math projection.">?</span></label>
-        <input type="text" id="extra-context-wnba" placeholder="e.g. star teammate out, revenge game..." />
-      </div>
       <button class="analyze-btn" id="analyze-btn-wnba" onclick="analyzeProp('wnba')"><span class="sparkle">✨</span> ANALYZE PROP</button>
     </div>
     <div class="result-area" id="result-area-wnba">
@@ -679,6 +680,7 @@
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
     <div class="card-label">PROP LIST <span style="font-family:'Space Grotesk',sans-serif;font-size:10px;color:var(--muted);font-weight:normal;letter-spacing:1px;">— save props you like today</span></div>
     <div style="display:flex;gap:8px;">
+      <button class="mini-btn" id="betslip-refresh-btn" onclick="refreshBetslip()">↻ CHECK RESULTS</button>
       <button class="mini-btn" onclick="exportBetslip()">EXPORT CSV</button>
       <button class="mini-btn" onclick="clearBetslip()" style="color:var(--red);">CLEAR ALL</button>
     </div>
@@ -693,7 +695,24 @@
 
 
 <script>
-const analysisHistory = [];
+// History used to be a plain in-memory array — every refresh silently
+// wiped it. Persisted to localStorage instead; capped at 30 entries since
+// each one carries the full ctx/raw analysis text.
+const HISTORY_STORAGE_KEY = 'winai_history_v1';
+const HISTORY_MAX_ENTRIES = 30;
+function loadHistoryFromStorage() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(HISTORY_STORAGE_KEY) || '[]');
+    // Date objects don't survive JSON round-tripping — restore them so
+    // renderHistory's h.time.toLocaleTimeString() keeps working.
+    return parsed.map(h => ({ ...h, time: h.time ? new Date(h.time) : new Date() }));
+  } catch (_) { return []; }
+}
+function saveHistoryToStorage() {
+  try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(analysisHistory.slice(0, HISTORY_MAX_ENTRIES))); }
+  catch (_) { /* storage full/unavailable — history just won't persist this run */ }
+}
+const analysisHistory = loadHistoryFromStorage();
 // Small star-player fallback shown until the real full roster list (every
 // active player, ~580 NBA / ~190 WNBA) loads from /api/players — the app
 // can genuinely analyze any of them, but autocomplete used to only ever
@@ -919,7 +938,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ── BUILD PROMPT WITH STRICT DATA LABELING ────────────
-function buildEnrichedPrompt(player, opp, propType, line, context, extra, ctx, league='nba', playerShotChart=null, oppShotChart=null) {
+function buildEnrichedPrompt(player, opp, propType, line, context, ctx, league='nba', playerShotChart=null, oppShotChart=null) {
   const stats = ctx.playerStats;
   const hasRealStats = stats && !stats.error;
   const da = ctx.dataAvailable || {};
@@ -954,6 +973,7 @@ DATA AVAILABILITY FOR THIS ANALYSIS:
   Opponent four factors (${statsDomainLabel}): ${ctx.oppFourFact ? 'YES' : 'NO'}
   Opponent misc stats — paint pts, FB (${statsDomainLabel}): ${ctx.oppMisc ? 'YES' : 'NO'}
   Hustle stats (NBA only, no WNBA source exists): ${ctx.playerHustle ? 'YES' : 'NO'}
+  Head-to-head history vs this opponent: ${ctx.h2hStats?.gamesVsOpp ? `YES — ${ctx.h2hStats.gamesVsOpp} career games, use these numbers directly` : 'NO'}
   Today confirmed game: ${ctx.todayGame ? 'YES' : 'NO'}`;
 
   // Real numbers block
@@ -1245,6 +1265,24 @@ OPPONENT HUSTLE — SOURCE: nba.com (VERIFIED LIVE):
   Screen Assists/g: ${oh.SCREEN_ASSISTS} | Charges Drawn/g: ${oh.CHARGES_DRAWN}`;
   }
 
+  // ── HEAD-TO-HEAD HISTORY vs THIS OPPONENT ─────────────────────
+  // Fetched into ctx.h2hStats but previously never reached the prompt —
+  // Claude had to write H2H INSIGHT blind. Feed the real averages plus
+  // a per-game log so it can be woven into MATCHUP & CONSISTENCY, not
+  // just a standalone guess.
+  const h2h = ctx.h2hStats;
+  if (h2h && h2h.gamesVsOpp >= 1) {
+    const h2hGameLines = (h2h.games || h2h.recentGames || []).slice(0, 8)
+      .map(g => `  ${g.date}: ${g.pts}pts ${g.reb}reb ${g.ast}ast${g.fg3m != null ? ` ${g.fg3m}x3` : ''} (${g.min}min)`)
+      .join('\n');
+    realDataBlock += `
+HEAD-TO-HEAD HISTORY vs ${opp} — SOURCE: ${h2h.source || statsSourceLabel} (VERIFIED LIVE, ${h2h.gamesVsOpp} career game${h2h.gamesVsOpp===1?'':'s'}):
+  Career averages vs this opponent: ${h2h.pts}pts ${h2h.reb}reb ${h2h.ast}ast, ${h2h.fg3m}x3PM, ${h2h.min}min
+  Trend across those meetings: ${h2h.h2hTrend || 'N/A'}
+  Game-by-game log:
+${h2hGameLines || '  (log unavailable)'}`;
+  }
+
   // Math projection block - passed to Claude as ground truth
   const mp = ctx.mathProjection;
   let mpOverPct = null;
@@ -1316,7 +1354,6 @@ Player: ${player}
 Opponent: ${opp}
 Prop: ${propType} — Line: ${line}
 Context: ${context}
-Notes: ${extra || 'None'}
 
 Analyze using the math projection and live data above. Your PROJECTION in the response must align with the mathematical calculation. For any factor not covered by live data, use your training knowledge but tag it [AI].
 
@@ -1337,7 +1374,7 @@ MATHEMATICAL OUTLOOK:
 - [1-2 bullets on what the server-calculated math projection says and the strongest driver behind it — tag source as LIVE or AI]
 
 MATCHUP & CONSISTENCY:
-- [1-2 bullets on how this specific matchup fits the player's profile, and how consistent/volatile their recent performance has been — tag source as LIVE or AI]
+- [1-2 bullets on how this specific matchup fits the player's profile, and how consistent/volatile their recent performance has been — tag source as LIVE or AI. If HEAD-TO-HEAD HISTORY is in the live data block above, factor it in directly here (e.g. how this player has historically performed against this specific opponent vs their season baseline), don't leave it only for the H2H INSIGHT line below]
 
 RISK FACTORS:
 - [1-2 bullets on what could make this bet wrong — injury uncertainty, small sample, variance, role change — tag source as LIVE or AI]
@@ -1350,7 +1387,7 @@ BLOWOUT SCENARIO: [2-3 sentences with source tags]
 
 SHOT CHART vs DEFENSE: [2-3 sentences comparing the PLAYER SHOT CHART BY ZONE and OPPONENT DEFENSE BY ZONE blocks above if present — call out specific zone overlaps (e.g. player rated GREEN in a zone where the opponent is also rated GREEN/easy-to-score = a real overlap worth flagging). Only say zone data is unavailable if those blocks are genuinely absent from the feed above — do not assume they're missing.]
 
-H2H INSIGHT: [1-2 sentences with source tags]
+H2H INSIGHT: [1-2 sentences with source tags — use the HEAD-TO-HEAD HISTORY block above if present, otherwise say no career H2H data exists yet]
 
 ALTERNATIVE PLAYS: [1-2 bullets suggesting a different prop type, direction, or angle on this same player/game worth considering instead — grounded in the data above, not invented]
 
@@ -1370,7 +1407,6 @@ async function analyzeProp(league='nba') {
   const propType = elFor(league,'prop-type').value;
   const line     = elFor(league,'prop-line').value;
   const context  = elFor(league,'game-context').value;
-  const extra    = elFor(league,'extra-context').value.trim();
   if (!player || !line) { alert('Fill in player name and prop line.'); return; }
   if (parseFloat(line) <= 0) { alert('Line must be a positive number.'); return; }
 
@@ -1413,7 +1449,7 @@ async function analyzeProp(league='nba') {
       fetchShotChartData(league, player, opp),
     ]);
     updateStep(1, league);
-    const prompt = buildEnrichedPrompt(player, opp, propType, line, context, extra, ctx, league, playerShotChart, oppShotChart);
+    const prompt = buildEnrichedPrompt(player, opp, propType, line, context, ctx, league, playerShotChart, oppShotChart);
     updateStep(2, league);
     const claudeRes = await apiPost('/api/analyze', { prompt });
     updateStep(3, league);
@@ -1421,6 +1457,8 @@ async function analyzeProp(league='nba') {
     elFor(league,'result-area').innerHTML = renderResult(claudeRes.response, player, opp, propType, line, ctx, parsedVerdict, league);
     _currentAnalysis = { player, opp, propType, line, ctx, league, ...parsedVerdict };
     analysisHistory.unshift({ player, opp, propType, line, league, ...parsedVerdict, raw: claudeRes.response, ctx, playerShotChart, oppShotChart, time: new Date(), result: null, closingLine: null, actualStat: null, clv: null });
+    if (analysisHistory.length > HISTORY_MAX_ENTRIES) analysisHistory.length = HISTORY_MAX_ENTRIES;
+    saveHistoryToStorage();
     renderHistory();
     renderShotChartsInto(league, player, opp, playerShotChart, oppShotChart);
   } catch (err) {
@@ -2470,7 +2508,8 @@ function switchTab(name, btn) {
   });
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.getElementById('panel-'+name)?.classList.add('active');
-  if (name==='betslip') renderBetslip();
+  if (name==='betslip') loadBetslip();
+  if (name==='history') renderHistory();
   if (name==='analyzer') renderTopPlays('nba');
   if (name==='wnba') renderTopPlays('wnba');
   if (name==='today') renderTodayPage(document.getElementById('today-league-select')?.value || 'nba');
@@ -2531,7 +2570,7 @@ async function renderTodayPage() {
       const homeLogo = teamLogoUrl(g.league, g.home);
       return `
         <div class="game-card">
-          <div class="game-card-header">
+          <div class="game-card-header" onclick="prefillMatchup('${escapeJsStr(g.away)}','${escapeJsStr(g.home)}','${g.league}')" title="View full matchup breakdown">
             <span class="game-card-matchup">
               ${awayLogo ? `<img class="game-card-logo" src="${awayLogo}" alt="" onerror="this.style.display='none'">` : ''}
               ${escapeHtml(g.away)} @ ${escapeHtml(g.home)}
@@ -2823,21 +2862,39 @@ async function loadShotCharts(league, playerName, opponentName) {
 }
 
 // ══════════════════════════════════════════════════════
-// PROP BETSLIP
+// PROP BETSLIP — persisted server-side via /api/clv/* (clv_tracker.json),
+// not just an in-memory array. This is also the CLV/auto-grade tracker:
+// on load (and via "CHECK RESULTS"), each open prop is auto-graded from
+// the player's real game log once the game is final, and its line is
+// re-checked against the live market to catch movement + snapshot a
+// rolling closing-line estimate for CLV — no manual stat entry required
+// unless auto-grading can't find a match.
 // ══════════════════════════════════════════════════════
 const betslip = [];
 let _currentAnalysis = null;
 
-function addToBetslip() {
+async function addToBetslip() {
   if (!_currentAnalysis) { alert('Run an analysis first.'); return; }
-  const { player, opp, propType, line, verdict, edge, projection, confidence } = _currentAnalysis;
+  const { player, opp, propType, line, verdict, edge, projection, confidence, league } = _currentAnalysis;
   if (betslip.find(b => b.player===player && b.propType===propType && b.line==line)) {
     alert(player+' '+propType+' '+line+' already in list.'); return;
   }
-  betslip.push({ id:Date.now(), addedAt:new Date().toLocaleTimeString(), player, opp, propType, line, verdict, edge, projection, confidence, result:null, actualStat:null });
-  renderBetslip(); updateBetslipCount();
   const btn = document.getElementById('add-to-list-btn');
-  if (btn) { btn.textContent='✓ ADDED'; btn.style.color='var(--green)'; btn.style.borderColor='var(--green)'; setTimeout(()=>{ btn.textContent='+ ADD TO LIST'; btn.style.color='var(--gold)'; btn.style.borderColor='var(--gold)'; },2000); }
+  try {
+    // Analyzer only ever runs against today's matchup (opponent is
+    // auto-detected from today's schedule), so today's date is the real
+    // game date to grade against later.
+    const { entry } = await apiPost('/api/clv/save', {
+      player, opp, propType, line, verdict, edge, projection, confidence, league,
+      gameDate: toDateStr(new Date()),
+    });
+    betslip.unshift(entry);
+    updateBetslipCount();
+    if (document.getElementById('panel-betslip')?.classList.contains('active')) renderBetslip();
+    if (btn) { btn.textContent='✓ ADDED'; btn.style.color='var(--green)'; btn.style.borderColor='var(--green)'; setTimeout(()=>{ btn.textContent='+ ADD TO LIST'; btn.style.color='var(--gold)'; btn.style.borderColor='var(--gold)'; },2000); }
+  } catch (err) {
+    alert('Could not save prop: ' + err.message);
+  }
 }
 
 function updateBetslipCount() {
@@ -2847,9 +2904,72 @@ function updateBetslipCount() {
   el.textContent = betslip.length;
 }
 
-function removeProp(id) { const i=betslip.findIndex(b=>b.id===id); if(i>=0) betslip.splice(i,1); renderBetslip(); updateBetslipCount(); }
-function markPropResult(id,result) { const b=betslip.find(b=>b.id===id); if(b){ b.result = b.result===result?null:result; } renderBetslip(); }
-function savePropActual(id,val) { const b=betslip.find(b=>b.id===id); if(b) b.actualStat=val?parseFloat(val):null; }
+async function loadBetslip() {
+  const el = document.getElementById('betslip-list');
+  if (el) el.innerHTML = '<div style="color:var(--muted);font-family:\'Space Grotesk\',sans-serif;font-size:11px;padding:20px 0;text-align:center;">Loading saved props...</div>';
+  try {
+    const data = await apiGet('/api/clv');
+    betslip.length = 0;
+    betslip.push(...data.entries);
+    updateBetslipCount();
+    renderBetslip();
+    refreshBetslip(); // best-effort grading/line-check in the background — list is already visible
+  } catch (err) {
+    if (el) el.innerHTML = `<div style="color:var(--red);font-family:'Space Grotesk',sans-serif;font-size:11px;padding:20px 0;text-align:center;">Could not load saved props — ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+async function checkOneProp(b) {
+  if (b.result) return; // already graded — nothing left to auto-check
+  try {
+    const grade = await apiGet(`/api/grade-prop?league=${b.league||'nba'}&player=${encodeURIComponent(b.player)}&propType=${b.propType}&date=${b.date}`);
+    if (grade.graded) {
+      const actual = grade.actualStat;
+      const isOver  = b.verdict==='OVER'  || b.verdict==='LEAN_OVER';
+      const isUnder = b.verdict==='UNDER' || b.verdict==='LEAN_UNDER';
+      const result = actual === b.line ? 'PUSH' : isOver ? (actual > b.line ? 'WIN':'LOSS') : isUnder ? (actual < b.line ? 'WIN':'LOSS') : 'NO_BET';
+      const { entry } = await apiPost('/api/clv/update', { id: b.id, actualStat: actual, result });
+      Object.assign(b, entry, { autoGraded: true });
+      return;
+    }
+    // Game's not final yet — snapshot the current market line so we catch
+    // movement and have a real (if rolling, not perfectly-at-tipoff) closing
+    // line for CLV once it does go final.
+    const cur = await apiGet(`/api/current-line?league=${b.league||'nba'}&player=${encodeURIComponent(b.player)}&propType=${b.propType}`);
+    if (cur.available && cur.line != null && cur.line !== b.closingLine) {
+      const { entry } = await apiPost('/api/clv/update', { id: b.id, closingLine: cur.line });
+      Object.assign(b, entry);
+    }
+  } catch (_) { /* best-effort — leave entry as-is, try again next refresh */ }
+}
+
+async function refreshBetslip() {
+  if (!betslip.length) return;
+  const btn = document.getElementById('betslip-refresh-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'CHECKING...'; }
+  await Promise.all(betslip.map(checkOneProp));
+  if (btn) { btn.disabled = false; btn.textContent = '↻ CHECK RESULTS'; }
+  renderBetslip();
+}
+
+async function removeProp(id) {
+  betslip.splice(betslip.findIndex(b=>b.id===id), 1);
+  renderBetslip(); updateBetslipCount();
+  try { await fetch(`/api/clv/${id}`, { method: 'DELETE' }); } catch (_) {}
+}
+async function markPropResult(id, result) {
+  const b = betslip.find(x=>x.id===id);
+  if (!b) return;
+  const newResult = b.result === result ? null : result;
+  b.result = newResult; renderBetslip();
+  try { const { entry } = await apiPost('/api/clv/update', { id, result: newResult }); Object.assign(b, entry); renderBetslip(); } catch (_) {}
+}
+async function savePropActual(id, val) {
+  const b = betslip.find(x=>x.id===id);
+  if (!b) return;
+  b.actualStat = val ? parseFloat(val) : null;
+  try { const { entry } = await apiPost('/api/clv/update', { id, actualStat: b.actualStat }); Object.assign(b, entry); } catch (_) {}
+}
 
 function renderBetslip() {
   const el = document.getElementById('betslip-list');
@@ -2859,11 +2979,13 @@ function renderBetslip() {
     el.innerHTML='<div style="color:var(--muted);font-family:\'Space Grotesk\',sans-serif;font-size:11px;padding:20px 0;text-align:center;">NO PROPS SAVED YET<br><span style="font-size:10px;opacity:0.6;">Analyze a prop then click + ADD TO LIST</span></div>';
     if(sb) sb.innerHTML=''; return;
   }
-  const graded=betslip.filter(b=>b.result);
+  const graded=betslip.filter(b=>b.result && b.result!=='NO_BET');
   const wins=graded.filter(b=>b.result==='WIN').length;
   const losses=graded.filter(b=>b.result==='LOSS').length;
   const overs=betslip.filter(b=>b.verdict==='OVER'||b.verdict==='LEAN_OVER').length;
   const unders=betslip.filter(b=>b.verdict==='UNDER'||b.verdict==='LEAN_UNDER').length;
+  const clvEntries=betslip.filter(b=>b.clv!=null);
+  const avgClv=clvEntries.length?(clvEntries.reduce((s,b)=>s+b.clv,0)/clvEntries.length):null;
   if(sb) sb.innerHTML=[
     ['PROPS',betslip.length,'var(--text)'],
     ['OVERS',overs,'var(--green)'],
@@ -2871,6 +2993,7 @@ function renderBetslip() {
     graded.length?['WINS',wins,'var(--green)']:null,
     graded.length?['LOSSES',losses,'var(--red)']:null,
     graded.length?['WIN RATE',(wins/graded.length*100).toFixed(0)+'%',wins/graded.length>=0.55?'var(--green)':'var(--red)']:null,
+    avgClv!=null?['AVG CLV',(avgClv>0?'+':'')+avgClv.toFixed(1),avgClv>=0?'var(--green)':'var(--red)']:null,
   ].filter(Boolean).map(([l,v,c])=>`<div class="stat-summary-box"><div class="ssb-label">${l}</div><div class="ssb-val" style="color:${c};">${v}</div></div>`).join('');
 
   const propLabel = {'points':'PTS','rebounds':'REB','assists':'AST','3pm':'3PM','pra':'PRA','pr':'P+R','pa':'P+A','ra':'R+A','steals':'STL','blocks':'BLK'};
@@ -2878,11 +3001,15 @@ function renderBetslip() {
     const vc=(b.verdict||'pass').toLowerCase().replace('_','-');
     const vt=b.verdict==='LEAN_OVER'?'△ LEAN OVER':b.verdict==='LEAN_UNDER'?'▽ LEAN UNDER':b.verdict==='OVER'?'▲ OVER':b.verdict==='UNDER'?'▼ UNDER':'◈ PASS';
     const edgeStr=b.edge!=null?(b.edge>0?'+':'')+b.edge:'—';
+    const lineMoved = !b.result && b.closingLine!=null && b.closingLine!==b.line;
+    const clvBadge = b.clv!=null ? `<span style="font-family:'Space Grotesk',sans-serif;font-size:9px;color:${b.clv>=0?'var(--green)':'var(--red)'};margin-left:8px;" title="Closing line value">CLV ${b.clv>0?'+':''}${b.clv}</span>` : '';
+    const autoBadge = b.autoGraded ? `<span style="font-family:'Space Grotesk',sans-serif;font-size:8px;color:var(--muted);letter-spacing:0.5px;margin-left:6px;border:1px solid var(--border2);border-radius:4px;padding:1px 5px;" title="Auto-graded from the real box score">AUTO</span>` : '';
     return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:8px;">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">
         <div>
-          <div style="font-family:'Space Grotesk',sans-serif;font-size:13px;color:var(--text);font-weight:500;">${escapeHtml(b.player)}</div>
-          <div style="font-family:'Space Grotesk',sans-serif;font-size:10px;color:var(--muted);margin-top:2px;">${propLabel[b.propType]||b.propType?.toUpperCase()} ${b.line} · vs ${escapeHtml(b.opp)||'?'} · Proj: ${b.projection||'—'} · Edge: ${edgeStr} · ${b.addedAt}</div>
+          <div style="font-family:'Space Grotesk',sans-serif;font-size:13px;color:var(--text);font-weight:500;">${escapeHtml(b.player)} <span style="font-family:'Space Grotesk',sans-serif;font-size:9px;color:${b.league==='wnba'?'#c77dff':'var(--gold)'};letter-spacing:1px;">${(b.league||'nba').toUpperCase()}</span></div>
+          <div style="font-family:'Space Grotesk',sans-serif;font-size:10px;color:var(--muted);margin-top:2px;">${propLabel[b.propType]||b.propType?.toUpperCase()} ${b.line} · vs ${escapeHtml(b.opp)||'?'} · Proj: ${b.projection||'—'} · Edge: ${edgeStr} · ${b.date||''}</div>
+          ${lineMoved ? `<div style="font-family:'Space Grotesk',sans-serif;font-size:9px;color:var(--amber);margin-top:4px;">⚠ LINE MOVED ${b.line} → ${b.closingLine}</div>` : ''}
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
           <div class="verdict-badge ${vc}" style="font-size:11px;">${vt}</div>
@@ -2894,6 +3021,7 @@ function renderBetslip() {
         <button class="result-btn ${b.result==='WIN'?'active-win':''}" onclick="markPropResult(${b.id},'WIN')">WIN</button>
         <button class="result-btn ${b.result==='LOSS'?'active-loss':''}" onclick="markPropResult(${b.id},'LOSS')">LOSS</button>
         <button class="result-btn ${b.result==='PUSH'?'active-push':''}" onclick="markPropResult(${b.id},'PUSH')">PUSH</button>
+        ${autoBadge}${clvBadge}
         <span style="font-family:'Space Grotesk',sans-serif;font-size:9px;color:var(--muted);letter-spacing:1px;margin-left:8px;">ACTUAL:</span>
         <input type="number" step="0.5" value="${b.actualStat??''}" placeholder="stat"
           style="width:60px;background:var(--surface2);border:1px solid var(--border2);border-radius:5px;padding:3px 7px;color:var(--text);font-family:'Space Grotesk',sans-serif;font-size:11px;"
@@ -2906,8 +3034,8 @@ function renderBetslip() {
 
 function exportBetslip() {
   if (!betslip.length) { alert('No props to export.'); return; }
-  const rows=[['Player','Opp','Prop','Line','Proj','Edge','Verdict','Conf','Result','Actual','Added']];
-  betslip.forEach(b=>rows.push([b.player,b.opp||'',b.propType||'',b.line||'',b.projection||'',b.edge||'',b.verdict||'',b.confidence||'',b.result||'',b.actualStat||'',b.addedAt||'']));
+  const rows=[['Player','League','Opp','Prop','Line','Proj','Edge','Verdict','Conf','Result','Actual','ClosingLine','CLV','Date']];
+  betslip.forEach(b=>rows.push([b.player,b.league||'nba',b.opp||'',b.propType||'',b.line||'',b.projection||'',b.edge||'',b.verdict||'',b.confidence||'',b.result||'',b.actualStat||'',b.closingLine||'',b.clv||'',b.date||'']));
   const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
   const a=document.createElement('a');
   a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
@@ -2915,10 +3043,12 @@ function exportBetslip() {
   a.click();
 }
 
-function clearBetslip() {
+async function clearBetslip() {
   if (!betslip.length) return;
   if (!confirm('Clear all props?')) return;
+  const ids = betslip.map(b=>b.id);
   betslip.length=0; renderBetslip(); updateBetslipCount();
+  await Promise.all(ids.map(id => fetch(`/api/clv/${id}`, { method:'DELETE' }).catch(()=>{})));
 }
 
 

@@ -4328,7 +4328,7 @@ function saveCLV(data) {
 
 // Save a new analysis entry
 app.post('/api/clv/save', (req, res) => {
-  const { player, opp, propType, line, projection, verdict, edge, confidence, gameDate } = req.body;
+  const { player, opp, propType, line, projection, verdict, edge, confidence, gameDate, league } = req.body;
   if (!player || !line) return res.status(400).json({ error: 'player and line required' });
 
   const entries = loadCLV();
@@ -4336,6 +4336,7 @@ app.post('/api/clv/save', (req, res) => {
     id:          Date.now(),
     date:        gameDate || getToday(),
     savedAt:     new Date().toISOString(),
+    league:      league === 'wnba' ? 'wnba' : 'nba',
     player, opp, propType, line: parseFloat(line),
     projection:  parseFloat(projection) || null,
     verdict,
@@ -4362,17 +4363,26 @@ app.post('/api/clv/update', (req, res) => {
   const idx = entries.findIndex(e => e.id === parseInt(id));
   if (idx < 0) return res.status(404).json({ error: 'Entry not found' });
 
-  entries[idx].closingLine = closingLine ? parseFloat(closingLine) : entries[idx].closingLine;
-  entries[idx].result      = result || entries[idx].result;
-  entries[idx].actualStat  = actualStat ? parseFloat(actualStat) : entries[idx].actualStat;
+  // != null (not truthy) — a real actualStat/closingLine of 0 (e.g. 0
+  // rebounds, 0 threes made) is a valid value and must not be dropped.
+  entries[idx].closingLine = closingLine != null && closingLine !== '' ? parseFloat(closingLine) : entries[idx].closingLine;
+  // result uses "key present" rather than truthiness — the UI toggles a
+  // result off by explicitly sending null, which `result || existing` would
+  // silently ignore (null is falsy, so it'd just keep the old value).
+  if (result !== undefined) entries[idx].result = result;
+  entries[idx].actualStat  = actualStat != null && actualStat !== '' ? parseFloat(actualStat) : entries[idx].actualStat;
   entries[idx].notes       = notes || entries[idx].notes;
 
-  // Calculate CLV: how much better was our line vs closing line
-  if (entries[idx].closingLine && entries[idx].line) {
-    if (entries[idx].verdict === 'OVER') {
+  // Calculate CLV: how much better was our line vs closing line. LEAN_OVER/
+  // LEAN_UNDER are still directional picks and get the same treatment as
+  // OVER/UNDER — only PASS has no direction to measure CLV against.
+  if (entries[idx].closingLine != null && entries[idx].line != null) {
+    const isOver  = entries[idx].verdict === 'OVER'  || entries[idx].verdict === 'LEAN_OVER';
+    const isUnder = entries[idx].verdict === 'UNDER' || entries[idx].verdict === 'LEAN_UNDER';
+    if (isOver) {
       // For OVER bets: lower closing line = positive CLV (we got better number)
       entries[idx].clv = parseFloat((entries[idx].closingLine - entries[idx].line).toFixed(1));
-    } else if (entries[idx].verdict === 'UNDER') {
+    } else if (isUnder) {
       // For UNDER bets: higher closing line = positive CLV
       entries[idx].clv = parseFloat((entries[idx].line - entries[idx].closingLine).toFixed(1));
     }
@@ -4413,5 +4423,51 @@ app.delete('/api/clv/:id', (req, res) => {
   const entries = loadCLV().filter(e => e.id !== parseInt(req.params.id));
   saveCLV(entries);
   res.json({ ok: true });
+});
+
+// Current market line for a player prop — used both to snapshot a closing
+// line and to detect line movement on already-saved props. Thin wrapper
+// around the same fetchPropLines/fetchWNBAPropLines used by the analyzer,
+// so it inherits the same odds-API source (and the same "unavailable if
+// quota's exhausted" behavior — reported honestly via `available: false`
+// rather than a fake number).
+app.get('/api/current-line', async (req, res) => {
+  const league    = (req.query.league || 'nba').toLowerCase() === 'wnba' ? 'wnba' : 'nba';
+  const player    = req.query.player;
+  const propType  = req.query.propType || 'points';
+  if (!player) return res.status(400).json({ error: 'player required' });
+  const data = league === 'wnba'
+    ? await fetchWNBAPropLines(player, propType)
+    : await fetchPropLines(player, propType);
+  if (data.error) return res.json({ available: false, error: data.error });
+  res.json({ available: data.softestLine != null, line: data.softestLine ?? null, book: data.softestBook ?? null });
+});
+
+// Auto-grade a saved prop from the player's real game log — no manual
+// stat entry required once the game is final. Reuses gameLog20 (already
+// fetched for the game-log chart) rather than a separate box-score call.
+const GRADE_COMBO_KEYS = { pra: ['pts','reb','ast'], pr: ['pts','reb'], pa: ['pts','ast'], ra: ['reb','ast'] };
+const GRADE_STAT_KEY   = { points: 'pts', rebounds: 'reb', assists: 'ast', '3pm': 'fg3m', steals: 'stl', blocks: 'blk' };
+function gradeStatValue(g, propType) {
+  const combo = GRADE_COMBO_KEYS[propType];
+  if (combo) return combo.reduce((s, k) => s + (parseFloat(g[k]) || 0), 0);
+  return parseFloat(g[GRADE_STAT_KEY[propType] || 'pts']) || 0;
+}
+app.get('/api/grade-prop', async (req, res) => {
+  const league   = (req.query.league || 'nba').toLowerCase() === 'wnba' ? 'wnba' : 'nba';
+  const player   = req.query.player;
+  const propType = req.query.propType || 'points';
+  const date     = req.query.date; // YYYY-MM-DD — the game date this prop was for
+  if (!player || !date) return res.status(400).json({ error: 'player and date required' });
+
+  const stats = league === 'wnba' ? await fetchWNBAPlayerStats(player) : await fetchPlayerStats(player);
+  if (!stats || stats.error) return res.json({ graded: false, reason: stats?.error || 'stats unavailable' });
+
+  const game = (stats.gameLog20 || []).find(g => (g.date || '').slice(0, 10) === date);
+  if (!game) {
+    const reason = date < getToday() ? 'no matching game found in recent log' : 'game not final yet';
+    return res.json({ graded: false, reason });
+  }
+  res.json({ graded: true, actualStat: gradeStatValue(game, propType), opponent: game.opponent || null, date: game.date });
 });
 
