@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>WIN AI — NBA Props Engine</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
     --bg:#0b1220;--surface:#111a2e;--surface2:#17233d;
@@ -698,6 +699,153 @@
   .team-pick-player{font-size:13px;font-weight:500;margin-top:2px;}
   .team-pick-meta{font-family:'Space Grotesk',sans-serif;font-size:10px;color:var(--muted);margin-top:2px;}
   .team-pick-none{font-family:'Space Grotesk',sans-serif;font-size:10px;color:var(--muted);padding:10px 12px;font-style:italic;}
+
+  /* ═══════════════ ANALYSIS PAGE v2 ═══════════════
+     Scoped to the NBA / WNBA analyzer tabs only (body:has(... .active)), so every
+     other tab keeps its current look. Neutral grays for the interface; green is
+     the only color on charts and confidence bars; green / red also mark positives
+     and risks, and the over / under side. */
+  body:has(#panel-analyzer.active),body:has(#panel-wnba.active){
+    --bg:#0a0a0b;--surface:#111113;--surface2:#18181b;--surface3:#202024;
+    --border:rgba(255,255,255,0.09);--border2:rgba(255,255,255,0.17);
+    --gold:#ececee;--gold2:#ffffff;--amber:#d2d2d8;--blue:#d2d2d8;
+    --green:#4cb47e;--red:#ff5d5d;
+    --text:#ececee;--muted:#9a9aa3;--muted2:#c4c4cb;--dim:#868690;
+    --pos:#4cb47e;--neg:#ff5d5d;--viz:#4cb47e;--viz-d:#237a4d;
+    --pos-bg:#12261b;--pos-line:#2a6b47;--pos-wash:#0e1a14;
+    --neg-bg:#2a1414;--neg-line:#7a2f2f;--neg-wash:#170d0d;
+    --display:'Barlow Condensed','Arial Narrow',Impact,sans-serif;
+  }
+  body:has(#panel-analyzer.active) header,body:has(#panel-wnba.active) header{background:rgba(10,10,11,0.97);}
+  /* gold tints that were hard-coded rather than using the token */
+  body:has(#panel-analyzer.active) .stat-chip.proj,body:has(#panel-wnba.active) .stat-chip.proj{border-color:var(--border2);background:var(--surface2);}
+  body:has(#panel-analyzer.active) .recommend-box,body:has(#panel-wnba.active) .recommend-box{background:var(--surface2);border:1px solid var(--border);border-left:3px solid var(--border2);}
+  body:has(#panel-analyzer.active) .gl2-reset,body:has(#panel-wnba.active) .gl2-reset{border-color:var(--border2);}
+  body:has(#panel-analyzer.active) .gl2-reset:hover,body:has(#panel-wnba.active) .gl2-reset:hover{background:var(--surface3);}
+  body:has(#panel-analyzer.active) .gl2-seg button[aria-selected="true"],body:has(#panel-wnba.active) .gl2-seg button[aria-selected="true"]{background:var(--surface3);color:var(--text);box-shadow:inset 0 0 0 1px var(--border2);}
+  body:has(#panel-analyzer.active) .gl2,body:has(#panel-wnba.active) .gl2{--surface3:#202024;}
+  body:has(#panel-analyzer.active) .gl2-tip,body:has(#panel-wnba.active) .gl2-tip{background:#1d1d22;}
+  body:has(#panel-analyzer.active) .gl2-ln,body:has(#panel-wnba.active) .gl2-ln{border-top-color:var(--viz);}
+  body:has(#panel-analyzer.active) .data-integrity .source-tag.inferred,body:has(#panel-wnba.active) .data-integrity .source-tag.inferred{color:var(--muted2);}
+
+  /* result layout: main column + a wider, non-sticky sidebar (its content is taller than a screen) */
+  .result-shell{grid-template-columns:minmax(0,1fr) 340px;}
+  @media(max-width:1150px){.result-shell{grid-template-columns:minmax(0,1fr);}}
+  .result-sidebar{position:static;background:transparent;border:0;padding:0;gap:14px;}
+  .v2-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;min-width:0;}
+  .v2-label{font-family:var(--display);font-weight:700;letter-spacing:.12em;text-transform:uppercase;font-size:14px;color:var(--muted);margin:0 0 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .v2-label small{font-family:'Space Grotesk',sans-serif;font-weight:500;letter-spacing:0;text-transform:none;font-size:11px;}
+  .v2-label.g{color:var(--pos);} .v2-label.r{color:var(--neg);}
+  .pos{color:var(--pos);} .neg{color:var(--neg);}
+
+  /* header + numbers */
+  .v2-head{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:6px;}
+  .v2-who{display:flex;align-items:center;gap:14px;min-width:0;}
+  .v2-av{position:relative;width:84px;height:84px;flex:none;}
+  .v2-av .result-headshot,.v2-av .result-avatar-fallback{width:84px;height:84px;border:2px solid var(--border2);object-position:top;}
+  .v2-av .result-avatar-fallback{background:var(--surface3);color:var(--muted2);font-family:var(--display);font-size:28px;}
+  .v2-ck{position:absolute;right:-2px;bottom:-2px;width:24px;height:24px;border-radius:50%;background:var(--text);color:#0a0a0b;display:grid;place-items:center;font-weight:800;font-size:13px;border:2px solid var(--bg);}
+  .v2-name{font-family:var(--display);font-weight:800;font-size:38px;line-height:1;letter-spacing:.02em;text-transform:uppercase;}
+  .v2-sub{color:var(--muted);font-size:13px;margin-top:3px;}
+  .v2-addbtn{font-family:var(--display);font-weight:700;letter-spacing:.1em;font-size:14px;text-transform:uppercase;padding:9px 18px;border-radius:8px;border:1px solid var(--border2);background:var(--surface2);color:var(--text);cursor:pointer;white-space:nowrap;}
+  .v2-addbtn:hover{background:var(--surface3);}
+  .v2-nums{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin:14px 0 8px;border-block:1px solid var(--border);}
+  .v2-nums>div{padding:10px 14px;} .v2-nums>div+div{border-left:1px solid var(--border);}
+  .v2-nums .k{font-family:var(--display);font-weight:700;letter-spacing:.14em;font-size:12px;color:var(--muted);text-transform:uppercase;}
+  .v2-nums .v{font-family:var(--display);font-weight:800;font-size:52px;line-height:1.05;}
+  .v2-nums .v small{font-size:16px;color:var(--muted);margin-left:4px;}
+  .v2-range{font-size:12px;color:var(--muted);margin:0 0 14px;line-height:1.5;}
+  @media(max-width:560px){.v2-nums .v{font-size:36px;}.v2-name{font-size:30px;}.v2-av,.v2-av .result-headshot,.v2-av .result-avatar-fallback{width:64px;height:64px;}}
+
+  /* key stats chips */
+  .v2-chips{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin:0 0 14px;}
+  @media(max-width:760px){.v2-chips{grid-template-columns:repeat(3,minmax(0,1fr));}}
+  @media(max-width:420px){.v2-chips{grid-template-columns:repeat(2,minmax(0,1fr));}}
+  .v2-chip{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;}
+  .v2-chip .k{font-size:10px;letter-spacing:.12em;color:var(--muted);text-transform:uppercase;font-family:var(--display);font-weight:700;}
+  .v2-chip .v{font-family:var(--display);font-weight:800;font-size:25px;line-height:1.1;}
+  .v2-chip .v small{font-size:11px;color:var(--muted);margin-left:3px;}
+
+  /* sidebar: confidence */
+  .v2-gauge{width:100%;max-width:250px;display:block;margin:0 auto;}
+  .v2-gauge .trk{fill:none;stroke:var(--surface3);stroke-width:14;stroke-linecap:round;}
+  .v2-gauge .fil{fill:none;stroke:var(--viz);stroke-width:14;stroke-linecap:round;}
+  .v2-gauge .tick{stroke:var(--surface);stroke-width:2;} .v2-gauge .tk{fill:var(--muted);font-size:8px;}
+  .v2-gauge .big{fill:var(--text);font-family:var(--display);font-weight:800;font-size:38px;}
+  .v2-gauge .sm{fill:var(--muted);font-family:var(--display);font-weight:700;font-size:11px;letter-spacing:.16em;}
+  .v2-gauge .sm.strong{fill:var(--pos);} .v2-gauge .sm.thin{fill:var(--neg);}
+  .v2-edge{text-align:center;margin-top:2px;}
+  .v2-edge .e{font-family:var(--display);font-weight:800;font-size:44px;line-height:1;}
+  .v2-edge .k{font-family:var(--display);font-weight:700;letter-spacing:.14em;font-size:11px;color:var(--muted);text-transform:uppercase;}
+  .v2-cb{display:grid;grid-template-columns:96px 1fr 34px;align-items:center;gap:8px;font-size:12px;margin-top:7px;color:var(--muted);}
+  .v2-cbt{height:6px;background:var(--surface3);border-radius:3px;overflow:hidden;} .v2-cbt i{display:block;height:100%;background:var(--viz);border-radius:3px;}
+  .v2-cb b{color:var(--text);font-weight:600;text-align:right;}
+  .v2-hint{font-size:11px;color:var(--muted);margin-top:12px;line-height:1.5;}
+  .v2-rec.over{border-color:var(--pos-line);background:linear-gradient(180deg,var(--pos-wash),var(--surface) 90%);}
+  .v2-rec.under{border-color:var(--neg-line);background:linear-gradient(180deg,var(--neg-wash),var(--surface) 90%);}
+  .v2-rec .v{font-family:var(--display);font-weight:800;font-size:34px;line-height:1;letter-spacing:.02em;text-transform:uppercase;}
+  .v2-rec .v.over{color:var(--pos);} .v2-rec .v.under{color:var(--neg);}
+  .v2-rec p{margin:8px 0 0;color:var(--muted);font-size:12.5px;line-height:1.55;}
+  .v2-risk{border-color:var(--neg-line);background:linear-gradient(180deg,var(--neg-wash),var(--surface) 70%);}
+
+  /* factor lists */
+  .v2-fl{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;}
+  .v2-fl li{display:flex;gap:11px;align-items:flex-start;}
+  .v2-fl b{display:block;font-family:var(--display);font-weight:700;letter-spacing:.06em;text-transform:uppercase;font-size:15px;}
+  .v2-fl p{margin:2px 0 0;color:var(--muted);font-size:12.5px;line-height:1.45;}
+  .v2-ic{flex:0 0 22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:700;margin-top:1px;}
+  .v2-ic.ok{background:var(--pos-bg);color:var(--pos);border:1px solid var(--pos-line);}
+  .v2-ic.bad{background:var(--neg-bg);color:var(--neg);border:1px solid var(--neg-line);}
+  .v2-none{color:var(--muted);font-size:12.5px;margin:0;}
+
+  /* written analysis */
+  .v2-wa h4{font-family:var(--display);font-weight:800;letter-spacing:.08em;text-transform:uppercase;font-size:16px;margin:0 0 10px;color:var(--text);}
+  .v2-wa h4.pos{color:var(--pos);}
+  .v2-wa h4:not(:first-of-type){margin-top:20px;padding-top:16px;border-top:1px solid var(--border);}
+  .v2-wa ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:10px;}
+  .v2-wa li{position:relative;padding-left:16px;color:#bcbcc4;font-size:13.5px;line-height:1.55;max-width:70ch;}
+  .v2-wa li::before{content:'';position:absolute;left:0;top:9px;width:6px;height:6px;border-radius:50%;background:var(--dim);}
+  .v2-wa ul.why li::before{background:var(--pos);}
+  .v2-wa li b{display:block;color:var(--text);font-family:var(--display);font-weight:700;letter-spacing:.06em;text-transform:uppercase;font-size:13.5px;margin-bottom:1px;}
+
+  /* injuries */
+  .v2-inj-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;}
+  @media(max-width:800px){.v2-inj-grid{grid-template-columns:minmax(0,1fr);}}
+  .v2-inj{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--border);}
+  .v2-inj:first-of-type{border-top:0;}
+  .v2-inj img,.v2-inj .ph{width:44px;height:44px;border-radius:50%;object-fit:cover;object-position:top;background:var(--surface3);border:1px solid var(--border);flex:none;display:grid;place-items:center;font-family:var(--display);font-weight:800;font-size:16px;color:var(--muted);}
+  .v2-inj .who{flex:1;min-width:0;} .v2-inj .who b{font-family:var(--display);font-weight:700;font-size:16px;letter-spacing:.04em;text-transform:uppercase;}
+  .v2-inj .who span{display:block;color:var(--muted);font-size:12px;}
+  .v2-pill{display:inline-block;font-family:var(--display);font-weight:700;letter-spacing:.08em;font-size:12px;padding:2px 10px;border-radius:5px;white-space:nowrap;}
+  .v2-pill.out{background:var(--neg-bg);color:var(--neg);border:1px solid var(--neg-line);}
+  .v2-pill.dtd{background:transparent;color:var(--muted);border:1px solid var(--border2);}
+  .v2-foot{font-size:11.5px;color:var(--muted);margin-top:10px;line-height:1.5;}
+  :is(body:has(#panel-analyzer.active),body:has(#panel-wnba.active)) .games-row .league-tag.nba,:is(body:has(#panel-analyzer.active),body:has(#panel-wnba.active)) .games-row .league-tag.wnba{color:var(--muted2);background:var(--surface3);border-color:var(--border2);}
+
+  /* leftover hard-coded tints (gold, amber, navy) neutralised inside the redesigned tabs */
+  :is(body:has(#panel-analyzer.active),body:has(#panel-wnba.active)) .analyze-btn{color:#0a0a0b;}
+  :is(body:has(#panel-analyzer.active),body:has(#panel-wnba.active)) .analyze-btn:hover:not(:disabled){box-shadow:0 4px 24px rgba(255,255,255,0.12);}
+  :is(body:has(#panel-analyzer.active),body:has(#panel-wnba.active)) .matchup-banner.warn{background:var(--surface2);border:1px solid var(--border2);color:var(--muted2);}
+  :is(body:has(#panel-analyzer.active),body:has(#panel-wnba.active)) .source-tag.inferred{background:var(--surface3);color:var(--muted2);border:1px solid var(--border2);}
+  :is(body:has(#panel-analyzer.active),body:has(#panel-wnba.active)) .ai-disclaimer{background:var(--surface2);border:1px solid var(--border2);}
+  :is(body:has(#panel-analyzer.active),body:has(#panel-wnba.active)) .data-badge.live{background:var(--surface3);}
+  :is(body:has(#panel-analyzer.active),body:has(#panel-wnba.active)) .gl-tab.active{border-color:var(--border2);background:var(--surface3);}
+  :is(body:has(#panel-analyzer.active),body:has(#panel-wnba.active)) .mv-warn{background:var(--neg-wash);border:1px solid var(--neg-line);color:var(--neg);}
+  :is(body:has(#panel-analyzer.active),body:has(#panel-wnba.active)) .mv-row span.pos{color:var(--pos);}
+  :is(body:has(#panel-analyzer.active),body:has(#panel-wnba.active)) .mv-row span.neg{color:var(--neg);}
+  :is(body:has(#panel-analyzer.active),body:has(#panel-wnba.active)) .gl2-pill[aria-selected="true"]{color:#0a0a0b;}
+  :is(body:has(#panel-analyzer.active),body:has(#panel-wnba.active)) .verdict-badge.pass{background:var(--surface3);color:var(--muted2);border:1px solid var(--border2);}
+  :is(body:has(#panel-analyzer.active),body:has(#panel-wnba.active)) .outlier-strip{background:var(--surface2);border:1px solid var(--border2);}
+  :is(body:has(#panel-analyzer.active),body:has(#panel-wnba.active)) .sc2-seg button[aria-selected="true"]{background:var(--surface3);color:var(--text);box-shadow:inset 0 0 0 1px var(--border2);}
+  :is(body:has(#panel-analyzer.active),body:has(#panel-wnba.active)) .sc2-overlap{background:var(--surface2);border:1px solid var(--border2);}
+  :is(body:has(#panel-analyzer.active),body:has(#panel-wnba.active)) .sc2-chip{background:rgba(10,10,11,0.9);}
+  :is(body:has(#panel-analyzer.active),body:has(#panel-wnba.active)) .sc2-chip.low{background:rgba(10,10,11,0.78);}
+  :is(body:has(#panel-analyzer.active),body:has(#panel-wnba.active)) .sc2-chip.ov{border-color:var(--text);box-shadow:0 0 0 1px rgba(255,255,255,0.25),0 4px 14px rgba(0,0,0,0.35);}
+  :is(body:has(#panel-analyzer.active),body:has(#panel-wnba.active)) .sc2l-row.ov{background:var(--surface3);}
+  :is(body:has(#panel-analyzer.active),body:has(#panel-wnba.active)) .sc2-legend .hatch{background:repeating-linear-gradient(45deg,#2a2a2f 0 3px,#3d3d44 3px 5px);}
+  :is(body:has(#panel-analyzer.active),body:has(#panel-wnba.active)) .sc2l-dot{background:#8a8a93;}
+  :is(body:has(#panel-analyzer.active),body:has(#panel-wnba.active)) .result-avatar-fallback{background:var(--surface3);color:var(--muted2);}
+
 </style>
 </head>
 <body>
@@ -1848,7 +1996,9 @@ function renderGameLogSection(ctx, propType, line, league, defaultSide) {
       : base.length ? Math.floor(glMedian(base.map(g => gameStatValue(g, k)))) + 0.5 : 0.5;
   });
   const range = ['l10','l5','l20','h2h'].find(k => sets[k].length) || 'l10';
-  window._gl[league] = { sets, tabs, propType, posted: posted > 0 ? posted : null, stat: propType, range, side: defaultSide === 'under' ? 'under' : 'over', lines, W: 720 };
+  const mpj = ctx?.mathProjection;
+  const proj = (mpj && isFinite(parseFloat(mpj.projection))) ? { v: parseFloat(mpj.projection), lo: mpj.lowerBound, hi: mpj.upperBound, opp: ctx?.oppRoster?.team || ctx?.oppAdvanced?.TEAM_NAME || '' } : null;
+  window._gl[league] = { sets, tabs, propType, posted: posted > 0 ? posted : null, stat: propType, range, side: defaultSide === 'under' ? 'under' : 'over', lines, proj, W: 720 };
   // The chart needs its real pixel width; the caller assigns this markup with
   // innerHTML right after we return, so measure on the next tick.
   setTimeout(() => glMount(league), 0);
@@ -1951,9 +2101,10 @@ function glChartSVG(league) {
   if (!vals.length) return '<div class="gl2-empty">No games available for this filter</div>';
   const W = Math.max(280, st.W || 720), H = W < 520 ? 280 : 340;
   const ml = 42, mr = 8, mt = 26, mb = 44, pw = W - ml - mr, ph = H - mt - mb;
-  const top = Math.max(Math.max(...vals), L) * 1.08, step = glNiceStep(top), yMax = Math.ceil(top / step) * step;
+  const showProj = !!(st.proj && st.stat === st.propType && ['l5', 'l10', 'l20'].includes(st.range));
+  const top = Math.max(Math.max(...vals), L, showProj ? st.proj.v : 0) * 1.08, step = glNiceStep(top), yMax = Math.ceil(top / step) * step;
   const y = v => mt + ph - (v / yMax) * ph;
-  const slot = pw / vals.length, bw = Math.min(58, slot * 0.66);
+  const slot = pw / (vals.length + (showProj ? 1 : 0)), bw = Math.min(58, slot * 0.66);
   const showVals = slot >= 19, xEvery = slot < 22 ? 3 : slot < 34 ? 2 : 1, fs = slot < 26 ? 9 : 11;
   let out = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Game-by-game chart against a line of ${glFmt(L)}">`;
   for (let t = 0; t <= yMax + 1e-9; t += step) {
@@ -1964,7 +2115,7 @@ function glChartSVG(league) {
   vals.forEach((v, i) => {
     const g = set[i], meta = glGameMeta(g);
     const cx = ml + slot * i + slot / 2, x0 = cx - bw / 2, yt = y(v), h = Math.max(2, mt + ph - yt), r = Math.min(5, bw / 2);
-    const col = v === L ? '#d4a844' : glHit(v, L, st.side) ? '#2ecc71' : '#e74c3c';
+    const col = v === L ? '#9a9aa3' : glHit(v, L, st.side) ? '#4cb47e' : '#ff5d5d';
     out += `<path d="M${x0},${yt + h} L${x0},${yt + r} Q${x0},${yt} ${x0 + r},${yt} L${x0 + bw - r},${yt} Q${x0 + bw},${yt} ${x0 + bw},${yt + r} L${x0 + bw},${yt + h} Z" fill="${col}"/>`;
     out += `<rect data-i="${i}" x="${cx - slot / 2}" y="${mt}" width="${slot}" height="${ph + mb}" fill="transparent"/>`;
     if (showVals) out += `<text class="gl2-val" x="${cx}" y="${yt - 6}" fill="${col}" style="font-size:${fs}px">${glFmt(v)}</text>`;
@@ -1973,10 +2124,18 @@ function glChartSVG(league) {
       out += `<text class="gl2-xo" x="${cx}" y="${H - mb + 29}" text-anchor="middle">${meta.home === null ? '' : (meta.home ? 'vs ' : '@ ')}${escapeHtml(meta.abbr)}</text>`;
     }
   });
+  if (showProj) {
+    const i = vals.length, cx = ml + slot * i + slot / 2, x0 = cx - bw / 2, yt = y(st.proj.v), h = Math.max(2, mt + ph - yt);
+    out += `<rect x="${x0}" y="${yt}" width="${bw}" height="${h}" rx="4" fill="rgba(76,180,126,0.10)" stroke="#4cb47e" stroke-width="1.5" stroke-dasharray="4 3"/>`;
+    out += `<rect data-i="p" x="${cx - slot / 2}" y="${mt}" width="${slot}" height="${ph + mb}" fill="transparent"/>`;
+    if (showVals) out += `<text class="gl2-val" x="${cx}" y="${yt - 6}" fill="#4cb47e" style="font-size:${fs}px">${glFmt(st.proj.v)}</text>`;
+    out += `<text class="gl2-xd" x="${cx}" y="${H - mb + 16}" text-anchor="middle">Proj</text>`;
+    out += `<text class="gl2-xo" x="${cx}" y="${H - mb + 29}" text-anchor="middle">tonight</text>`;
+  }
   const ly = y(L);
-  out += `<line x1="${ml}" x2="${W - mr}" y1="${ly}" y2="${ly}" stroke="#d4a844" stroke-width="1.5" stroke-dasharray="5 4"/>`;
-  out += `<rect x="2" y="${ly - 10}" width="${ml - 6}" height="20" rx="6" fill="#d4a844"/>`;
-  out += `<text x="${(ml - 6) / 2 + 2}" y="${ly + 4}" text-anchor="middle" fill="#0b1220" style="font-size:11px;font-weight:700;font-family:inherit">${glFmt(L)}</text>`;
+  out += `<line x1="${ml}" x2="${W - mr}" y1="${ly}" y2="${ly}" stroke="#4cb47e" stroke-width="1.5" stroke-dasharray="5 4"/>`;
+  out += `<rect x="2" y="${ly - 10}" width="${ml - 6}" height="20" rx="6" fill="#4cb47e"/>`;
+  out += `<text x="${(ml - 6) / 2 + 2}" y="${ly + 4}" text-anchor="middle" fill="#06140c" style="font-size:11px;font-weight:700;font-family:inherit">${glFmt(L)}</text>`;
   return out + '</svg>';
 }
 
@@ -2009,6 +2168,20 @@ function glHover(league, e) {
   const pt = e.touches && e.touches[0] ? e.touches[0] : e;
   let t = e.touches && e.touches[0] ? document.elementFromPoint(pt.clientX, pt.clientY) : e.target;
   t = t && t.closest ? t.closest('[data-i]') : null;
+  if (t && t.dataset.i === 'p' && st.proj) {
+    const P = st.proj.v, Lp = st.lines[st.stat], d = P - Lp, good = glHit(P, Lp, st.side);
+    tip.innerHTML = `<div class="gl2-th">Tonight${st.proj.opp ? ' · ' + escapeHtml(st.proj.opp) : ''}</div>`
+      + `<div class="gl2-tg"><span>PROJ<b>${glFmt(P)}</b></span><span>LINE<b>${glFmt(Lp)}</b></span>${st.proj.lo != null ? `<span>RANGE<b>${st.proj.lo}–${st.proj.hi}</b></span>` : ''}</div>`
+      + `<div class="gl2-tf" style="color:${d === 0 ? 'var(--muted)' : good ? 'var(--green)' : 'var(--red)'}">${d > 0 ? '+' : ''}${glFmt(d)} vs line ${glFmt(Lp)}</div>`;
+    const br = tip.parentElement.getBoundingClientRect();
+    let x = pt.clientX - br.left + 14;
+    const tw = tip.offsetWidth || 170;
+    if (x + tw > br.width) x = pt.clientX - br.left - tw - 14;
+    tip.style.left = Math.max(0, x) + 'px';
+    tip.style.top = Math.max(0, pt.clientY - br.top - 70) + 'px';
+    tip.classList.add('show');
+    return;
+  }
   const g = t ? st.sets[st.range][+t.dataset.i] : null;
   if (!g) { tip.classList.remove('show'); return; }
   const L = st.lines[st.stat], val = gameStatValue(g, st.stat), diff = val - L, meta = glGameMeta(g);
@@ -2049,6 +2222,275 @@ function renderConfGauge(confidence, vc) {
       <text x="${cx}" y="${cy-2}" text-anchor="middle" dominant-baseline="middle" font-family="'Space Grotesk',sans-serif" font-size="${fontSize}" fill="var(--text)">${fmtConf(confidence)}%</text>
       <text x="${cx}" y="${cy+12}" text-anchor="middle" dominant-baseline="middle" font-family="'Space Grotesk',sans-serif" font-size="6.5" fill="var(--muted)" letter-spacing="1">CONF</text>
     </svg>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ANALYSIS PAGE v2 — header, key stats, factors, written analysis, sidebar.
+// Everything here is derived from the numbers the server already returns
+// (no AI prose): a signal is a "key factor" when it supports the side the
+// model leans, a "risk" when it points the other way or makes the number less
+// reliable. Every input is optional — a missing feed just drops that line.
+// ═══════════════════════════════════════════════════════════════════
+const V2_PROP = { points:'Points', rebounds:'Rebounds', assists:'Assists', '3pm':'3-pointers', pra:'Pts + Reb + Ast', pr:'Pts + Reb', pa:'Pts + Ast', ra:'Reb + Ast', steals:'Steals', blocks:'Blocks' };
+const V2_SHORT = { points:'PTS', rebounds:'REB', assists:'AST', '3pm':'3PM', pra:'PRA', pr:'P+R', pa:'P+A', ra:'R+A', steals:'STL', blocks:'BLK' };
+const V2_SCORING = ['points','pra','pr','pa','3pm'];
+function v2Ord(n) { const s = ['th','st','nd','rd'], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); }
+function v2F(n) { return (Math.round(n * 10) / 10).toString(); }
+function v2Mean(a) { return a.length ? a.reduce((s, v) => s + v, 0) / a.length : null; }
+function v2Sd(a) { if (a.length < 2) return null; const m = v2Mean(a); return Math.sqrt(a.reduce((s, v) => s + (v - m) ** 2, 0) / a.length); }
+// Average of a stat bag ({pts,reb,...}) for the analyzed prop (sums the parts of a combo); null if any part is missing.
+function v2PropAvg(obj, propType) {
+  if (!obj) return null;
+  const keys = PROP_COMBO_KEYS[propType] || [PROP_STATKEY[propType] || 'pts'];
+  let s = 0;
+  for (const k of keys) { const v = parseFloat(obj[k]); if (!isFinite(v)) return null; s += v; }
+  return s;
+}
+function v2Pct(x) { const n = parseFloat(x); if (!isFinite(n)) return null; return n <= 1 ? n * 100 : n; }
+
+function v2Facts(ctx, propType, line, edge, projection, league, oppName) {
+  const stats = ctx?.playerStats || {}, mp = ctx?.mathProjection || {}, gc = ctx?.gameContext || {}, ranks = ctx?.oppRanks || {};
+  const L = parseFloat(line), proj = parseFloat(projection);
+  const side = edge >= 0 ? 'over' : 'under', oppSide = side === 'over' ? 'under' : 'over';
+  const T = ctx?.totalTeamsInLeague || (league === 'wnba' ? 15 : 30);
+  const opp = (oppName || '').split(' ').pop() || 'The opponent';
+  const gv = (g) => gameStatValue(g, propType);
+  const vals10 = (stats.last10Games || []).map(gv).filter(v => isFinite(v));
+  const vals5 = (stats.last5Games || []).map(gv).filter(v => isFinite(v));
+  const avg10 = v2Mean(vals10), avg5 = vals5.length >= 3 ? v2Mean(vals5) : null;
+  const facts = [];
+  const add = (favors, id, title, text, w) => facts.push({ favors, id, title, text, w: Math.max(0, Math.min(1, w)) });
+
+  // Hit rate against the line
+  if (vals10.length >= 5 && L > 0) {
+    const n = vals10.length, o = vals10.filter(v => v > L).length, u = vals10.filter(v => v < L).length;
+    const tail = ` Average ${v2F(avg10)}${avg5 != null ? `, last 5 ${v2F(avg5)}` : ''}.`;
+    if (o / n >= 0.6) add('over', 'hit', `Clears the line ${o} of ${n}`, `More than ${v2F(L)} in ${o} of the last ${n} games.${tail}`, (o / n - 0.5) * 2);
+    else if (u / n >= 0.6) add('under', 'hit', `Stays under ${u} of ${n}`, `Under ${v2F(L)} in ${u} of the last ${n} games.${tail}`, (u / n - 0.5) * 2);
+  }
+  // Season average against the line
+  const season = v2PropAvg(stats.seasonAvg, propType);
+  if (season != null && L > 0) {
+    const rel = (season - L) / L;
+    if (Math.abs(rel) >= 0.04) add(rel > 0 ? 'over' : 'under', 'season', rel > 0 ? 'Line below season average' : 'Line above season average',
+      `Season average ${v2F(season)} is ${v2F(Math.abs(season - L))} ${rel > 0 ? 'above' : 'below'} the line.`, Math.abs(rel) * 6);
+  }
+  // Opponent defense (stat-appropriate rank; 1 = toughest)
+  const defKey = V2_SCORING.includes(propType) ? 'defRating' : propType === 'rebounds' ? 'oppReb' : propType === 'assists' ? 'oppAst' : null;
+  const dr = defKey ? ranks[defKey] : null, defLabel = defKey === 'defRating' ? 'defensive rating' : defKey === 'oppReb' ? 'rebounds allowed' : 'assists allowed';
+  if (dr) {
+    const rt = defKey === 'defRating' && ctx?.oppAdvanced?.DEF_RATING != null ? ` (${ctx.oppAdvanced.DEF_RATING})` : '';
+    if (dr <= 5) add('under', 'def', 'Tough defense', `${opp} rank ${v2Ord(dr)} of ${T} in ${defLabel}${rt}.`, (6 - dr) / 5 * 0.9);
+    else if (dr > T - 5) add('over', 'def', 'Soft defense', `${opp} rank ${v2Ord(dr)} of ${T} in ${defLabel}${rt}.`, (dr - (T - 5)) / 5 * 0.9);
+  }
+  // Pace (1 = fastest)
+  if (ranks.pace && !['steals', 'blocks'].includes(propType)) {
+    const pc = ctx?.oppAdvanced?.PACE != null ? ` (${(+ctx.oppAdvanced.PACE).toFixed(1)})` : '';
+    if (ranks.pace <= 3) add('over', 'pace', 'Fast pace', `${opp} rank ${v2Ord(ranks.pace)} of ${T} in pace${pc}, which adds possessions.`, 0.5);
+    else if (ranks.pace >= T - 2) add('under', 'pace', 'Slow pace', `${opp} rank ${v2Ord(ranks.pace)} of ${T} in pace${pc}. Fewer possessions trims volume.`, 0.5);
+  }
+  // Head to head
+  const h2h = ctx?.h2hStats, h2hAvg = v2PropAvg(h2h, propType);
+  if (h2h && h2h.gamesVsOpp >= 3 && h2hAvg != null && L > 0) {
+    const rel = (h2hAvg - L) / L;
+    if (Math.abs(rel) >= 0.05) add(rel > 0 ? 'over' : 'under', 'h2h', rel > 0 ? 'Strong against this team' : 'Down against this team',
+      `${v2F(h2hAvg)} per game in ${h2h.gamesVsOpp} meetings${h2h.h2hTrend ? `, trend ${String(h2h.h2hTrend).toLowerCase()}` : ''}.`, Math.min(1, Math.abs(rel) * 5) * 0.8);
+  }
+  // Minutes outlook
+  if (isFinite(mp.projectedMinutes) && isFinite(mp.baselineMinutes)) {
+    const d = mp.projectedMinutes - mp.baselineMinutes;
+    if (Math.abs(d) >= 1.5) add(d > 0 ? 'over' : 'under', 'min', d > 0 ? 'Minutes trending up' : 'Minutes trending down',
+      `Projected ${v2F(mp.projectedMinutes)} minutes against a ${v2F(mp.baselineMinutes)}-minute baseline.`, Math.min(1, Math.abs(d) / 4));
+  }
+  // Usage shift from teammate absences (already limited to absences the baseline has not absorbed)
+  const ud = (mp.drivers || []).find(d => /usage/i.test(d.label || ''));
+  if (ud && Math.abs(ud.value) >= 0.5) add(ud.value > 0 ? 'over' : 'under', 'usage', ud.value > 0 ? 'Usage boost' : 'Usage drop',
+    `Teammate changes move the projection ${ud.value > 0 ? '+' : ''}${ud.value}.`, Math.min(1, Math.abs(ud.value) / 3) * 0.7);
+  // Game script
+  const spread = isFinite(parseFloat(gc.spread)) ? parseFloat(gc.spread) : (isFinite(parseFloat(mp.spread)) ? parseFloat(mp.spread) : null);
+  const total = gc.total ?? mp.gameTotal ?? null;
+  if (spread != null) {
+    if (Math.abs(spread) <= 4) add('over', 'script', 'Close game expected', `Spread of ${Math.abs(spread)} keeps starters on the floor${total ? `. Total ${total}` : ''}.`, 0.4);
+    else if (Math.abs(spread) >= 10) add('under', 'script', 'Blowout risk', `Spread of ${Math.abs(spread)} raises the chance starters sit late${total ? `. Total ${total}` : ''}.`, Math.min(1, (Math.abs(spread) - 8) / 8));
+  }
+  if (gc.isBackToBack || mp.isBackToBack) add('under', 'b2b', 'Back-to-back', 'Second night in a row, which usually trims minutes and efficiency.', 0.6);
+  if (stats.form === 'HOT') add('over', 'form', 'Hot streak', 'Recent scoring is running above the 10-game average.', 0.3);
+  else if (stats.form === 'COLD') add('under', 'form', 'Cold streak', 'Recent scoring is running below the 10-game average.', 0.3);
+  const pl = ctx?.propLines;
+  if (side === 'over' && pl && pl.softestLine != null && pl.consensusLine != null && pl.bookCount >= 3 && pl.consensusLine - pl.softestLine >= 0.5)
+    add('over', 'soft', 'Soft line', `Best price is ${v2F(pl.softestLine)} at ${pl.softestBook}; the ${pl.bookCount}-book consensus is ${v2F(pl.consensusLine)}.`, 0.4);
+
+  // Reliability risks (not tied to a side)
+  if (vals10.length >= 5 && avg10 > 0) {
+    const sd = v2Sd(vals10), cv = sd / avg10;
+    if (cv >= 0.28) add('risk', 'swing', 'Wide swings', `Ranged ${v2F(Math.min(...vals10))} to ${v2F(Math.max(...vals10))} over ${vals10.length} games (std dev ${v2F(sd)}). One quiet night flips the result.`, Math.min(1, cv / 0.5));
+  }
+  if (pl && pl.consensusLine != null && pl.bookCount >= 2 && isFinite(proj)) {
+    const gap = proj - pl.consensusLine;
+    if (Math.abs(gap) >= Math.max(2, 0.1 * pl.consensusLine)) add('risk', 'market', 'Far from the market', `The model says ${v2F(proj)}; the ${pl.bookCount}-book consensus is ${v2F(pl.consensusLine)}. Books may know about news the model does not.`, Math.min(1, Math.abs(gap) / (0.3 * pl.consensusLine)));
+  }
+  if (avg10 > 0 && isFinite(proj) && Math.abs(proj - avg10) / avg10 >= 0.12)
+    add('risk', 'history', 'Projection away from recent form', `The model says ${v2F(proj)}, against ${v2F(avg10)} over the last ${vals10.length} games${h2hAvg != null && h2h?.gamesVsOpp >= 3 ? ` and ${v2F(h2hAvg)} against ${opp}` : ''}.`, Math.min(1, Math.abs(proj - avg10) / avg10 * 4));
+  const cb = mp.confidenceBreakdown || {};
+  if (cb.minutes != null && cb.minutes < 0.35) add('risk', 'minstab', 'Unstable minutes', 'Playing time has varied a lot recently, so the volume is harder to pin down.', 0.6);
+  if (cb.depth != null && cb.depth < 0.5) add('risk', 'sample', 'Small sample', 'Few games back the baseline, so it can move quickly.', 0.6);
+  if (cb.coverage != null && cb.coverage < 0.55) add('risk', 'coverage', 'Missing data feeds', 'Some data sources were unavailable, so parts of the model fell back to defaults.', 0.5);
+  const ev = ctx?.liveMarket?.realEdge?.expectedValue;
+  if (ev != null && ev * 100 >= EV_TRUST_LIMIT) add('risk', 'bigedge', 'Edge looks too large', 'A gap this big is more often the model being overconfident than a real mispricing.', 0.8);
+
+  const key = facts.filter(f => f.favors === side && f.w >= 0.12).sort((a, b) => b.w - a.w).slice(0, 4);
+  const risk = facts.filter(f => (f.favors === oppSide || f.favors === 'risk') && f.w >= 0.12).sort((a, b) => b.w - a.w).slice(0, 5);
+
+  // Neutral context lines for the written analysis
+  const usg = v2Pct(ctx?.playerAdvancedStats?.USG_PCT), tsp = v2Pct(ctx?.playerAdvancedStats?.TS_PCT);
+  const context = [];
+  if (spread != null || total) context.push({ title: 'Game script', text: `${spread != null ? `Spread ${spread}` : ''}${spread != null && total ? ' and ' : ''}${total ? `${spread != null ? 'total' : 'Total'} ${total}` : ''}${(gc.details || []).length ? ': ' + gc.details.map(x => String(x).split(' — ')[0]).join('; ') : ''}.` });
+  const roleBits = [];
+  if (usg != null) roleBits.push(`${v2F(usg)}% usage`);
+  if (tsp != null) roleBits.push(`${v2F(tsp)}% true shooting`);
+  if (stats.seasonAvg?.fta != null) roleBits.push(`${stats.seasonAvg.fta} free-throw attempts a game`);
+  if (roleBits.length || isFinite(mp.projectedMinutes)) context.push({ title: 'Role', text: `${roleBits.join(', ')}${roleBits.length ? '. ' : ''}${isFinite(mp.projectedMinutes) && isFinite(mp.baselineMinutes) ? `Minutes are ${String(stats.minutesStability || 'stable').toLowerCase()}: ${v2F(mp.projectedMinutes)} projected against a ${v2F(mp.baselineMinutes)}-minute baseline.` : ''}`.trim() });
+  if (ranks.defRating || ranks.pace) context.push({ title: 'Defense and pace', text: `${opp}${ranks.defRating ? ` rank ${v2Ord(ranks.defRating)} of ${T} in defensive rating` : ''}${ranks.defRating && ranks.pace ? ' and' : ''}${ranks.pace ? ` ${v2Ord(ranks.pace)} in pace${ctx?.oppAdvanced?.PACE != null ? ` (${(+ctx.oppAdvanced.PACE).toFixed(1)})` : ''}` : ''}.` });
+  if (h2h && h2h.gamesVsOpp >= 1 && h2hAvg != null) context.push({ title: 'Head to head', text: `${v2F(h2hAvg)} ${V2_SHORT[propType] || ''} per game in ${h2h.gamesVsOpp} meeting${h2h.gamesVsOpp > 1 ? 's' : ''} with ${opp}${h2h.h2hTrend ? `, trend ${String(h2h.h2hTrend).toLowerCase()}` : ''}.` });
+  const me = (stats.player?.name || '').toLowerCase();
+  const inj = (ctx?.playerRoster?.injured || []).filter(p => (p.name || '').toLowerCase() !== me);
+  if (inj.length) { const out = inj.filter(p => (p.status || '').toLowerCase() === 'out').map(p => p.name), dtd = inj.filter(p => (p.status || '').toLowerCase() !== 'out').map(p => p.name);
+    context.push({ title: 'Teammates out', text: `${out.length ? 'Without ' + out.join(', ') : ''}${out.length && dtd.length ? '; ' : ''}${dtd.length ? dtd.join(', ') + ' day-to-day' : ''}.` }); }
+  if ((mp.drivers || []).length) context.push({ title: 'Model drivers', text: 'In ' + (V2_PROP[propType] || 'points').toLowerCase() + ': ' + mp.drivers.map(d => `${String(d.label).replace(' (teammate/role)', '').replace('projected minutes vs baseline', 'minutes')} ${d.value > 0 ? '+' : ''}${d.value}`).join(', ') + '.' });
+
+  return { side, key, risk, context };
+}
+
+function v2Header(ctx, player, opp, propType, line, projection, edge, league, playerId) {
+  const stats = ctx?.playerStats || {}, p = stats.player || {};
+  const POS = { C:'Center', F:'Forward', G:'Guard' };
+  const tg = ctx?.todayGame || {};
+  const home = tg.home || tg.home_team?.full_name || '', away = tg.away || tg.visitor_team?.full_name || '';
+  const last = (p.team || '').split(' ').pop().toLowerCase();
+  const isHome = home && last ? home.toLowerCase().includes(last) : (typeof ctx?.gameContext?.isHome === 'boolean' ? ctx.gameContext.isHome : null);
+  const sign = edge > 0 ? 'pos' : edge < 0 ? 'neg' : '';
+  const label = V2_PROP[propType] || propType;
+  return `
+    <div class="v2-head">
+      <div class="v2-who">
+        <div class="v2-av">${renderResultHeadshot(league, playerId, player)}<span class="v2-ck">✓</span></div>
+        <div style="min-width:0;">
+          <div class="v2-name">${escapeHtml(player)}</div>
+          <div class="v2-sub">${escapeHtml([p.team, POS[p.position] || p.position].filter(Boolean).join(' · '))}</div>
+          <div class="v2-sub">${isHome === false ? 'at' : 'vs'} ${escapeHtml(opp || '')}${tg.gameTime ? ' · ' + escapeHtml(tg.gameTime) : ''}</div>
+        </div>
+      </div>
+      <button id="add-to-list-btn" class="v2-addbtn" onclick="addToBetslip()">+ Add to list</button>
+    </div>
+    <div class="v2-nums">
+      <div><div class="k">${escapeHtml(label)} line</div><div class="v">${escapeHtml(String(line))}</div></div>
+      <div><div class="k">Projection</div><div class="v ${sign}">${escapeHtml(String(projection))}</div></div>
+      <div><div class="k">Edge</div><div class="v ${sign}">${edge > 0 ? '+' : ''}${edge}${edge > 0 ? ' ↑' : edge < 0 ? ' ↓' : ''}</div></div>
+    </div>
+    ${ctx?.mathProjection?.lowerBound != null ? `<div class="v2-range">80% range ${ctx.mathProjection.lowerBound} to ${ctx.mathProjection.upperBound} ${escapeHtml((V2_PROP[propType] || '').toLowerCase())}.${ctx?.propLines?.softestLine != null ? ` Best line ${v2F(ctx.propLines.softestLine)}${ctx.propLines.softestBook ? ' at ' + escapeHtml(ctx.propLines.softestBook) : ''}${ctx.propLines.consensusLine != null ? `, consensus ${v2F(ctx.propLines.consensusLine)}` : ''}.` : ''}</div>` : ''}`;
+}
+
+function v2KeyStats(ctx, propType, opp) {
+  const stats = ctx?.playerStats || {};
+  const gv = (g) => gameStatValue(g, propType);
+  const season = v2PropAvg(stats.seasonAvg, propType) ?? v2PropAvg(stats.averages, propType);
+  const seasonLabel = v2PropAvg(stats.seasonAvg, propType) != null ? 'Season avg' : 'L10 avg';
+  const v5 = (stats.last5Games || []).map(gv).filter(v => isFinite(v));
+  const l5 = v5.length >= 3 ? v2Mean(v5) : null;
+  const h2h = ctx?.h2hStats, h2hAvg = h2h && h2h.gamesVsOpp >= 1 ? v2PropAvg(h2h, propType) : null;
+  const min = parseFloat(stats.seasonAvg?.min ?? stats.averages?.min);
+  const usg = v2Pct(ctx?.playerAdvancedStats?.USG_PCT);
+  const sa = stats.seasonAvg || {};
+  const fg = (sa.fgm != null && sa.fga) ? sa.fgm / sa.fga * 100 : v2Pct(sa.fg_pct ?? stats.averages?.fg_pct);
+  const chips = [
+    season != null ? [seasonLabel, v2F(season), ''] : null,
+    l5 != null ? ['Last 5', v2F(l5), ''] : null,
+    h2hAvg != null ? ['vs ' + (opp || '').split(' ').pop(), v2F(h2hAvg), `${h2h.gamesVsOpp} G`] : null,
+    isFinite(min) ? ['MPG', v2F(min), ''] : null,
+    usg != null ? ['Usage', v2F(usg), '%'] : null,
+    fg != null && isFinite(fg) ? ['FG%', v2F(fg), '%'] : null,
+  ].filter(Boolean);
+  return chips.length ? `<div class="v2-label">Key stats <small>per game, ${escapeHtml(V2_PROP[propType] || '').toLowerCase()}</small></div><div class="v2-chips">${chips.map(([k, v, u]) => `<div class="v2-chip"><div class="k">${escapeHtml(k)}</div><div class="v">${v}${u ? `<small>${u}</small>` : ''}</div></div>`).join('')}</div>` : '';
+}
+
+function v2FactorList(items, ok, emptyText) {
+  return items.length
+    ? `<ul class="v2-fl">${items.map(f => `<li><span class="v2-ic ${ok ? 'ok' : 'bad'}">${ok ? '✓' : '!'}</span><div><b>${escapeHtml(f.title)}</b><p>${escapeHtml(f.text)}</p></div></li>`).join('')}</ul>`
+    : `<p class="v2-none">${emptyText}</p>`;
+}
+
+function v2Gauge(confidence) {
+  const arc = Math.PI * 80, pt = (p, r) => { const th = Math.PI * (1 - p / 100); return [100 + r * Math.cos(th), 100 - r * Math.sin(th)]; };
+  const tier = confidence >= 75 ? 'STRONG' : confidence >= 55 ? 'LEAN' : 'THIN';
+  const ticks = [55, 75].map(p => { const [x1, y1] = pt(p, 70), [x2, y2] = pt(p, 90), [tx, ty] = pt(p, 104);
+    return `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" class="tick"/><text x="${tx.toFixed(1)}" y="${(ty + 3).toFixed(1)}" text-anchor="middle" class="tk">${p}</text>`; }).join('');
+  return `<svg class="v2-gauge" viewBox="0 0 200 128" role="img" aria-label="Confidence ${fmtConf(confidence)} percent, ${tier}">
+    <path class="trk" d="M20 100 A80 80 0 0 1 180 100"/>
+    <path class="fil" d="M20 100 A80 80 0 0 1 180 100" stroke-dasharray="${(Math.max(0, Math.min(100, confidence)) / 100 * arc).toFixed(1)} ${arc.toFixed(1)}"/>
+    ${ticks}
+    <text class="big" x="100" y="98" text-anchor="middle">${fmtConf(confidence)}%</text>
+    <text class="sm ${tier.toLowerCase()}" x="100" y="118" text-anchor="middle">${tier}</text>
+  </svg>`;
+}
+
+function v2Sidebar(ctx, facts, edge, projection, line, propType, verdict, vc, confidence) {
+  const cb = ctx?.mathProjection?.confidenceBreakdown;
+  const parts = cb ? [['Consistency', cb.consistency], ['Minutes', cb.minutes], ['Sample depth', cb.depth], ['Data coverage', cb.coverage], ['Situation', cb.situation]] : [];
+  const tier = confidence >= 75 ? 'strong' : confidence >= 55 ? 'lean' : 'thin';
+  const sideCls = vc === 'over' || vc === 'lean-over' ? 'over' : vc === 'under' || vc === 'lean-under' ? 'under' : '';
+  const word = { over:'OVER', 'lean-over':'LEAN OVER', under:'UNDER', 'lean-under':'LEAN UNDER', pass:'PASS' }[vc] || 'PASS';
+  const unit = (V2_PROP[propType] || 'points').toLowerCase();
+  const gapPct = parseFloat(line) > 0 ? Math.abs(edge) / parseFloat(line) : 0;
+  const sentence = vc === 'pass'
+    ? `Projection ${projection} is about even with the line ${line}, so there is no clear lean.`
+    : `Projection is ${Math.abs(edge)} ${unit} ${edge > 0 ? 'above' : 'below'} the line, with ${tier} reliability.${gapPct >= 0.12 ? ' A gap this large is more often the model being overconfident than free money, so confirm lineup news first.' : ''}`;
+  const sign = edge > 0 ? 'pos' : edge < 0 ? 'neg' : '';
+  return `
+    <section class="v2-card">
+      <h3 class="v2-label">Confidence <small>how far to trust the projection</small></h3>
+      ${v2Gauge(confidence)}
+      <div class="v2-edge"><div class="e ${sign}">${edge > 0 ? '+' : ''}${edge}</div><div class="k">Projection ${edge >= 0 ? 'over' : 'under'} line ${escapeHtml(String(line))}</div></div>
+      ${parts.map(([n, v]) => `<div class="v2-cb"><span>${n}</span><div class="v2-cbt"><i style="width:${Math.round((v || 0) * 100)}%"></i></div><b>${(v ?? 0).toFixed(2)}</b></div>`).join('')}
+      <p class="v2-hint">Strong starts at 75, lean at 55. This measures reliability, not win probability.</p>
+    </section>
+    <section class="v2-card v2-rec ${sideCls}">
+      <h3 class="v2-label ${sideCls === 'over' ? 'g' : sideCls === 'under' ? 'r' : ''}">Recommendation</h3>
+      <div class="v ${sideCls}">${word}${vc === 'pass' ? '' : ' ' + escapeHtml(String(line))}</div>
+      <p>${escapeHtml(sentence)}</p>
+    </section>
+    <section class="v2-card"><h3 class="v2-label g">Key factors</h3>${v2FactorList(facts.key, true, 'No strong signals support this side right now.')}</section>
+    <section class="v2-card v2-risk"><h3 class="v2-label r">Risk factors</h3>${v2FactorList(facts.risk, false, 'No major risks flagged by the numbers.')}</section>`;
+}
+
+function v2WrittenAnalysis(facts, verdictWord, line) {
+  const li = (arr) => '<ul>' + arr.map(f => `<li><b>${escapeHtml(f.title)}</b> ${escapeHtml(f.text)}</li>`).join('') + '</ul>';
+  const why = facts.key.slice(0, 5);
+  if (!why.length && !facts.context.length) return '';
+  return `<section class="v2-card v2-wa" style="margin-top:14px;">
+    <h3 class="v2-label">Written analysis <small>built from the numbers on this page</small></h3>
+    ${why.length ? `<h4 class="pos">What supports ${escapeHtml(String(verdictWord).toLowerCase())} ${escapeHtml(String(line))}</h4>${li(why).replace('<ul>', '<ul class="why">')}` : ''}
+    ${facts.context.length ? `<h4>Context and situation</h4>${li(facts.context)}` : ''}
+  </section>`;
+}
+
+function v2Injuries(ctx, league, oppLabel) {
+  const initials = (n) => (n || '?').split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
+  const photo = (p) => {
+    if (!p.id) return `<div class="ph">${escapeHtml(initials(p.name))}</div>`;
+    const url = `https://a.espncdn.com/i/headshots/${league === 'wnba' ? 'wnba' : 'nba'}/players/full/${encodeURIComponent(p.id)}.png`;
+    return `<img src="${url}" alt="" loading="lazy" onerror="this.outerHTML='<div class=&quot;ph&quot;>${escapeHtml(initials(p.name))}</div>'">`;
+  };
+  const me = (ctx?.playerStats?.player?.name || '').toLowerCase();
+  const card = (title, list, note) => {
+    const rows = (list || []).filter(p => (p.name || '').toLowerCase() !== me);
+    return `<section class="v2-card"><h3 class="v2-label ${rows.some(p => (p.status || '').toLowerCase() === 'out') ? 'r' : ''}">Injury impact <small>${escapeHtml(title)}</small></h3>
+      ${rows.length ? rows.map(p => { const out = (p.status || '').toLowerCase() === 'out';
+        return `<div class="v2-inj">${photo(p)}<div class="who"><b>${escapeHtml(p.name || '')}</b><span>${escapeHtml(p.position || '')} · ${escapeHtml(p.injuryNote ? String(p.injuryNote).slice(0, 80) : 'No details listed by ESPN')}</span></div><span class="v2-pill ${out ? 'out' : 'dtd'}">${escapeHtml(String(p.status || '').toUpperCase())}</span></div>`; }).join('') : '<p class="v2-none">No injuries listed.</p>'}
+      ${note || ''}</section>`;
+  };
+  const mp = ctx?.mathProjection, ibd = mp?.injuryBreakdown?.details?.[0];
+  const note = ibd ? `<p class="v2-foot">Usage boost applied: ${escapeHtml(String(ibd.scaledBoost))}. It only counts absences the baseline has not already absorbed.</p>` : '';
+  return `<div class="v2-inj-grid" style="margin-top:14px;">${card(ctx?.playerStats?.player?.team || 'Player team', ctx?.playerRoster?.injured, note)}${card(ctx?.oppRoster?.team || oppLabel || 'Opponent', ctx?.oppRoster?.injured, '')}</div>`;
 }
 
 // ── RENDER RESULT ─────────────────────────────────────
@@ -2135,8 +2577,8 @@ function renderResult(raw, player, opp, propType, line, ctx, precomputedVerdict,
   const _rb = (rank) => {
     if (!rank) return '<span style="color:var(--muted);font-size:9px;">—</span>';
     const isTop5 = rank <= 5, isBottom5 = rank > _totalTeams - 5;
-    const clr = isTop5?'#2ecc71':isBottom5?'#e74c3c':'#7a7a8c';
-    const bg  = isTop5?'rgba(46,204,113,0.12)':isBottom5?'rgba(231,76,60,0.12)':'rgba(255,255,255,0.05)';
+    const clr = isTop5?'#4cb47e':isBottom5?'#ff5d5d':'#9a9aa3';
+    const bg  = isTop5?'rgba(76,180,126,0.14)':isBottom5?'rgba(255,93,93,0.14)':'rgba(255,255,255,0.05)';
     return `<span style="font-size:10px;padding:2px 7px;border-radius:4px;background:${bg};color:${clr};font-weight:600;">#${rank}/${_totalTeams}</span>`;
   };
   const _stats = [
@@ -2195,7 +2637,7 @@ function renderResult(raw, player, opp, propType, line, ctx, precomputedVerdict,
   const factorHTML = factors.map(f => `<div class="factor-pill"><div class="fi ${f.type}">${f.type==='pos'?'▲':'▼'}</div><div class="factor-txt">${f.text}</div></div>`).join('');
 
   const mathBreakdownBox = ctx?.mathProjection ? `
-    <div style="background:rgba(74,158,255,0.06);border:1px solid rgba(74,158,255,0.2);border-radius:8px;padding:10px 14px;margin:8px 0;font-family:'Space Grotesk',sans-serif;font-size:10px;">
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin:8px 0;font-family:'Space Grotesk',sans-serif;font-size:10px;">
       <div style="color:var(--blue);letter-spacing:1px;margin-bottom:6px;">MATH PROJECTION BREAKDOWN — SERVER CALCULATED</div>
       <div style="display:flex;flex-wrap:wrap;gap:8px;color:var(--muted);">
         <span>Baseline: <span style="color:var(--text)">${ctx.mathProjection.l10Avg}</span> <span style="opacity:0.6;">(recent L10 average)</span></span>
@@ -2220,7 +2662,7 @@ function renderResult(raw, player, opp, propType, line, ctx, precomputedVerdict,
           overPct = Math.round(p * 100);
         }
         return `
-      <div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(74,158,255,0.15);display:flex;flex-wrap:wrap;gap:8px;color:var(--muted);">
+      <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:8px;color:var(--muted);">
         <span>Range (~80%): <span style="color:var(--text)">${lb} – ${ub}</span></span>
         <span>Std dev: <span style="color:var(--text)">±${sd}</span></span>
         ${overPct != null ? `<span>P(Over ${line}): <span style="color:var(--green)">${overPct}%</span> <span style="color:var(--red)">/ Under ${100-overPct}%</span></span>` : ''}
@@ -2330,26 +2772,18 @@ function renderResult(raw, player, opp, propType, line, ctx, precomputedVerdict,
   const negFactors = factors.filter(f => f.type === 'neg');
   const outlierStrip = isElite ? `<div class="outlier-strip"><div style="font-size:20px;">★</div><p><strong>OUTLIER ALERT</strong> — ${escapeHtml(player)} is flagged as elite/matchup-resistant.</p></div>` : '';
 
+  const v2f = v2Facts(ctx, propType, line, edge, projection, league, opp);
+  const v2Word = { over:'over', 'lean-over':'lean over', under:'under', 'lean-under':'lean under', pass:'pass' }[vc] || 'pass';
+
   const overviewTab = `
-    ${chips}
-    <div style="margin:10px 0 8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
-      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-        <div class="verdict-badge ${vc}">${verdictLabel}</div>
-        ${leanTag}
-      </div>
-      <button id="add-to-list-btn" onclick="addToBetslip()" style="font-family:'Space Grotesk',sans-serif;font-size:10px;padding:7px 16px;border-radius:7px;border:1px solid var(--gold);background:rgba(212,168,68,0.1);color:var(--gold);cursor:pointer;letter-spacing:1px;white-space:nowrap;" onmouseover="this.style.background='rgba(212,168,68,0.25)'" onmouseout="this.style.background='rgba(212,168,68,0.1)'">+ ADD TO LIST</button>
-    </div>
-    <div class="conf-wrap">
-      <div class="conf-labels"><span>CONFIDENCE</span><span>${confNumHtml(confidence)}</span></div>
-      <div class="conf-bar"><div class="conf-fill ${vc}" style="width:${confidence}%"></div></div>
-    </div>
+    ${v2KeyStats(ctx, propType, opp)}
     ${renderMarketValue(ctx, line)}
     ${renderGameLogSection(ctx, propType, line, league, isUnderSide ? 'under' : 'over')}
+    ${v2WrittenAnalysis(v2f, v2Word, line)}
     ${h2hSection}
+    ${v2Injuries(ctx, league, opp)}
     ${textualAccordions}
     ${recommendations}
-    ${oppRosterDisplay}
-    ${playerTeamInjuries}
     ${outlierStrip}`;
 
   const shotChartTab = `
@@ -2358,6 +2792,7 @@ function renderResult(raw, player, opp, propType, line, ctx, precomputedVerdict,
     ${renderPlaytypeBreakdown(ctx, player, opp, league)}`;
 
   const advancedTab = `
+    ${chips}
     ${mathBreakdownBox}
     ${defStats}
     ${last5Table}
@@ -2366,37 +2801,14 @@ function renderResult(raw, player, opp, propType, line, ctx, precomputedVerdict,
     ${blowout?`<div class="section-divider">Blowout Scenario</div><div class="analysis-box">${blowout}</div>`:''}
     ${fullAnalysis?`<div class="analysis-text">${fullAnalysis}</div>`:''}`;
 
-  const sidebar = `
-    <div>
-      <div class="rs-label">Confidence</div>
-      <div class="rs-ring-wrap">${renderConfGauge(confidence, vc)}</div>
-    </div>
-    <div class="rs-edge">
-      <div class="ev" style="color:${edgeColor};">${edge>0?'+':''}${edge}</div>
-      <div class="el">EDGE VS. LINE ${escapeHtml(String(line))}</div>
-    </div>
-    <div class="rs-block">
-      <div class="rs-block-title">Recommendation</div>
-      <div class="rs-rec" style="background:${tone.bg};border:1px solid ${tone.bd};">
-        <div style="color:${tone.tx};font-weight:700;letter-spacing:0.5px;">${verdictLabel}</div>
-        <div style="color:var(--muted2);margin-top:4px;">${bottomLine ? escapeHtml(bottomLine) : `Projection ${projection} vs. line ${escapeHtml(String(line))}.`}</div>
-      </div>
-    </div>
-    ${posFactors.length ? `<div class="rs-block"><div class="rs-block-title">Key Factors</div><ul class="rs-list">${posFactors.map(f => `<li>${escapeHtml(f.text)}</li>`).join('')}</ul></div>` : ''}
-    ${negFactors.length ? `<div class="rs-block"><div class="rs-block-title">Risk Factors</div><ul class="rs-list risk">${negFactors.map(f => `<li>${escapeHtml(f.text)}</li>`).join('')}</ul></div>` : ''}`;
+  const sidebar = v2Sidebar(ctx, v2f, edge, projection, line, propType, verdict, vc, confidence);
 
   const tabDefs = [['overview','Overview'], ['shotchart','Shot Chart'], ['advanced','Advanced']];
   return `
     ${sourceBanner}
-    <div class="result-player-header" style="margin-bottom:6px;">
-      ${renderResultHeadshot(league, playerId, player)}
-      <div>
-        <div style="font-family:'Space Grotesk',sans-serif;font-size:26px;letter-spacing:2px;">${escapeHtml(player)}</div>
-        <div style="font-family:'Space Grotesk',sans-serif;font-size:11px;color:var(--muted);margin-top:2px;">${propType.toUpperCase()} · LINE ${line} · PROJECTION ${projection}</div>
-      </div>
-    </div>
     <div class="result-shell">
       <div class="result-main-col">
+        ${v2Header(ctx, player, opp, propType, line, projection, edge, league, playerId)}
         <div class="result-toptabs" id="result-toptabs-${league}">
           ${tabDefs.map(([k,label],i) => `<div class="result-toptab ${i===0?'active':''}" data-key="${k}" onclick="switchResultTab('${league}','${k}')">${label}</div>`).join('')}
         </div>
@@ -3213,7 +3625,7 @@ async function renderTodayPage() {
                     <div class="team-pick-meta">vs ${p.opponent} · no live odds, model projection only</div>
                   </div>
                   <div style="text-align:right;">
-                    <div class="top-play-dir" style="color:var(--gold);border-color:rgba(212,168,68,0.3);">≈ PROJ ${p.projection}</div>
+                    <div class="top-play-dir" style="color:var(--gold);border-color:var(--border2);">≈ PROJ ${p.projection}</div>
                     <div class="team-pick-meta">${confNumHtml(cShown(p))} conf</div>
                     ${miniConfBar(cShown(p))}
                   </div>
@@ -3347,7 +3759,7 @@ function renderMarketValue(ctx, userLine) {
       row('Consensus line', lm.consensusLine != null ? `${lm.consensusLine} <span style="color:var(--muted);">(${lm.bookCount} books)</span>` : '—') +
       row('Model chance', `${re.modelProb}%`) +
       row('Market chance', re.fairMarketProb != null ? `${re.fairMarketProb}% <span style="color:var(--muted);">(vig removed)</span>` : '—') +
-      row('Edge over market', re.probEdge != null ? `${re.probEdge > 0 ? '+' : ''}${re.probEdge} pts` : '—') +
+      row('Edge over market', re.probEdge != null ? `<span class="${re.probEdge > 0 ? 'pos' : 'neg'}">${re.probEdge > 0 ? '+' : ''}${re.probEdge} pts</span>` : '—') +
       row('Suggested stake', tooBig ? 'Withheld — edge too large to trust' : kelly > 0 ? `${kelly.toFixed(1)}% of bankroll` : 'None — no edge at this price') +
       (tooBig ? `<div class="mv-warn">⚠ An edge this large is more often the model being overconfident or missing something (lineup or injury news, a role change) than free money, so no stake is suggested. Its win probabilities haven't been checked against graded results yet.</div>` : '') +
       `<div class="mv-note">${notes.join('<br>')}</div>`,
@@ -3374,7 +3786,7 @@ async function renderTopPlays(league='nba') {
             </div>
           </div>
           <div class="top-play-row">
-            <div class="top-play-dir" style="color:var(--gold);border-color:rgba(212,168,68,0.3);">≈ PROJ</div>
+            <div class="top-play-dir" style="color:var(--gold);border-color:var(--border2);">≈ PROJ</div>
             <div><div class="top-play-conf">Proj ${p.projection} · ${confNumHtml(sc.get(p) ?? p.confidence)} conf</div>${miniConfBar(sc.get(p) ?? p.confidence)}</div>
           </div>
         </div>`).join(''); })();
@@ -3456,15 +3868,15 @@ function scOverlap(st) {
 function scCourtSVG(league, st) {
   const src = st.mode === 'player' ? st.player : st.defense;
   const ov = scOverlap(st).map(z => z.k);
-  const fill = { hi:'#2bb673', avg:'#6b7390', lo:'#d8493e', low:`url(#sc-hatch-${league})` };
-  let s = `<defs><pattern id="sc-hatch-${league}" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="7" height="7" fill="#212c46"/><line x1="0" y1="0" x2="0" y2="7" stroke="#34405f" stroke-width="2.5"/></pattern></defs>`;
-  s += '<rect x="0" y="0" width="500" height="470" rx="10" fill="#101a2f"/>';
+  const fill = { hi:'#2bb673', avg:'#8a8a93', lo:'#d8493e', low:`url(#sc-hatch-${league})` };
+  let s = `<defs><pattern id="sc-hatch-${league}" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="7" height="7" fill="#222226"/><line x1="0" y1="0" x2="0" y2="7" stroke="#3b3b42" stroke-width="2.5"/></pattern></defs>`;
+  s += '<rect x="0" y="0" width="500" height="470" rx="10" fill="#121214"/>';
   ['atb','lc','rc','mid','paint','ra'].forEach(k => {
     const t = scTone(src[k]);
-    s += `<path d="${SC_PATHS[k]}" fill="${fill[t]}" fill-opacity="${t === 'low' ? 1 : 0.82}" fill-rule="evenodd" stroke="#0b1220" stroke-width="3.5" stroke-linejoin="round"/>`;
+    s += `<path d="${SC_PATHS[k]}" fill="${fill[t]}" fill-opacity="${t === 'low' ? 1 : 0.82}" fill-rule="evenodd" stroke="#0a0a0b" stroke-width="3.5" stroke-linejoin="round"/>`;
   });
   // gold dashed outline: player is above average AND the defense allows above average
-  ov.forEach(k => { s += `<path d="${SC_PATHS[k]}" fill="none" fill-rule="evenodd" stroke="#f0c96a" stroke-width="3" stroke-linejoin="round" stroke-dasharray="7 5"/>`; });
+  ov.forEach(k => { s += `<path d="${SC_PATHS[k]}" fill="none" fill-rule="evenodd" stroke="#ececee" stroke-width="3" stroke-linejoin="round" stroke-dasharray="7 5"/>`; });
   s += `<path d="M30,470 V330 A237.5 237.5 0 0 1 470,330 V470" ${SC_LINE}/>`;
   s += `<rect x="170" y="280" width="160" height="190" ${SC_LINE}/>`;
   s += `<path d="M190,280 A60 60 0 0 1 310,280" ${SC_LINE}/>`;
@@ -3554,7 +3966,7 @@ function scMarkup(league) {
        <div class="sc2l-rows">${scChipsList(st)}</div>
        <div class="sc2-legend">
          <span><i style="background:#2bb673"></i>${hiLabel}</span>
-         <span><i style="background:#6b7390"></i>Average</span>
+         <span><i style="background:#8a8a93"></i>Average</span>
          <span><i style="background:#d8493e"></i>${loLabel}</span>
          <span><i class="hatch"></i>Small sample (under ${SC_MIN_FGA} shots)</span>
          ${overlapZones.length ? '<span><i class="ring"></i>Matchup overlap</span>' : ''}
