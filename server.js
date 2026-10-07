@@ -357,6 +357,24 @@ function fuzzyMatchPlayer(list, fullName) {
   return match || null;
 }
 
+// Headshot id for a pick, from the stats files. Exact full-name match only —
+// fuzzyMatchPlayer falls back to last-name-only, which would put the wrong
+// person's face next to a pick; a miss just shows initials instead.
+const playerIdCache = {};
+function lookupPlayerId(league, name) {
+  const key = league + '|' + name;
+  if (key in playerIdCache) return playerIdCache[key];
+  let id = null;
+  try {
+    const st = league === 'wnba' ? loadWNBAStats() : loadNBAStats();
+    const lower = String(name || '').toLowerCase();
+    const row = (st?.playerAdvanced || []).find(p => (p.PLAYER_NAME || '').toLowerCase() === lower);
+    id = row?.PLAYER_ID ?? null;
+  } catch (_) {}
+  playerIdCache[key] = id;
+  return id;
+}
+
 // ─────────────────────────────────────────────────────
 // NBA STATS FILE LOADER — cached in memory, not re-read every request
 // ─────────────────────────────────────────────────────
@@ -4836,12 +4854,15 @@ async function computeTopPlays(league) {
   // PASS-tier signal" rule (see calcEdgeScore/verdict thresholds elsewhere).
   const withEdge = results.filter(r => Math.abs(r.edge) >= 1.0);
   withEdge.sort((a, b) => (b.confidence - a.confidence) || (Math.abs(b.edge) - Math.abs(a.edge)));
+  // One pick per player (their most confident prop) — the Top 3 was showing the same player twice.
+  const seenPlayers = new Set();
+  const onePerPlayer = withEdge.filter(r => !seenPlayers.has(r.player) && seenPlayers.add(r.player));
 
   return {
     league, generatedAt: new Date().toISOString(),
     scanned: candidates.length, evaluated: results.length,
-    topPlays: withEdge.slice(0, 3).map(r => ({
-      player: r.player, team: r.team, opponent: r.opponent,
+    topPlays: onePerPlayer.slice(0, 3).map(r => ({
+      player: r.player, playerId: lookupPlayerId(league, r.player), team: r.team, opponent: r.opponent,
       propType: r.propType, line: r.line, book: r.book,
       direction: r.edge > 0 ? 'OVER' : 'UNDER',
       projection: r.projection, edge: r.edge, confidence: r.confidence,
@@ -4873,7 +4894,7 @@ async function computeTeamPicks(league) {
     games: Object.values(games).map(g => ({
       home: g.home, away: g.away,
       picks: Object.values(g.byTeam).map(r => ({
-        team: r.team, player: r.player, opponent: r.opponent,
+        team: r.team, player: r.player, playerId: lookupPlayerId(league, r.player), opponent: r.opponent,
         propType: r.propType, line: r.line, book: r.book,
         direction: r.edge > 0 ? 'OVER' : 'UNDER',
         projection: r.projection, edge: r.edge, confidence: r.confidence,
@@ -4933,10 +4954,10 @@ async function computeFallbackProjected(league) {
 
   const data = {
     league, generatedAt: new Date().toISOString(), fallback: true,
-    top3: allPicks.slice(0, 3).map(r => ({ player: r.player, team: r.team, opponent: r.opponent, propType: r.propType, projection: r.projection, confidence: r.confidence })),
+    top3: allPicks.slice(0, 3).map(r => ({ player: r.player, playerId: lookupPlayerId(league, r.player), team: r.team, opponent: r.opponent, propType: r.propType, projection: r.projection, confidence: r.confidence })),
     games: byGame.map(g => ({
       home: g.home, away: g.away,
-      picks: Object.values(g.byTeam).map(r => ({ team: r.team, player: r.player, opponent: r.opponent, propType: r.propType, projection: r.projection, confidence: r.confidence })),
+      picks: Object.values(g.byTeam).map(r => ({ team: r.team, player: r.player, playerId: lookupPlayerId(league, r.player), opponent: r.opponent, propType: r.propType, projection: r.projection, confidence: r.confidence })),
     })),
   };
   fallbackProjectedCache[league] = { data, dateKey: today };
@@ -5209,6 +5230,7 @@ function clearAllCaches() {
   Object.keys(teamScheduleCache).forEach(k => delete teamScheduleCache[k]);
   Object.keys(propLinesCache).forEach(k => delete propLinesCache[k]);
   Object.keys(oddsEventsCache).forEach(k => delete oddsEventsCache[k]);
+  Object.keys(playerIdCache).forEach(k => delete playerIdCache[k]);
   Object.keys(injuryAbsenceCache).forEach(k => delete injuryAbsenceCache[k]);
   Object.keys(eventOddsCache).forEach(k => delete eventOddsCache[k]);
   Object.keys(wnbaGamelogCache).forEach(k => delete wnbaGamelogCache[k]);
