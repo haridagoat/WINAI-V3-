@@ -1,16 +1,57 @@
 require('dotenv').config();
 const express = require('express');
 const axios = require('axios');
-const cors = require('cors');
 const cron = require('node-cron');
 const path    = require('path');
 const { spawn } = require('child_process');
 const fs = require('fs');
+const crypto = require('crypto');
 
 const app = express();
-app.use(cors());
+// No CORS middleware — the frontend is served same-origin from this same
+// Express app (express.static below), so it never needs cross-origin
+// permission. Wide-open cors() previously let any third-party site's JS
+// call every route here, including the paid-API-backed and state-changing
+// ones, from a visitor's browser with no server-side signal it wasn't the
+// app's own frontend.
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Lightweight per-IP rate limiter — no user-account system exists to gate
+// costly routes behind, and a client-side shared secret would be visible
+// in page source anyway, so this caps blast radius by source IP instead.
+// Currently applied only to /api/analyze (see CLAUDE PROXY below), which
+// forwards straight to the paid Anthropic key with no other cost control.
+function makeRateLimiter(windowMs, max) {
+  const hits = new Map(); // ip -> { count, windowStart }
+  return (req, res, next) => {
+    const now = Date.now();
+    const entry = hits.get(req.ip);
+    if (!entry || now - entry.windowStart > windowMs) {
+      hits.set(req.ip, { count: 1, windowStart: now });
+      return next();
+    }
+    entry.count++;
+    if (entry.count > max) {
+      return res.status(429).json({ error: 'Too many requests — slow down and try again shortly.' });
+    }
+    next();
+  };
+}
+const analyzeRateLimiter = makeRateLimiter(60 * 1000, 20); // 20 req/min/IP — generous for real UI use
+
+// Strictly-increasing numeric ID generator — plain Date.now() collides
+// when two saves land in the same millisecond (e.g. a client-side loop
+// firing multiple saves back to back), which silently corrupts a later
+// update/delete-by-id into hitting whichever entry happens to be first.
+// Kept as a Number (not a random string) so it stays a drop-in replacement
+// for the existing `parseInt(id)` comparisons in the CLV/notes routes.
+let lastGeneratedId = 0;
+function nextId() {
+  const now = Date.now();
+  lastGeneratedId = now > lastGeneratedId ? now : lastGeneratedId + 1;
+  return lastGeneratedId;
+}
 
 // ─────────────────────────────────────────────────────
 // CACHE LAYER — everything lives here, read once
@@ -63,6 +104,82 @@ const ODDS_BASE     = 'https://api.the-odds-api.com/v4';
 const RAPIDAPI_HOST = 'tank01-fantasy-stats.p.rapidapi.com';
 const ESPN_BASE     = 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba';
 
+// ── ODDS API HEALTH TRACKING ────────────────────────────────────────
+// Confident picks, prop lines, and CLV/line-movement all depend entirely
+// on the-odds-api.com's quota — repeatedly exhausted this session with
+// zero visible signal anywhere in the UI (the "DATA SYNCED" badge just
+// always said healthy). Tracked passively off real traffic via an axios
+// interceptor rather than a dedicated probe call, since a probe would
+// itself burn the same scarce quota it's trying to report on.
+let oddsApiHealth = { remaining: null, exhausted: false, lastError: null, checkedAt: null };
+// Real credits spent, by kind of call, since server start — read from the
+// API's own x-requests-last header (the true cost of that exact call), so
+// "where is the quota going" is measured instead of guessed.
+const oddsUsage = { since: new Date().toISOString(), credits: 0, byCall: {} };
+axios.interceptors.response.use(
+  (response) => {
+    if (response.config?.url?.includes('the-odds-api.com')) {
+      const last = parseInt(response.headers?.['x-requests-last'], 10);
+      if (!isNaN(last)) {
+        const u = response.config.url;
+        const kind = /\/events$/.test(u) ? 'events list'
+          : /\/events\/[^/]+\/odds/.test(u) ? `event odds [${response.config.params?.markets}]` : 'other';
+        const b = oddsUsage.byCall[kind] || (oddsUsage.byCall[kind] = { calls: 0, credits: 0 });
+        b.calls++; b.credits += last; oddsUsage.credits += last;
+      }
+      const remaining = response.headers?.['x-requests-remaining'];
+      if (remaining != null) {
+        const n = parseInt(remaining, 10);
+        oddsApiHealth = { remaining: n, exhausted: n <= 0, lastError: null, checkedAt: new Date().toISOString() };
+      }
+    }
+    return response;
+  },
+  (error) => {
+    if (error.config?.url?.includes('the-odds-api.com')) {
+      oddsApiHealth = { ...oddsApiHealth, lastError: error.response?.data?.message || error.message, checkedAt: new Date().toISOString() };
+    }
+    return Promise.reject(error);
+  }
+);
+
+// ── SHARED, CACHED ODDS FETCHES ─────────────────────────────────────
+// Odds API cost: the events list is free; an event-odds call costs one credit
+// per market per region. The expensive mistake was re-downloading the SAME
+// game's odds over and over — e.g. the slate scan fetched game totals/spread
+// once per PICK (2 credits each), so 14 picks in one game paid 28 credits for
+// one set of numbers. Everything below dedupes by game (and shares in-flight
+// requests), with a TTL short enough that lines stay fresh.
+const oddsEventsCache = {};   // sportKey -> { data, ts }
+const eventOddsCache  = {};   // sportKey|eventId|markets -> { promise, ts }
+const ODDS_EVENTS_TTL = 5 * 60 * 1000;
+const GAME_CONTEXT_ODDS_TTL = 20 * 60 * 1000;
+async function getOddsEvents(sportKey) {
+  const c = oddsEventsCache[sportKey];
+  if (c && Date.now() - c.ts < ODDS_EVENTS_TTL) return c.data;
+  const res = await axios.get(`${ODDS_BASE}/sports/${sportKey}/events`, { params: { apiKey: process.env.ODDS_API_KEY }, timeout: 8000 });
+  oddsEventsCache[sportKey] = { data: res.data || [], ts: Date.now() };
+  return oddsEventsCache[sportKey].data;
+}
+function getEventOdds(sportKey, eventId, markets, ttlMs) {
+  const key = `${sportKey}|${eventId}|${markets}`;
+  const c = eventOddsCache[key];
+  if (c && Date.now() - c.ts < ttlMs) return c.promise;
+  const promise = axios.get(`${ODDS_BASE}/sports/${sportKey}/events/${eventId}/odds`, {
+    params: { apiKey: process.env.ODDS_API_KEY, regions: 'us', markets, oddsFormat: 'american' }, timeout: 8000,
+  }).then(r => r.data.bookmakers || []);
+  eventOddsCache[key] = { promise, ts: Date.now() };
+  promise.catch(() => { delete eventOddsCache[key]; }); // never cache a failure
+  return promise;
+}
+// Finds the one game between two teams by last word ("Sparks", "76ers").
+// Words under 3 letters never match ("la" is inside "atlanta dream").
+function findEventForTeams(events, teamA, teamB) {
+  const last = (t) => (t || '').toLowerCase().trim().split(' ').pop();
+  const has = (ev, t) => { const w = last(t); return w.length >= 3 && ((ev.home_team || '').toLowerCase().endsWith(w) || (ev.away_team || '').toLowerCase().endsWith(w)); };
+  return (events || []).find(ev => has(ev, teamA) && (!teamB || has(ev, teamB))) || null;
+}
+
 // ESPN team abbreviation map — covers all 30 teams + common aliases
 const ESPN_TEAM_MAP = {
   'atlanta hawks': 'atl', 'hawks': 'atl',
@@ -100,6 +217,97 @@ const ESPN_TEAM_MAP = {
 function resolveESPNTeam(teamName) {
   const lower = teamName.toLowerCase().trim();
   return ESPN_TEAM_MAP[lower] || null;
+}
+// Reverse of ESPN_TEAM_MAP (abbr -> canonical full name) — derived, not
+// hand-duplicated, by keeping the longest alias mapped to each
+// abbreviation (the full team name is always the longest key), then
+// title-cased since ESPN_TEAM_MAP's keys are all lowercase (verified
+// against all 30 teams — this naive title-case produces the correct
+// display name for every one of them, including "76ers").
+const ESPN_ABBR_TO_FULLNAME = {};
+for (const [name, abbr] of Object.entries(ESPN_TEAM_MAP)) {
+  if (!ESPN_ABBR_TO_FULLNAME[abbr] || name.length > ESPN_ABBR_TO_FULLNAME[abbr].length) {
+    ESPN_ABBR_TO_FULLNAME[abbr] = name.replace(/\w\S*/g, w => w.charAt(0).toUpperCase() + w.slice(1));
+  }
+}
+function resolveNBAFullName(teamName) {
+  return ESPN_ABBR_TO_FULLNAME[resolveESPNTeam(teamName || '')] || teamName;
+}
+
+// ── NBA PLAYER INDEX — name -> {id, team, position} built from all 30
+// rosters via ESPN. fetchPlayerStats' nba_api bridge path doesn't return a
+// team name at all, and previously relied solely on a BallDontLie lookup
+// to fill it in — a single point of failure with no fallback, and BDL has
+// been persistently rate-limited this session, silently leaving
+// player.team as the literal string "Unknown" (which in turn defeats the
+// same-team input-validation guard, since there's nothing real to compare
+// against). ESPN rosters need no API key and have been reliable all
+// session, so this gives fetchPlayerStats a real fallback instead of one
+// fragile dependency. Parallelized (unlike the WNBA version's sequential
+// loop) since 30 teams sequentially would be noticeably slower than
+// WNBA's 15. ──────────────────────────────────────────────────────
+let nbaPlayerIndex     = {};
+let lastNbaIndexBuild  = 0;
+const NBA_INDEX_TTL    = 3 * 60 * 60 * 1000; // 3h
+
+async function buildNBAPlayerIndex() {
+  const now = Date.now();
+  if (Object.keys(nbaPlayerIndex).length && (now - lastNbaIndexBuild) < NBA_INDEX_TTL) {
+    return nbaPlayerIndex;
+  }
+  const abbrs = [...new Set(Object.values(ESPN_TEAM_MAP))];
+  const index = {};
+  await Promise.all(abbrs.map(async (abbr) => {
+    try {
+      const res = await axios.get(`${ESPN_BASE}/teams/${abbr}/roster`, { timeout: 8000 });
+      const raw = res.data?.athletes || [];
+      const isGrouped = raw.length > 0 && Array.isArray(raw[0]?.items);
+      const playerList = isGrouped ? raw.flatMap(g => g.items || []) : raw.filter(p => p.fullName);
+      for (const p of playerList) {
+        if (!p.fullName || !p.id) continue;
+        index[p.fullName.toLowerCase()] = {
+          id: p.id, name: p.fullName, teamAbbr: abbr,
+          team: ESPN_ABBR_TO_FULLNAME[abbr] || abbr,
+          position: p.position?.abbreviation || 'N/A',
+        };
+      }
+    } catch (_) { /* skip this team, index still usable with the rest */ }
+  }));
+  if (Object.keys(index).length) {
+    nbaPlayerIndex    = index;
+    lastNbaIndexBuild = now;
+    console.log(`[ESPN] NBA player index built: ${Object.keys(index).length} players across ${abbrs.length} teams`);
+  }
+  return nbaPlayerIndex;
+}
+
+async function resolveNBAPlayer(playerName) {
+  await buildNBAPlayerIndex();
+  const lower = playerName.toLowerCase().trim();
+  if (nbaPlayerIndex[lower]) return nbaPlayerIndex[lower];
+  // Every query token must appear as a whole token in the candidate's
+  // name — not a bare substring, which could match an unrelated player
+  // sharing a name fragment instead of an honest "not found".
+  const queryTokens = new Set(lower.split(' ').filter(Boolean));
+  const match = Object.values(nbaPlayerIndex).find(p => {
+    const nameTokens = new Set(p.name.toLowerCase().split(' '));
+    return [...queryTokens].every(t => nameTokens.has(t));
+  });
+  return match || null;
+}
+
+// Full-name match for sportsbook outcome descriptions — last-name-only
+// matching produces real collisions on current rosters (e.g. OKC carries
+// both Jalen Williams and Jaylin Williams; a last-name search for either
+// one pulls both players' odds into the same result).
+function matchesOutcomeName(description, playerName) {
+  const descLower = (description || '').toLowerCase();
+  const nameLower = playerName.toLowerCase();
+  if (!descLower || !nameLower) return false;
+  if (descLower === nameLower) return true;
+  const parts = nameLower.split(' ').filter(Boolean);
+  const first = parts[0], last = parts[parts.length - 1];
+  return descLower.includes(first) && descLower.includes(last);
 }
 
 // ─────────────────────────────────────────────────────
@@ -203,6 +411,7 @@ function loadNBAStats() {
     teamDefCut:         load('playtype_cut_team_def.json'),
     teamDefHandoff:     load('playtype_handoff_team_def.json'),
     teamDefOffScreen:   load('playtype_offscreen_team_def.json'),
+    teamDefPutbacks:    load('playtype_putbacks_team_def.json'),
     // Tracking
     trackingDrives:     load('tracking_drives_player.json'),
     trackingCatchShoot: load('tracking_catchshoot_player.json'),
@@ -478,6 +687,152 @@ function getTeamPositionDefense(league, teamName) {
   return out;
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// POSITION-CATEGORY DEFENSE — "how many points/rebounds/assists/threes
+// does this team allow to Guards/Wings/Bigs" — NOT a stat stats.nba.com's
+// API exposes directly (its position-defense endpoint only covers FG%,
+// see getTeamPositionDefense above). Built instead from real box scores:
+// for a team's recent completed games, pull the opponent's box score,
+// tag every opposing player who appeared by their position that game,
+// and sum what each position group actually did against this defense.
+// Works for both leagues (ESPN's boxscore format is shared), unlike the
+// FG%-only version above which is NBA-tracking-only.
+// ═══════════════════════════════════════════════════════════════════
+const NBA_TEAM_NAMES = [
+  'Atlanta Hawks','Boston Celtics','Brooklyn Nets','Charlotte Hornets','Chicago Bulls',
+  'Cleveland Cavaliers','Dallas Mavericks','Denver Nuggets','Detroit Pistons','Golden State Warriors',
+  'Houston Rockets','Indiana Pacers','LA Clippers','Los Angeles Lakers','Memphis Grizzlies',
+  'Miami Heat','Milwaukee Bucks','Minnesota Timberwolves','New Orleans Pelicans','New York Knicks',
+  'Oklahoma City Thunder','Orlando Magic','Philadelphia 76ers','Phoenix Suns','Portland Trail Blazers',
+  'Sacramento Kings','San Antonio Spurs','Toronto Raptors','Utah Jazz','Washington Wizards',
+];
+function positionGroupOf(abbr) {
+  for (const [label, list] of Object.entries(POSITION_GROUPS)) if (list.includes(abbr)) return label;
+  return null;
+}
+
+const posCategoryCache = {}; // `${league}:${abbr}` -> { data, ts }
+const POS_CATEGORY_TTL = 12 * 60 * 60 * 1000; // 12h — box scores for finished games never change
+
+async function computeTeamPositionCategoryDefense(league, teamName, numGames = 10) {
+  const abbr = league === 'wnba' ? resolveWNBATeam(teamName) : resolveESPNTeam(teamName);
+  if (!abbr) return null;
+  const cacheKey = `${league}:${abbr}:${numGames}`;
+  const cached = posCategoryCache[cacheKey];
+  if (cached && (Date.now() - cached.ts) < POS_CATEGORY_TTL) return cached.data;
+
+  const { finals } = await fetchTeamSeasonFinals(league, teamName);
+  const recent = finals.slice(-numGames);
+  if (!recent.length) return null;
+
+  const base = league === 'wnba' ? ESPN_BASE_WNBA : ESPN_BASE;
+  const totals = { Guards: { pts:0, reb:0, ast:0, fg3m:0 }, Wings: { pts:0, reb:0, ast:0, fg3m:0 }, Bigs: { pts:0, reb:0, ast:0, fg3m:0 } };
+  let gamesUsed = 0;
+
+  const boxscores = await Promise.allSettled(recent.map(e =>
+    axios.get(`${base}/summary`, { params: { event: e.id }, timeout: 8000 })
+  ));
+
+  for (const result of boxscores) {
+    if (result.status !== 'fulfilled') continue;
+    const players = result.value.data?.boxscore?.players || [];
+    // The OPPONENT's block — whichever team in this boxscore is NOT us —
+    // is what this defense actually allowed that game.
+    const oppBlock = players.find(p => (p.team?.abbreviation || '').toLowerCase() !== abbr);
+    const stats = oppBlock?.statistics?.[0];
+    const athletes = stats?.athletes;
+    if (!athletes) continue;
+    const labels = stats.labels || [];
+    const idx = { pts: labels.indexOf('PTS'), reb: labels.indexOf('REB'), ast: labels.indexOf('AST'), fg3: labels.indexOf('3PT') };
+    if (idx.pts < 0) continue; // unexpected boxscore shape — skip rather than credit garbage numbers
+
+    let gameHadData = false;
+    for (const a of athletes) {
+      const posAbbr = a.athlete?.position?.abbreviation;
+      const group = positionGroupOf(posAbbr);
+      if (!group || !a.stats) continue;
+      const pts = parseFloat(a.stats[idx.pts]) || 0;
+      const reb = idx.reb >= 0 ? parseFloat(a.stats[idx.reb]) || 0 : 0;
+      const ast = idx.ast >= 0 ? parseFloat(a.stats[idx.ast]) || 0 : 0;
+      const fg3m = idx.fg3 >= 0 ? parseInt((a.stats[idx.fg3] || '0-0').split('-')[0], 10) || 0 : 0;
+      totals[group].pts += pts; totals[group].reb += reb; totals[group].ast += ast; totals[group].fg3m += fg3m;
+      gameHadData = true;
+    }
+    if (gameHadData) gamesUsed++;
+  }
+  if (!gamesUsed) return null;
+
+  const data = {
+    gamesAnalyzed: gamesUsed,
+    byPosition: Object.fromEntries(Object.entries(totals).map(([group, t]) => [group, {
+      pts:  parseFloat((t.pts  / gamesUsed).toFixed(1)),
+      reb:  parseFloat((t.reb  / gamesUsed).toFixed(1)),
+      ast:  parseFloat((t.ast  / gamesUsed).toFixed(1)),
+      fg3m: parseFloat((t.fg3m / gamesUsed).toFixed(1)),
+    }])),
+  };
+  posCategoryCache[cacheKey] = { data, ts: Date.now() };
+  return data;
+}
+
+// League-wide pass so a single team's numbers can be shown with a real
+// rank (#4/15, etc.), not just in isolation. Expensive on a cold cache
+// (up to ~30 teams × several box-score fetches each) — cached a full day
+// so this heavy pass only actually runs once per league per day; any
+// team already warmed by an individual matchup lookup that same day is
+// reused instead of re-fetched via the per-team cache above.
+const leaguePosCategoryCache = {}; // league -> { data, dateKey }
+async function computeLeaguePositionCategoryRanks(league) {
+  const today = getToday();
+  const cached = leaguePosCategoryCache[league];
+  if (cached && cached.dateKey === today) return cached.data;
+
+  const teamNames = league === 'wnba' ? Object.values(WNBA_ABBR_TO_NAME) : NBA_TEAM_NAMES;
+  // Fewer games for the full-league sweep than a single-matchup lookup —
+  // keeps a cold-cache pass from taking minutes; still ~2 weeks of games.
+  const perTeam = await Promise.all(teamNames.map(name => computeTeamPositionCategoryDefense(league, name, 6).catch(() => null)));
+
+  const byTeam = {};
+  teamNames.forEach((name, i) => { if (perTeam[i]) byTeam[name] = perTeam[i]; });
+
+  const ranks = {}; // team -> { Guards: {pts: {value, rank, of}, ...}, ... }
+  const groups = ['Guards', 'Wings', 'Bigs'], cats = ['pts', 'reb', 'ast', 'fg3m'];
+  const teamsWithData = Object.keys(byTeam);
+  for (const group of groups) {
+    for (const cat of cats) {
+      // Fewer allowed = better defense = rank #1, same convention as the
+      // rest of the app's "#1 = best defense" stat-table labeling.
+      const sorted = [...teamsWithData].sort((a, b) => byTeam[a].byPosition[group][cat] - byTeam[b].byPosition[group][cat]);
+      sorted.forEach((name, i) => {
+        ranks[name] = ranks[name] || {};
+        ranks[name][group] = ranks[name][group] || {};
+        ranks[name][group][cat] = { value: byTeam[name].byPosition[group][cat], rank: i + 1, of: sorted.length };
+      });
+    }
+  }
+
+  const data = { league, teams: ranks, generatedAt: new Date().toISOString() };
+  leaguePosCategoryCache[league] = { data, dateKey: today };
+  return data;
+}
+
+app.get('/api/position-category-defense', async (req, res) => {
+  const league = req.query.league === 'wnba' ? 'wnba' : 'nba';
+  const team = req.query.team;
+  if (!team) return res.status(400).json({ error: 'team required' });
+  try {
+    const [own, leagueRanks] = await Promise.all([
+      computeTeamPositionCategoryDefense(league, team, 10),
+      computeLeaguePositionCategoryRanks(league),
+    ]);
+    if (!own) return res.json({ available: false });
+    const rankInfo = leagueRanks.teams[team] || null;
+    res.json({ available: true, team, gamesAnalyzed: own.gamesAnalyzed, byPosition: own.byPosition, ranks: rankInfo, leagueSize: Object.keys(leagueRanks.teams).length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ESPN's site API team-schedule endpoint carries real box scores for every
 // completed game this season — used for both "last 5 games" and real H2H
 // results (no fabricated betting/ATS records; those aren't available from
@@ -518,33 +873,36 @@ async function fetchTeamSeasonFinals(league, teamName) {
   return { abbr, finals };
 }
 
+// Standalone (not a closure) so getTeamGameMargins below can reuse the
+// exact same real score/opponent extraction instead of duplicating it.
+function mapTeamScheduleGame(e, abbr) {
+  const c = e.competitions[0];
+  const home = c.competitors.find(x => x.homeAway === 'home');
+  const away = c.competitors.find(x => x.homeAway === 'away');
+  const isHome = (home.team.abbreviation || '').toLowerCase() === abbr;
+  const own = isHome ? home : away;
+  const opp = isHome ? away : home;
+  const ownScore = Number(own.score?.value ?? own.score ?? 0);
+  const oppScore = Number(opp.score?.value ?? opp.score ?? 0);
+  // Real per-game points leader — already present on the schedule payload
+  // for the team whose schedule this is (own), no extra API call needed.
+  const ptsLeader = (own.leaders || []).find(l => l.name === 'points')?.leaders?.[0] || null;
+  const highScorer = ptsLeader ? { name: ptsLeader.athlete?.displayName || null, pts: ptsLeader.displayValue || null } : null;
+  return {
+    date: e.date,
+    opponent: opp.team.displayName,
+    isHome, ownScore, oppScore,
+    win: ownScore > oppScore,
+    result: ownScore > oppScore ? 'W' : 'L',
+    highScorer,
+  };
+}
+
 async function fetchTeamRecentGames(league, teamName, oppName) {
   const { abbr, finals } = await fetchTeamSeasonFinals(league, teamName);
   if (!abbr) return { last5: [], h2h: [] };
 
-  const mapGame = (e) => {
-    const c = e.competitions[0];
-    const home = c.competitors.find(x => x.homeAway === 'home');
-    const away = c.competitors.find(x => x.homeAway === 'away');
-    const isHome = (home.team.abbreviation || '').toLowerCase() === abbr;
-    const own = isHome ? home : away;
-    const opp = isHome ? away : home;
-    const ownScore = Number(own.score?.value ?? own.score ?? 0);
-    const oppScore = Number(opp.score?.value ?? opp.score ?? 0);
-    // Real per-game points leader — already present on the schedule payload
-    // for the team whose schedule this is (own), no extra API call needed.
-    const ptsLeader = (own.leaders || []).find(l => l.name === 'points')?.leaders?.[0] || null;
-    const highScorer = ptsLeader ? { name: ptsLeader.athlete?.displayName || null, pts: ptsLeader.displayValue || null } : null;
-    return {
-      date: e.date,
-      opponent: opp.team.displayName,
-      isHome, ownScore, oppScore,
-      win: ownScore > oppScore,
-      result: ownScore > oppScore ? 'W' : 'L',
-      highScorer,
-    };
-  };
-
+  const mapGame = (e) => mapTeamScheduleGame(e, abbr);
   const last5 = finals.slice(-5).map(mapGame);
   let h2h = [];
   if (oppName) {
@@ -553,6 +911,93 @@ async function fetchTeamRecentGames(league, teamName, oppName) {
                 .map(mapGame);
   }
   return { last5, h2h };
+}
+
+// Real per-game margins for a team's finished games — lets a player's
+// game log be tagged with confirmed blowouts (see tagBlowoutGames) instead
+// of only inferring "unusual" from the stat line itself, which can miss a
+// run of real blowouts (the reference point itself gets skewed) or
+// misfire on a player whose minutes are just naturally volatile.
+async function getTeamGameMargins(league, teamName) {
+  const { abbr, finals } = await fetchTeamSeasonFinals(league, teamName);
+  if (!abbr) return [];
+  return finals.map(e => mapTeamScheduleGame(e, abbr));
+}
+
+const BLOWOUT_MARGIN = 20; // standard blowout threshold
+
+// nba_api's MATCHUP field (stored directly as the `opponent` field on NBA
+// game logs via the bridge — see last5Games/last10Games/gameLog20 above)
+// is "TEAM vs. OPP" / "TEAM @ OPP" in nba_api's own tricodes, e.g. "PHX
+// vs. PHI" — NOT a full team name, and NOT the same abbreviation scheme as
+// ESPN_TEAM_MAP above (nba_api uses GSW/NOP/NYK/SAS/UTA/WAS where ESPN
+// uses gs/no/ny/sa/utah/wsh). Confirmed live: without resolving this,
+// tagBlowoutGames' substring match against ESPN's full display names
+// never matched a single NBA game, silently no-op'ing blowout detection
+// for the whole league. WNBA's opponent field is already a full ESPN
+// display name and doesn't need this.
+const NBA_API_ABBR_TO_NAME = {
+  atl:'Atlanta Hawks', bos:'Boston Celtics', bkn:'Brooklyn Nets', cha:'Charlotte Hornets',
+  chi:'Chicago Bulls', cle:'Cleveland Cavaliers', dal:'Dallas Mavericks', den:'Denver Nuggets',
+  det:'Detroit Pistons', gsw:'Golden State Warriors', hou:'Houston Rockets', ind:'Indiana Pacers',
+  lac:'LA Clippers', lal:'Los Angeles Lakers', mem:'Memphis Grizzlies', mia:'Miami Heat',
+  mil:'Milwaukee Bucks', min:'Minnesota Timberwolves', nop:'New Orleans Pelicans', nyk:'New York Knicks',
+  okc:'Oklahoma City Thunder', orl:'Orlando Magic', phi:'Philadelphia 76ers', phx:'Phoenix Suns',
+  por:'Portland Trail Blazers', sac:'Sacramento Kings', sas:'San Antonio Spurs', tor:'Toronto Raptors',
+  uta:'Utah Jazz', was:'Washington Wizards',
+};
+
+// Tags each of a player's recent games with `_blowout`/`_margin` when it
+// can be confidently matched to a real final score. Matches by opponent
+// name (reliable, present on both sides) with nearest-date only as a
+// tiebreaker for a team met more than once in the window — deliberately
+// NOT matching on date strings directly: confirmed live that the team
+// schedule's dates are UTC event timestamps while a player's game-log
+// dates are plain local game-days, and naive truncation can land a late
+// game on the wrong calendar day.
+function tagBlowoutGames(playerGames, teamMargins) {
+  if (!teamMargins?.length || !playerGames?.length) return playerGames;
+  return playerGames.map(g => {
+    const oppRaw = (g.opponent || '').trim();
+    if (!oppRaw) return g;
+    // nba_api MATCHUP format — resolve the trailing tricode to a full team
+    // name before matching. Anything else (full display names, as ESPN
+    // sources already provide) falls through to the plain substring match.
+    const abbrMatch = oppRaw.match(/(?:vs\.?|@)\s*([A-Za-z]{2,4})$/i);
+    const resolvedName = abbrMatch ? NBA_API_ABBR_TO_NAME[abbrMatch[1].toLowerCase()] : null;
+    const oppLower = (resolvedName || oppRaw).toLowerCase();
+    const candidates = teamMargins.filter(t => {
+      const tOpp = (t.opponent || '').toLowerCase();
+      return tOpp && (tOpp.includes(oppLower) || oppLower.includes(tOpp));
+    });
+    if (!candidates.length) return g;
+    let match = candidates[0];
+    if (candidates.length > 1 && g.date) {
+      const target = new Date(g.date + 'T12:00:00Z').getTime();
+      let bestDiff = Infinity;
+      for (const c of candidates) {
+        const diff = Math.abs(new Date(c.date).getTime() - target);
+        if (diff < bestDiff) { bestDiff = diff; match = c; }
+      }
+    }
+    const margin = Math.abs(match.ownScore - match.oppScore);
+    return margin >= BLOWOUT_MARGIN ? { ...g, _blowout: true, _margin: margin } : g;
+  });
+}
+
+// Shallow-copies playerStats with last5Games/last10Games blowout-tagged —
+// NOT a mutation, since fetchPlayerStats/fetchWNBAPlayerStats results are
+// cached and shared across requests; mutating in place would leak one
+// request's tagging into every other request that hits the same cache
+// entry. Only these two arrays need tagging: they're what
+// projectMinutes/calcUsageInflation/winsorizeGames actually read.
+function withBlowoutTags(playerStats, teamMargins) {
+  if (!playerStats || !teamMargins?.length) return playerStats;
+  return {
+    ...playerStats,
+    last5Games: tagBlowoutGames(playerStats.last5Games, teamMargins),
+    last10Games: tagBlowoutGames(playerStats.last10Games, teamMargins),
+  };
 }
 
 // Real "projected starters" — no official pregame lineup feed exists for
@@ -848,7 +1293,29 @@ async function fetchPlayerStats(playerName) {
       _bridgeL10: bridgeData.l10,
     };
 
-    // Supplement with BDL just for team/position/height info
+    // Team/position: ESPN first, BDL only fills in id/height. ESPN's live
+    // roster index is checked against BDL FIRST here on purpose — BDL was
+    // originally the sole source for this, but two separate real problems
+    // were confirmed live: (1) BDL has been persistently rate-limited this
+    // session, and (2) even when it responds, its own underlying team data
+    // can be stale/wrong — confirmed directly, BDL's database currently
+    // returns "LeBron James -> Philadelphia 76ers", which is simply
+    // incorrect. A silently wrong team is worse than an honest "Unknown":
+    // it defeats the same-team input-validation guard downstream (nothing
+    // real to compare the typed opponent against) without even the
+    // visible symptom that would prompt someone to notice. ESPN needs no
+    // key and has been reliable all session, so it's authoritative for
+    // team/position now; BDL is kept only for id/height, which ESPN's
+    // roster payload doesn't carry.
+    try {
+      const espnMatch = await resolveNBAPlayer(playerName);
+      if (espnMatch) {
+        result.player.id       = espnMatch.id;
+        result.player.team     = espnMatch.team;
+        result.player.position = espnMatch.position !== 'N/A' ? espnMatch.position : result.player.position;
+      }
+    } catch (_) { /* ESPN index unavailable — BDL below still gets a shot */ }
+
     try {
       const corrected = BDL_NAME_MAP[playerName.toLowerCase()] || playerName;
       const searchRes = await axios.get(`${BALLDONTLIE}/players`, {
@@ -859,11 +1326,7 @@ async function fetchPlayerStats(playerName) {
       let bdlPlayers = searchRes.data.data || [];
       // Real bug found live: BDL's search endpoint doesn't match a combined
       // "First Last" query at all (confirmed directly — "LeBron James"
-      // returns zero results, but "LeBron" alone finds him) — this was
-      // silently leaving team/position/height as "Unknown"/"?" for
-      // essentially every player on this path. The BDL-fallback path
-      // elsewhere already has this same last-name-only fallback; this path
-      // was missing it.
+      // returns zero results, but "LeBron" alone finds him).
       if (!bdlPlayers.length) {
         const lastName = corrected.split(' ').pop().replace(/[^a-zA-Z]/g, '');
         if (lastName.length >= 3) {
@@ -880,17 +1343,23 @@ async function fetchPlayerStats(playerName) {
       if (bdlPlayers.length) {
         const p = fuzzyMatchPlayer(bdlPlayers.map(p => ({
           ...p, name: `${p.first_name} ${p.last_name}`
-        })), corrected) || bdlPlayers[0];
-        result.player.id       = p.id;
-        result.player.name     = `${p.first_name} ${p.last_name}`;
-        result.player.team     = p.team?.full_name || 'Unknown';
-        result.player.position = p.position || 'Unknown';
-        // BDL's current API returns a single combined "height" string
-        // (e.g. "6-9"), not separate height_feet/height_inches fields —
-        // the old code was written against a schema BDL no longer uses.
-        result.player.height   = p.height ? p.height.replace('-', "' ") + '"' : '?';
+        })), corrected);
+        // Only trust an actual name match, not "whichever came back
+        // first" — the last-name-only search above can return many
+        // unrelated players sharing that surname.
+        if (p) {
+          result.player.id = p.id;
+          // team/position already came from ESPN above where available;
+          // only use BDL's if ESPN's index missed this player entirely.
+          if (result.player.team === 'Unknown')     result.player.team     = p.team?.full_name || 'Unknown';
+          if (result.player.position === 'Unknown') result.player.position = p.position || 'Unknown';
+          // BDL's current API returns a single combined "height" string
+          // (e.g. "6-9"), not separate height_feet/height_inches fields —
+          // the old code was written against a schema BDL no longer uses.
+          result.player.height = p.height ? p.height.replace('-', "' ") + '"' : '?';
+        }
       }
-    } catch (_) { /* BDL team lookup optional */ }
+    } catch (_) { /* BDL supplement optional */ }
 
     playerStatsCache[playerName] = result;
     lastPlayerStatsFetch[playerName] = Date.now();
@@ -1209,7 +1678,7 @@ async function fetchLineups() {
 const propLinesCache = {};
 const PROP_LINES_TTL = 3 * 60 * 1000;
 
-async function fetchPropLines(playerName, propType) {
+async function fetchPropLines(playerName, propType, opts = {}) {
   const cacheKey = `nba:${playerName}:${propType}`;
   const cached = propLinesCache[cacheKey];
   if (cached && (Date.now() - cached.ts) < PROP_LINES_TTL) return cached.data;
@@ -1222,26 +1691,23 @@ async function fetchPropLines(playerName, propType) {
   };
   try {
     const market = propMap[propType] || 'player_points';
-    const eventsRes = await axios.get(`${ODDS_BASE}/sports/basketball_nba/events`, {
-      params: { apiKey: process.env.ODDS_API_KEY },
-      timeout: 8000
-    });
+    const events = await getOddsEvents('basketball_nba');
 
     const lines = {};
-    const lastName = playerName.toLowerCase().split(' ').pop();
 
-    // Run event lookups in parallel with a 5-event cap and timeout
-    const eventSlice = (eventsRes.data || []).slice(0, 5);
+    // When the opponent is known, fetch ONLY that game (1 credit). The old
+    // behavior — odds for the first 5 listed games — cost 5 credits per
+    // analysis and mostly downloaded other teams' players. Falls back to it
+    // only when the game can't be identified.
+    const target = opts.opponent ? findEventForTeams(events, opts.opponent, opts.playerTeam) : null;
+    const eventSlice = target ? [target] : events.slice(0, 5);
     await Promise.allSettled(eventSlice.map(async event => {
       try {
-        const oddsRes = await axios.get(`${ODDS_BASE}/sports/basketball_nba/events/${event.id}/odds`, {
-          params: { apiKey: process.env.ODDS_API_KEY, regions: 'us', markets: market, oddsFormat: 'american' },
-          timeout: 6000
-        });
-        for (const bm of (oddsRes.data.bookmakers || [])) {
+        const bookmakers = await getEventOdds('basketball_nba', event.id, market, PROP_LINES_TTL);
+        for (const bm of bookmakers) {
           for (const mkt of (bm.markets || [])) {
             for (const o of (mkt.outcomes || [])) {
-              if (o.description?.toLowerCase().includes(lastName)) {
+              if (matchesOutcomeName(o.description, playerName)) {
                 if (!lines[bm.title]) lines[bm.title] = {};
                 lines[bm.title][o.name] = { point: o.point, price: o.price };
               }
@@ -1251,17 +1717,36 @@ async function fetchPropLines(playerName, propType) {
       } catch (_) {}
     }));
 
-    let softestLine = null, softestBook = null;
-    for (const [book, data] of Object.entries(lines)) {
-      const ol = data['Over']?.point;
-      if (ol && (!softestLine || ol < softestLine)) { softestLine = ol; softestBook = book; }
-    }
-    const result = { lines, softestLine, softestBook, market };
+    const result = { lines, market, ...consensusFromLines(lines) };
     propLinesCache[cacheKey] = { data: result, ts: Date.now() };
     return result;
   } catch (err) {
     return { error: err.message };
   }
+}
+
+// Shared by the NBA and WNBA versions of fetchPropLines — softest (lowest)
+// Over line/book for display, PLUS the median line across every book
+// (consensus, closer to "what the real market thinks" than any one book)
+// and the softest book's actual prices, so real EV/Kelly can be computed
+// against them instead of just the point spread from the projection.
+function consensusFromLines(lines) {
+  let softestLine = null, softestBook = null;
+  for (const [book, data] of Object.entries(lines)) {
+    const ol = data['Over']?.point;
+    if (ol != null && (softestLine == null || ol < softestLine)) { softestLine = ol; softestBook = book; }
+  }
+  const overPoints = Object.values(lines).map(d => d['Over']?.point).filter(p => p != null).sort((a, b) => a - b);
+  let consensusLine = null;
+  if (overPoints.length) {
+    const mid = Math.floor(overPoints.length / 2);
+    consensusLine = parseFloat((overPoints.length % 2 ? overPoints[mid] : (overPoints[mid - 1] + overPoints[mid]) / 2).toFixed(1));
+  }
+  const softest = (softestBook && lines[softestBook]) || {};
+  return {
+    softestLine, softestBook, consensusLine, bookCount: overPoints.length,
+    overPrice: softest['Over']?.price ?? null, underPrice: softest['Under']?.price ?? null,
+  };
 }
 
 // ─────────────────────────────────────────────────────
@@ -1333,22 +1818,57 @@ function shrink(recentValue, baselineValue, n, k = 8) {
   return recentValue * weight + baselineValue * (1 - weight);
 }
 
-function calcPaceAdj(proj, oppPace, playerTeamPace, propType, league = 'nba') {
-  if (!proj) return proj;
-  // Props where pace has minimal effect — skip adjustment
-  const PACE_NEUTRAL = ['3pm', 'steals', 'blocks'];
-  if (PACE_NEUTRAL.includes(propType)) return proj;
+// Caps each game's value to within a band around the player's own recent
+// median before it gets averaged in. Real case this fixes: a normally
+// ~8min/game bench player gets 25 garbage-time minutes in one blowout —
+// averaged raw, that one game swings both the minutes baseline and the
+// short-term trend signal hard, projecting a role change that isn't real.
+// Capped relative to the player's OWN median (not a league-wide number)
+// so it works the same way for a deep bench piece and a 35min starter —
+// still counts as "elevated," just can't single-handedly dominate a
+// small sample. Symmetric, so it equally guards against the inverse (a
+// normal starter pulled early in a blowout dragging the average down).
+function winsorizeGames(games, key) {
+  if ((games || []).length < 3) return (games || []).map(g => parseFloat(g[key]) || 0); // too few games to tell an outlier from real signal
+  const rows = games.map(g => ({ v: parseFloat(g[key]) || 0, blowout: !!g._blowout }));
+  // Median computed from confirmed-non-blowout games when there are
+  // enough of them, so a run of real blowouts doesn't drag the reference
+  // point itself off — falls back to using everyone if too few clean
+  // games remain to get a meaningful median from.
+  const cleanVals = rows.filter(r => !r.blowout).map(r => r.v);
+  const medianSource = cleanVals.length >= 3 ? cleanVals : rows.map(r => r.v);
+  const sorted = [...medianSource].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  const cushion = Math.max(median * 0.5, 3); // floor so a low-minutes player isn't frozen at their median
+  const lo = Math.max(0, median - cushion), hi = median + cushion;
+  // A CONFIRMED blowout (real final margin, not just a value that looks
+  // unusual) gets clipped straight to the median instead of the softer
+  // cushion — we know for certain that game's context was atypical,
+  // not guessing from the stat line alone.
+  return rows.map(r => r.blowout ? median : Math.max(lo, Math.min(hi, r.v)));
+}
 
+// Props where pace has minimal effect — skip adjustment
+const PACE_NEUTRAL = ['3pm', 'steals', 'blocks'];
+// Shared by calcPaceAdj (general path) and the opportunity/efficiency
+// decomposition (buildProjection's canDecomposePoints branch), which used
+// to duplicate this exact formula inline — any future tuning here now
+// reaches both instead of silently desyncing them.
+function getPaceMultiplier(oppPace, playerTeamPace, propType, league = 'nba') {
+  if (PACE_NEUTRAL.includes(propType)) return 1;
   const leagueAvgPace = getLeagueBaselines(league).pace;
   // Use blended pace (avg of both teams) vs league average
   const opp = parseFloat(oppPace) || leagueAvgPace;
   const own = parseFloat(playerTeamPace) || leagueAvgPace;
   const blended = (opp + own) / 2;
-
   // Linear multiplier capped at ±8% — more accurate than sqrt dampening
   const raw = (blended - leagueAvgPace) / leagueAvgPace;
-  const multiplier = 1 + Math.max(-0.08, Math.min(0.08, raw));
-  return proj * multiplier;
+  return 1 + Math.max(-0.08, Math.min(0.08, raw));
+}
+function calcPaceAdj(proj, oppPace, playerTeamPace, propType, league = 'nba') {
+  if (!proj) return proj;
+  return proj * getPaceMultiplier(oppPace, playerTeamPace, propType, league);
 }
 
 function calcDvPCoeff(oppDefRating, playerPosition, playerPlaytypes, oppDefPlaytypes, propType, league = 'nba') {
@@ -1356,7 +1876,12 @@ function calcDvPCoeff(oppDefRating, playerPosition, playerPlaytypes, oppDefPlayt
   let base = 1.0;
   if (oppDefRating) {
     const leagueAvg = getLeagueBaselines(league).defRating;
-    const raw = leagueAvg / parseFloat(oppDefRating);
+    // DEF_RATING is points allowed per 100 possessions — lower is a better
+    // defense (see the "lower=better defense" rank convention elsewhere in
+    // this file). A tougher-than-average defense (oppDefRating < leagueAvg)
+    // must produce raw < 1 so base < 1, i.e. push the projection DOWN — the
+    // previous leagueAvg/oppDefRating version had this backwards.
+    const raw = parseFloat(oppDefRating) / leagueAvg;
     base = 1 + (raw - 1) * 0.6;
   }
 
@@ -1431,6 +1956,53 @@ function calcDvPCoeff(oppDefRating, playerPosition, playerPlaytypes, oppDefPlayt
 // absorbs ~his proportional share → projection gets boosted accordingly
 // ════════════════════════════════════════════════════════════════════
 
+// ── HOW MUCH OF A TEAMMATE'S ABSENCE IS ALREADY IN THE BASELINE ─────
+// The teammate-out boost used to depend only on who is injured RIGHT NOW. But
+// a player's baseline (recent games blended with the season) already reflects
+// every game that teammate missed: live case — Breanna Stewart got a +21%
+// usage boost for Satou Sabally being out, yet Sabally last played June 24,
+// so all 10 of Stewart's recent games were already played without her (and the
+// other "out" teammate never played this season). That credited the same
+// absence twice and pushed a 22.5-pt scorer to a 31.1 projection against a
+// 22.5 market line. The boost now only counts the part of the absence the
+// baseline has NOT absorbed, measured from the teammate's real game log and
+// weighted exactly like the baseline itself (recent window n/(n+8), season
+// for the rest — see shrink()).
+const injuryAbsenceCache = {}; // lowercase name -> { lastPlayed, gamesThisSeason, ts }
+const INJURY_ABSENCE_TTL = 6 * 3600 * 1000;
+async function enrichInjuryAbsence(playerRoster, league) {
+  const injured = (playerRoster?.injured || [])
+    .filter(p => ['out', 'doubtful', 'questionable'].includes((p.status || '').toLowerCase()))
+    .slice(0, 4);
+  await Promise.all(injured.map(async (p) => {
+    const key = (p.name || '').toLowerCase();
+    const c = injuryAbsenceCache[key];
+    if (!key || (c && Date.now() - c.ts < INJURY_ABSENCE_TTL)) return;
+    try {
+      const stats = league === 'wnba' ? await fetchWNBAPlayerStats(p.name) : await fetchPlayerStats(p.name);
+      if (stats && !stats.error) {
+        const played = (stats.gameLog20 || []).filter(g => (parseFloat(g.min) || 0) > 0).map(gameDateISO).filter(Boolean).sort();
+        injuryAbsenceCache[key] = { lastPlayed: played.length ? played[played.length - 1] : null, gamesThisSeason: stats.seasonGames || 0, ts: Date.now() };
+      } else if (/no game log/i.test(stats?.error || '')) {
+        injuryAbsenceCache[key] = { lastPlayed: null, gamesThisSeason: 0, ts: Date.now() }; // never played this season
+      } // any other failure stays unknown (half weight) and is retried next time
+    } catch (_) { /* unknown */ }
+  }));
+}
+// 1 = the whole absence is new to the baseline (full boost), 0 = the baseline
+// already contains it entirely (no boost), 0.5 = unknown.
+function baselineAbsenceWeight(name, playerStats) {
+  const a = injuryAbsenceCache[(name || '').toLowerCase()];
+  if (!a) return 0.5;
+  const recent = (playerStats?.last10Games || []).map(gameDateISO).filter(Boolean);
+  const n = recent.length;
+  const missedRecent = n ? recent.filter(d => !a.lastPlayed || d > a.lastPlayed).length / n : 0;
+  const seasonGames = playerStats?.seasonGames || 0;
+  const missedSeason = seasonGames ? Math.max(0, Math.min(1, 1 - (a.gamesThisSeason || 0) / seasonGames)) : 0;
+  const wRecent = n / (n + 8);
+  return Math.max(0, Math.min(1, 1 - (wRecent * missedRecent + (1 - wRecent) * missedSeason)));
+}
+
 function calcUsageInflation(playerRoster, playerStats, propType, nbaPlayerStats) {
   let mult = 1.0;
   const details = [];
@@ -1501,9 +2073,10 @@ function calcUsageInflation(playerRoster, playerStats, propType, nbaPlayerStats)
       for (const p of injuredPlayers) {
         const usg = getUSG(p.name);
         const statusWeight = ['out','doubtful'].includes((p.status||'').toLowerCase()) ? 1.0 : 0.5;
-        const effectiveUSG = usg ? usg * statusWeight : 0.08 * statusWeight; // 8% default if unknown
+        const absenceWeight = baselineAbsenceWeight(p.name, playerStats);
+        const effectiveUSG = (usg ? usg * statusWeight : 0.08 * statusWeight) * absenceWeight; // 8% default if unknown
         freedUSG += effectiveUSG;
-        injuredWithUSG.push({ ...p, usg, effectiveUSG });
+        injuredWithUSG.push({ ...p, usg, effectiveUSG, absenceWeight });
       }
 
       // Sum USG of all HEALTHY players (who will absorb the freed possessions)
@@ -1547,6 +2120,7 @@ function calcUsageInflation(playerRoster, playerStats, propType, nbaPlayerStats)
             name:   p.name,
             status: p.status,
             usg:    p.usg ? parseFloat((p.usg*100).toFixed(1))+'%' : 'unknown',
+            newToBaseline: Math.round(p.absenceWeight * 100) + '%',
           })),
         });
       } else {
@@ -1573,7 +2147,7 @@ function calcUsageInflation(playerRoster, playerStats, propType, nbaPlayerStats)
           } else {
             boost = 0.05 * statusMult;
           }
-          boost *= rotationConf;
+          boost *= rotationConf * baselineAbsenceWeight(p.name, playerStats);
           mult += boost;
           details.push({ method: 'position-fallback', name: p.name, boost: parseFloat((boost*100).toFixed(1))+'%', rotationConfidence: rotationConf });
         }
@@ -1593,9 +2167,12 @@ function calcUsageInflation(playerRoster, playerStats, propType, nbaPlayerStats)
     }[propType];
 
     if (statKey) {
-      const l10avg = playerStats.last10Games.reduce((s,g) => s+(parseFloat(g[statKey])||0),0)
-                   / playerStats.last10Games.length;
-      const l3avg  = playerStats.last10Games.slice(0,3).reduce((s,g) => s+(parseFloat(g[statKey])||0),0)/3;
+      // Winsorized so one outlier game (blowout garbage time, or a starter
+      // pulled early) can't masquerade as a real usage trend on its own —
+      // same fix as the minutes projection, same underlying blind spot.
+      const winsorized = winsorizeGames(playerStats.last10Games, statKey);
+      const l10avg = winsorized.reduce((s,v) => s+v, 0) / winsorized.length;
+      const l3avg  = winsorized.slice(0,3).reduce((s,v) => s+v, 0) / Math.min(3, winsorized.length);
       if (l10avg > 0) {
         const trend = (l3avg - l10avg) / l10avg;
         mult += Math.max(-0.05, Math.min(0.05, trend * 0.5));
@@ -1633,12 +2210,19 @@ function calcInjuryBreakdown(playerRoster, playerStats, propType, nbaPlayerStats
 // first (season baseline shrunk with recent trend + role/injury context),
 // then everything downstream is minutes × per-minute rate.
 // ════════════════════════════════════════════════════════════════
-function projectMinutes(playerStats, ctx) {
+function projectMinutes(playerStats, ctx, propType) {
   const details = [];
   const last10 = playerStats.last10Games || [];
   const last3  = last10.slice(0, 3);
-  const recentMin = last10.length
-    ? last10.reduce((s, g) => s + (parseFloat(g.min) || 0), 0) / last10.length
+  // Winsorized against the player's own L10 median before averaging — one
+  // blowout game (garbage-time run for a normally low-minutes player, or
+  // an early pull for a normal starter) used to be able to swing both the
+  // baseline and the trend signal below on its own; capping its influence
+  // relative to this player's own typical minutes fixes that without
+  // needing to know the actual final score margin.
+  const winsorizedMin = winsorizeGames(last10, 'min');
+  const recentMin = winsorizedMin.length
+    ? winsorizedMin.reduce((s, v) => s + v, 0) / winsorizedMin.length
     : parseFloat(playerStats.averages?.min) || 0;
   const seasonMin = playerStats.seasonAvg?.min ?? null;
   const seasonGames = playerStats.seasonGames || 0;
@@ -1655,7 +2239,7 @@ function projectMinutes(playerStats, ctx) {
   // Short-term trend (L3 vs the shrunk baseline) — dampened, minutes trends
   // are real (rotation changes) but shouldn't swing on 1-2 unusual games.
   if (last3.length >= 2 && projMin > 0) {
-    const l3Min = last3.reduce((s, g) => s + (parseFloat(g.min) || 0), 0) / last3.length;
+    const l3Min = winsorizedMin.slice(0, 3).reduce((s, v) => s + v, 0) / Math.min(3, winsorizedMin.length);
     const trendPct = Math.max(-0.12, Math.min(0.12, (l3Min - projMin) / projMin * 0.5));
     const before = projMin;
     projMin *= (1 + trendPct);
@@ -1666,7 +2250,14 @@ function projectMinutes(playerStats, ctx) {
   // signal as usage inflation (a teammate out means more usage AND more
   // time on court), but scaled down: minutes respond less elastically than
   // usage rate to an absence (a bench player's minutes cap still exists).
-  const usageMult = calcUsageInflation(ctx.playerRoster, playerStats, 'points', ctx.nbaPlayerStats || []);
+  // Uses the ACTUAL propType being projected — this used to be hardcoded
+  // to 'points' regardless of what was actually being projected, which
+  // broke the "minutesMult × rateMult ≈ original usageMult" no-double-
+  // count assumption documented below for every non-points prop (e.g. a
+  // rebounds projection would blend a points-calibrated minutes bump with
+  // a rebounds-calibrated rate multiplier — two different signals treated
+  // as if they were split halves of the same one).
+  const usageMult = calcUsageInflation(ctx.playerRoster, playerStats, propType || 'points', ctx.nbaPlayerStats || []);
   if (usageMult > 1.0 && projMin > 0) {
     const minutesBump = Math.min(0.15, (usageMult - 1.0) * 0.35);
     const before = projMin;
@@ -1769,9 +2360,20 @@ function normalCdf(z) {
 }
 function calcOverUnderProbability(projection, stdDev, postedLine) {
   if (!projection || !stdDev || stdDev <= 0 || !postedLine) return null;
-  const z = (parseFloat(postedLine) - projection) / stdDev;
-  const under = normalCdf(z);
-  const over  = 1 - under;
+  const zLine = (parseFloat(postedLine) - projection) / stdDev;
+  // A count stat (points, blocks, steals, etc.) can't go below 0, but the
+  // raw normal approximation assigns real probability mass there anyway —
+  // most noticeable for low-projection props (e.g. a 0.8 projection with
+  // a proportionally wide floor'd stdDev can put ~5% of the fitted curve
+  // below zero). Truncate at 0 and renormalize over the valid [0, ∞)
+  // domain instead of silently leaving that impossible mass in the split.
+  const zZero = (0 - projection) / stdDev;
+  const massBelowZero = normalCdf(zZero);
+  const validMass = 1 - massBelowZero;
+  const under = validMass > 0.0001
+    ? Math.max(0, Math.min(1, (normalCdf(zLine) - massBelowZero) / validMass))
+    : (zLine <= zZero ? 0 : 1); // degenerate: projection deeply negative relative to stdDev
+  const over = 1 - under;
   return { overProbability: parseFloat(over.toFixed(3)), underProbability: parseFloat(under.toFixed(3)) };
 }
 
@@ -1820,31 +2422,20 @@ async function fetchGameContext(playerTeam, opponent, todayGame) {
   }
 
   try {
-    const eventsRes = await axios.get(`${ODDS_BASE}/sports/basketball_nba/events`, {
-      params: { apiKey: process.env.ODDS_API_KEY },
-      timeout: 8000
-    });
+    const events = await getOddsEvents('basketball_nba');
 
     const teamLower = playerTeam.toLowerCase().split(' ').pop();
     const oppLower  = opponent.toLowerCase().split(' ').pop();
 
-    const event = (eventsRes.data || []).find(e =>
+    const event = events.find(e =>
       (e.home_team?.toLowerCase().includes(teamLower) || e.away_team?.toLowerCase().includes(teamLower)) &&
       (e.home_team?.toLowerCase().includes(oppLower)  || e.away_team?.toLowerCase().includes(oppLower))
     );
 
     if (event) {
-      const oddsRes = await axios.get(`${ODDS_BASE}/sports/basketball_nba/events/${event.id}/odds`, {
-        params: {
-          apiKey: process.env.ODDS_API_KEY,
-          regions: 'us',
-          markets: 'totals,spreads',
-          oddsFormat: 'american'
-        },
-        timeout: 8000
-      });
+      const bookmakers = await getEventOdds('basketball_nba', event.id, 'totals,spreads', GAME_CONTEXT_ODDS_TTL);
 
-      for (const bm of (oddsRes.data.bookmakers || []).slice(0, 3)) {
+      for (const bm of bookmakers.slice(0, 3)) {
         for (const mkt of (bm.markets || [])) {
           if (mkt.key === 'totals' && !ctx.total) {
             const over = mkt.outcomes?.find(o => o.name === 'Over');
@@ -2063,13 +2654,19 @@ async function fetchWNBAGameLogRaw(playerId, season) {
 }
 
 // Flattens ESPN's {seasonTypes:[{categories:[{events:[...]}]}], events:{id:meta}}
-// shape into a flat, newest-first array of game objects. Regular-season only.
+// shape into a flat, newest-first array of game objects. Regular season +
+// postseason — ESPN labels playoffs "Postseason" (confirmed directly
+// against the live API), and the old regex here only matched "Regular
+// Season", so it silently threw away every playoff/Finals game. That meant
+// once the postseason started, a player's minutes/stat baseline stayed
+// frozen on stale regular-season box scores — no tighter-rotation signal,
+// no playoff-intensity data, ever. Preseason/All-Star are still excluded.
 function flattenWNBAGamelog(raw) {
   if (!raw?.seasonTypes?.length) return [];
   const meta = raw.events || {};
   const games = [];
   for (const st of raw.seasonTypes) {
-    if (!/regular season/i.test(st.displayName || '')) continue; // skip preseason
+    if (!/regular season|postseason/i.test(st.displayName || '')) continue; // skip preseason/all-star
     for (const cat of (st.categories || [])) {
       for (const ev of (cat.events || [])) {
         const m = meta[ev.eventId];
@@ -2269,7 +2866,7 @@ async function fetchWNBASchedule(dateStr) {
 }
 
 // ── PROP LINES (The Odds API, sport key basketball_wnba) ──────────
-async function fetchWNBAPropLines(playerName, propType) {
+async function fetchWNBAPropLines(playerName, propType, opts = {}) {
   const cacheKey = `wnba:${playerName}:${propType}`;
   const cached = propLinesCache[cacheKey];
   if (cached && (Date.now() - cached.ts) < PROP_LINES_TTL) return cached.data;
@@ -2282,22 +2879,17 @@ async function fetchWNBAPropLines(playerName, propType) {
   };
   try {
     const market = propMap[propType] || 'player_points';
-    const eventsRes = await axios.get(`${ODDS_BASE}/sports/basketball_wnba/events`, {
-      params: { apiKey: process.env.ODDS_API_KEY }, timeout: 8000
-    });
+    const events = await getOddsEvents('basketball_wnba');
     const lines = {};
-    const lastName = playerName.toLowerCase().split(' ').pop();
-    const eventSlice = (eventsRes.data || []).slice(0, 5);
+    const target = opts.opponent ? findEventForTeams(events, opts.opponent, opts.playerTeam) : null;
+    const eventSlice = target ? [target] : events.slice(0, 5);
     await Promise.allSettled(eventSlice.map(async event => {
       try {
-        const oddsRes = await axios.get(`${ODDS_BASE}/sports/basketball_wnba/events/${event.id}/odds`, {
-          params: { apiKey: process.env.ODDS_API_KEY, regions: 'us', markets: market, oddsFormat: 'american' },
-          timeout: 6000
-        });
-        for (const bm of (oddsRes.data.bookmakers || [])) {
+        const bookmakers = await getEventOdds('basketball_wnba', event.id, market, PROP_LINES_TTL);
+        for (const bm of bookmakers) {
           for (const mkt of (bm.markets || [])) {
             for (const o of (mkt.outcomes || [])) {
-              if (o.description?.toLowerCase().includes(lastName)) {
+              if (matchesOutcomeName(o.description, playerName)) {
                 if (!lines[bm.title]) lines[bm.title] = {};
                 lines[bm.title][o.name] = { point: o.point, price: o.price };
               }
@@ -2306,12 +2898,7 @@ async function fetchWNBAPropLines(playerName, propType) {
         }
       } catch (_) {}
     }));
-    let softestLine = null, softestBook = null;
-    for (const [book, data] of Object.entries(lines)) {
-      const ol = data['Over']?.point;
-      if (ol && (!softestLine || ol < softestLine)) { softestLine = ol; softestBook = book; }
-    }
-    const result = { lines, softestLine, softestBook, market };
+    const result = { lines, market, ...consensusFromLines(lines) };
     propLinesCache[cacheKey] = { data: result, ts: Date.now() };
     return result;
   } catch (err) {
@@ -2343,21 +2930,16 @@ async function fetchWNBAGameContext(playerTeam, opponent) {
   if (!process.env.ODDS_API_KEY || process.env.ODDS_API_KEY.includes('your_')) return ctx;
 
   try {
-    const eventsRes = await axios.get(`${ODDS_BASE}/sports/basketball_wnba/events`, {
-      params: { apiKey: process.env.ODDS_API_KEY }, timeout: 8000
-    });
+    const events = await getOddsEvents('basketball_wnba');
     const teamLower = playerTeam.toLowerCase().split(' ').pop();
     const oppLower  = opponent.toLowerCase().split(' ').pop();
-    const event = (eventsRes.data || []).find(e =>
+    const event = events.find(e =>
       (e.home_team?.toLowerCase().includes(teamLower) || e.away_team?.toLowerCase().includes(teamLower)) &&
       (e.home_team?.toLowerCase().includes(oppLower)  || e.away_team?.toLowerCase().includes(oppLower))
     );
     if (event) {
-      const oddsRes = await axios.get(`${ODDS_BASE}/sports/basketball_wnba/events/${event.id}/odds`, {
-        params: { apiKey: process.env.ODDS_API_KEY, regions: 'us', markets: 'totals,spreads', oddsFormat: 'american' },
-        timeout: 8000
-      });
-      for (const bm of (oddsRes.data.bookmakers || []).slice(0, 3)) {
+      const bookmakers = await getEventOdds('basketball_wnba', event.id, 'totals,spreads', GAME_CONTEXT_ODDS_TTL);
+      for (const bm of bookmakers.slice(0, 3)) {
         for (const mkt of (bm.markets || [])) {
           if (mkt.key === 'totals' && !ctx.total) {
             const over = mkt.outcomes?.find(o => o.name === 'Over');
@@ -2385,6 +2967,93 @@ async function fetchWNBAGameContext(playerTeam, opponent) {
     else if (ctx.spread >= -4 && ctx.spread <= 4) { ctx.spreadAdj = 1.03; ctx.details.push(`Close game (${ctx.spread}): +3% — full minutes`); }
   }
   return ctx;
+}
+
+// ── CONFIDENCE / RELIABILITY (separate from probability) ──────────
+// How far to trust THIS projection — not how likely the pick is to win.
+// The previous version was a checklist of yes/no data-availability flags,
+// so any two players with the same data coverage scored identically (four
+// different players on one live slate all showed exactly 87%), and it said
+// nothing about how erratic the player actually is. This version is built
+// from continuous inputs, so it differentiates real players:
+//   consistency (30) — game-to-game spread of this stat relative to its mean
+//   minutes     (15) — spread of minutes played, plus how far the minutes
+//                      projection moved off its baseline (role/rest changes)
+//   depth       (15) — how much season + recent sample backs the baseline
+//   coverage    (20) — which data feeds were actually available (H2H and
+//                      playtypes scale with sample instead of on/off)
+//   situation   (20) — model-internal swing from the adjustments, blowout
+//                      risk (spread), teammate-out usage shift, back-to-back,
+//                      hot/cold streak vs. baseline, recent-vs-H2H disagreement
+// Every component is a smooth function of its input (no hard thresholds),
+// which is what keeps two players from landing on the same number.
+// Bump when calcConfidence's scale changes. Stamped on every tracker entry so
+// the accuracy-by-tier stats only ever compare picks scored on the same scale.
+const CONFIDENCE_FORMULA_VERSION = 2;
+function calcConfidence(i) {
+  const mean = (a) => a.reduce((s, v) => s + v, 0) / a.length;
+  const sd = (a) => { const m = mean(a); return Math.sqrt(a.reduce((s, v) => s + (v - m) ** 2, 0) / a.length); };
+  const inv = (x, scale) => 1 / (1 + (Math.max(x, 0) / scale) ** 2);
+
+  // consistency — coefficient of variation of the stat itself
+  let consistency = inv(0.8, 0.45); // too few games to measure: scored as poor, not neutral
+  if (i.gameVals.length >= 3) {
+    const m = mean(i.gameVals);
+    if (m > 0) consistency = inv(sd(i.gameVals) / m, 0.45);
+  }
+
+  // minutes reliability
+  const mins = (i.recentGames || []).map(g => parseFloat(g.min)).filter(v => v > 0);
+  let minutes = 0.35;
+  if (mins.length >= 3) {
+    minutes = inv(sd(mins) / mean(mins), 0.15);
+    const base = i.minutesProj.baselineMinutes;
+    if (base > 0) minutes *= Math.exp(-3 * Math.abs(i.minutesProj.projectedMinutes - base) / base);
+  }
+
+  // sample depth
+  const seasonGames = i.playerStats.seasonGames || 0;
+  const recentN = (i.recentGames || []).length;
+  const depth = 0.6 * (1 - Math.exp(-seasonGames / 20)) + 0.4 * (1 - Math.exp(-recentN / 6));
+
+  // data coverage — playtypes only exist for the NBA, so they're excluded from
+  // the WNBA denominator rather than counted as missing
+  const h2hN = i.h2h?.gamesVsOpp || 0;
+  const ptCount = Object.keys(i.ctx.playerPlaytypes || {}).length;
+  const cov = [
+    { w: 8,  got: i.ctx.oppAdvanced ? 1 : 0 },
+    { w: 3,  got: i.ctx.playerTeamAdvanced ? 1 : 0 },
+    { w: 10, got: 1 - Math.exp(-h2hN / 2.5) },
+    { w: 4,  got: i.ctx.playerRoster ? 1 : 0 },
+    { w: 5,  got: i.gc?.total ? 1 : 0 },
+    { w: 5,  got: i.gc?.spread != null ? 1 : 0 },
+    { w: 3,  got: i.canDecomposePoints ? 1 : 0 },
+    ...(i.league === 'wnba' ? [] : [{ w: 5, got: Math.min(1, ptCount / 6) }]),
+  ];
+  const coverage = cov.reduce((s, x) => s + x.w * x.got, 0) / cov.reduce((s, x) => s + x.w, 0);
+
+  // situational stability — average of whichever sub-signals apply
+  const sit = [];
+  if (i.totalSwing > 0) sit.push(Math.exp(-2 * Math.abs(Math.log(i.totalSwing))));
+  sit.push(i.gc?.spread != null ? inv(Math.max(0, Math.abs(i.gc.spread) - 4), 10) : 0.65);
+  sit.push(Math.exp(-4 * Math.abs((i.usageMult || 1) - 1)));
+  sit.push(i.gc?.isBackToBack ? 0.7 : 1);
+  sit.push(i.seasonVal > 0 ? Math.exp(-3 * Math.abs(i.l10FromLog - i.seasonVal) / i.seasonVal) : 0.7);
+  if (i.h2hVal != null && i.l10FromLog > 0) sit.push(Math.exp(-2 * Math.abs(i.h2hVal - i.l10FromLog) / i.l10FromLog));
+  const situation = mean(sit);
+
+  const score = (30 * consistency + 15 * minutes + 15 * depth + 20 * coverage + 20 * situation) / 100;
+  // Real players cluster in a narrow band of raw scores (~0.53-0.82), so a
+  // straight linear map squeezes them into ~20 points and ties pile up. A
+  // logistic spreads that band over roughly 40-90 without any hard clamp
+  // (a clamp would itself create ties at the ends), and stays bounded
+  // inside the 25-97 range the rest of the app assumes.
+  const spread = 1 / (1 + Math.exp(-11 * (score - 0.66)));
+  const r2 = (x) => parseFloat(x.toFixed(2));
+  return {
+    score: parseFloat((25 + 72 * spread).toFixed(1)),
+    components: { consistency: r2(consistency), minutes: r2(minutes), depth: r2(depth), coverage: r2(coverage), situation: r2(situation) },
+  };
 }
 
 function buildProjection(playerStats, ctx, propType) {
@@ -2489,7 +3158,7 @@ function buildProjection(playerStats, ctx, propType) {
   // ── STEP 3: PROJECT MINUTES FIRST ─────────────────────────────
   // Everything downstream is minutes × per-minute rate, not a raw average
   // that silently bakes in whatever playing time happened to occur recently.
-  const minutesProj = projectMinutes(playerStats, ctx);
+  const minutesProj = projectMinutes(playerStats, ctx, propType);
   const recentMinAvg = minutesProj.recentMinutes || parseFloat(avgs.min) || 0;
   const minutesRatio = recentMinAvg > 0 ? minutesProj.projectedMinutes / recentMinAvg : 1.0;
 
@@ -2501,10 +3170,8 @@ function buildProjection(playerStats, ctx, propType) {
   const rateUsageMult = 1 + 0.65 * (usageMult - 1.0);
 
   const oppAdj = calcOpponentAdjustment(propType, ctx.oppFourFact, league);
-  const leagueAvgPace = getLeagueBaselines(league).pace;
   const playerTeamPace = ctx.playerTeamAdvanced?.PACE;
-  const blendedPace = ((parseFloat(ctx.oppAdvanced?.PACE) || leagueAvgPace) + (parseFloat(playerTeamPace) || leagueAvgPace)) / 2;
-  const paceRatio = 1 + Math.max(-0.08, Math.min(0.08, (blendedPace - leagueAvgPace) / leagueAvgPace));
+  const paceRatio = getPaceMultiplier(ctx.oppAdvanced?.PACE, playerTeamPace, propType, league);
 
   let proj;
 
@@ -2626,6 +3293,57 @@ function buildProjection(playerStats, ctx, propType) {
   }
   if (playerStats.minutesStability === 'VOLATILE') proj *= 0.97;
 
+  // ── HOME/AWAY SPLIT — applies to all paths ─────────────────────
+  // `home` was already tagged on every game in the log (used for display
+  // in tooltips/last5 tables) but never turned into a real signal —
+  // confirmed nothing in this function referenced it before this. Only
+  // applied when the upcoming game's home/away status is actually known
+  // and there's a real sample in both splits; shrunk toward 1.0 (no
+  // adjustment) so a handful of games can't swing this like a real
+  // season-long split would, and capped tighter than the primary drivers
+  // since this is a secondary signal, not a headline one.
+  const isHomeGame = ctx.gameContext?.isHome;
+  if (isHomeGame != null) {
+    const splitLog = playerStats.gameLog20 || recentGames || [];
+    const homeVals = splitLog.filter(g => g.home === true).map(getGameVal);
+    const awayVals = splitLog.filter(g => g.home === false).map(getGameVal);
+    if (homeVals.length >= 3 && awayVals.length >= 3) {
+      const homeAvg = homeVals.reduce((a,b)=>a+b,0) / homeVals.length;
+      const awayAvg = awayVals.reduce((a,b)=>a+b,0) / awayVals.length;
+      const overallAvg = (homeAvg + awayAvg) / 2;
+      if (overallAvg > 0) {
+        const splitAvg = isHomeGame ? homeAvg : awayAvg;
+        const sampleN = isHomeGame ? homeVals.length : awayVals.length;
+        const shrunkRatio = shrink(splitAvg / overallAvg, 1.0, sampleN, 8);
+        const homeAwayMult = Math.max(0.9, Math.min(1.1, shrunkRatio));
+        const before = proj;
+        proj *= homeAwayMult;
+        if (Math.abs(proj - before) > 0.05) drivers.push({ label: `${isHomeGame ? 'home' : 'road'} split (${sampleN}-game sample)`, value: parseFloat((proj - before).toFixed(1)) });
+      }
+    }
+  }
+
+  // ── OVERALL SANITY CAP ──────────────────────────────────────────
+  // Pace (±8%), the opponent-matchup adjustment, usage (up to ~±19.5%
+  // via rateUsageMult), form (±4%), game context (±15%), and home/away
+  // (±10%) are each individually capped, but they all multiply together
+  // with no ceiling on the combined result — worst case that chain
+  // compounds to roughly a ±90% swing, far beyond what any single cap
+  // implies on its own. This is a deliberately wide backstop against that
+  // pathological all-signals-aligned case, not a retuning of any
+  // individual signal — it should rarely bind on real data.
+  const preAdjustmentProj = baseProj * minutesRatio;
+  let totalSwing = 1;
+  if (preAdjustmentProj > 0) {
+    totalSwing = proj / preAdjustmentProj;
+    const cappedSwing = Math.max(0.65, Math.min(1.54, totalSwing));
+    if (cappedSwing !== totalSwing) {
+      const before = proj;
+      proj = preAdjustmentProj * cappedSwing;
+      drivers.push({ label: 'combined-adjustment sanity cap', value: parseFloat((proj - before).toFixed(1)) });
+    }
+  }
+
   // ── DISTRIBUTION + PROBABILITY ─────────────────────────────────
   // Estimated from actual recent game-to-game variance, floored by a
   // per-stat minimum coefficient of variation so a small, coincidentally
@@ -2643,24 +3361,10 @@ function buildProjection(playerStats, ctx, propType) {
   const stdDev = Math.max(sampleStdDev || 0, (MIN_CV[propType] || 0.35) * Math.max(proj, 0.1));
   const zRange = 1.28; // ~80% interval
 
-  // ── CONFIDENCE / RELIABILITY (separate from probability) ──────
-  let conf = 50;
-  if (playerStats.minutesStability === 'STABLE')       conf += 10;
-  if ((playerStats.gamesAnalyzed || 0) >= 10)          conf += 8;
-  else if ((playerStats.gamesAnalyzed || 0) >= 5)      conf += 4;
-  if (ctx.oppAdvanced)                                  conf += 8;
-  if (ctx.playerTeamAdvanced)                           conf += 3;
-  if (h2h && h2h.gamesVsOpp >= 3)                      conf += 10;
-  else if (h2h && h2h.gamesVsOpp >= 1)                 conf += 5;
-  if (ctx.playerRoster)                                 conf += 4;
-  if (gc?.total)                                        conf += 5;
-  if (gc?.spread != null)                               conf += 5;
-  if (gc?.isBackToBack)                                 conf -= 5;
-  if (Object.keys(ctx.playerPlaytypes||{}).length >= 3) conf += 5;
-  if (!ctx.dataAvailable?.teamAdvanced)                 conf -= 8;
-  if ((playerStats.seasonGames || 0) >= 15)             conf += 4; // real season baseline, not just L10
-  if (canDecomposePoints)                               conf += 3; // opportunity/efficiency model, not a flat average
-  conf = Math.max(30, Math.min(90, Math.round(conf)));
+  const confidence = calcConfidence({
+    playerStats, recentGames, gameVals, minutesProj, usageMult, totalSwing, gc, h2h,
+    h2hVal, l10FromLog, seasonVal, ctx, league, canDecomposePoints,
+  });
 
   const dvpCoeff = calcDvPCoeff(ctx.oppAdvanced?.DEF_RATING, playerPos, ctx.playerPlaytypes, ctx.oppDefPlaytypes, propType, league);
 
@@ -2669,6 +3373,7 @@ function buildProjection(playerStats, ctx, propType) {
     medianProjection:  parseFloat(proj.toFixed(1)), // normal approx — see stdDev note above
     lowerBound:        parseFloat(Math.max(0, proj - zRange*stdDev).toFixed(1)),
     upperBound:        parseFloat((proj + zRange*stdDev).toFixed(1)),
+    zRange,
     stdDev:            parseFloat(stdDev.toFixed(2)),
     projectedMinutes:  minutesProj.projectedMinutes,
     baselineMinutes:   minutesProj.baselineMinutes,
@@ -2699,7 +3404,8 @@ function buildProjection(playerStats, ctx, propType) {
     isBackToBack:      gc?.isBackToBack || false,
     gameContextDetails: gc?.details || [],
     form:              playerStats.form,
-    confidence:        conf,
+    confidence:        confidence.score,
+    confidenceBreakdown: confidence.components,
     drivers:           drivers.filter(d => Math.abs(d.value) > 0.05),
     oppPace:           ctx.oppAdvanced?.PACE || null,
     playerTeamPace:    playerTeamPace || null,
@@ -2717,10 +3423,65 @@ function buildProjection(playerStats, ctx, propType) {
   };
 }
 
+// ── MARKET-LINE BLEND ────────────────────────────────────────────
+// buildProjection() above is built entirely from box scores and opponent
+// stats — it never sees a price. Sportsbook consensus lines price in real
+// signal this model has no source for (late-breaking lineup news, referee
+// assignments, sharp money), so leaning the projection toward consensus —
+// more when the model's own confidence is lower, less when it's high —
+// should outperform ignoring the market outright.
+//
+// Deliberately kept OUTSIDE buildProjection (and therefore outside its
+// cache): odds move continuously, far more often than the injury/game-
+// context signature the projection cache keys on, so baking this in would
+// let a cached projection go stale against a moving line with nothing to
+// invalidate it. Recomputed fresh every request instead — same pattern as
+// liveMarket below.
+function blendWithMarket(mathProjection, consensusLine, bookCount) {
+  if (!mathProjection || consensusLine == null || !bookCount || bookCount < 2) return mathProjection;
+  const proj = mathProjection.projection;
+  if (!proj) return mathProjection;
+
+  // Confidence 25→97 (buildProjection's own scale) maps to market weight
+  // 0.40→0.12: a shakier projection leans harder on the market; a
+  // well-supported one barely moves for it.
+  const conf = mathProjection.confidence ?? 60;
+  const confT = Math.max(0, Math.min(1, (conf - 25) / (97 - 25)));
+  const marketWeight = 0.40 - 0.28 * confT;
+
+  const rawGap = consensusLine - proj;
+  // Same spirit as buildProjection's combined-adjustment sanity cap — one
+  // disagreeing market shouldn't be able to drag the number more than 20%
+  // off what the model itself computed.
+  const cappedGap = Math.max(-0.20 * proj, Math.min(0.20 * proj, rawGap));
+  const blended = proj + marketWeight * cappedGap;
+  if (Math.abs(blended - proj) < 0.05) return mathProjection;
+
+  const shift = parseFloat((blended - proj).toFixed(1));
+  const zRange = mathProjection.zRange || 1.28;
+  return {
+    ...mathProjection,
+    projection:        parseFloat(blended.toFixed(1)),
+    medianProjection:  parseFloat(blended.toFixed(1)),
+    lowerBound:        parseFloat(Math.max(0, blended - zRange * mathProjection.stdDev).toFixed(1)),
+    upperBound:        parseFloat((blended + zRange * mathProjection.stdDev).toFixed(1)),
+    preMarketProjection: proj,
+    marketBlend: { consensusLine, bookCount, weight: parseFloat(marketWeight.toFixed(2)), shift },
+    drivers: [...mathProjection.drivers, { label: `market consensus blend (${bookCount} books)`, value: shift }],
+  };
+}
+
 function calcEdgeScore(mathProj, postedLine) {
-  if (!mathProj || !postedLine) return 0;
+  // null (no line to compare against) is distinct from a real 0.0 edge
+  // (the model landed exactly on a valid posted line) — both used to
+  // collapse to the same 0, making a missing/invalid line indistinguishable
+  // downstream from a genuinely dead-even projection. Safe to change: every
+  // caller either does math (null coerces to 0, same as before) or an
+  // explicit `> 0`/`Math.abs()` check (null behaves identically to 0 there
+  // too) — nothing currently branches on "edge === null" vs "=== 0".
+  if (!mathProj || !postedLine) return null;
   const line = parseFloat(postedLine);
-  if (!line || line <= 0) return 0;
+  if (!line || line <= 0) return null;
   // Absolute unit difference: proj - line
   // e.g. proj=22.5, line=24.5 → diff=-2.0 → edge=-2.0
   // Scale for display: cap at ±10
@@ -2728,6 +3489,85 @@ function calcEdgeScore(mathProj, postedLine) {
   return Math.max(-10, Math.min(10, parseFloat(diff.toFixed(1))));
 }
 
+// ════════════════════════════════════════════════════════════════
+// REAL EXPECTED VALUE — from the posted PRICE (American odds), not just
+// the point spread between projection and line. "Edge" above only measures
+// how far the projection sits from the line, in raw stat units; it says
+// nothing about whether the number actually being offered (-110? +140?
+// -250?) makes betting it worthwhile. This is the same real-money-vs-model
+// comparison a sportsbook's own EV tools make, done against the model's
+// own probability estimate (calcOverUnderProbability) instead of someone
+// else's projection.
+// ════════════════════════════════════════════════════════════════
+function americanToImplied(price) {
+  if (price == null) return null;
+  const p = parseFloat(price);
+  if (!isFinite(p) || p === 0) return null;
+  return p > 0 ? 100 / (p + 100) : -p / (-p + 100);
+}
+function americanToDecimal(price) {
+  if (price == null) return null;
+  const p = parseFloat(price);
+  if (!isFinite(p) || p === 0) return null;
+  return p > 0 ? 1 + p / 100 : 1 + 100 / -p;
+}
+// A two-way (Over/Under) market's own implied probabilities always sum to
+// more than 1 — the extra is the book's built-in margin ("vig"). Dividing
+// each side by that sum removes it, leaving a fair estimate of what the
+// market actually thinks the true probability is. Falls back to the raw
+// (vig-included) implied probability for just the one side when the other
+// side's price isn't available — worse, but still usable.
+function devigTwoWay(overPrice, underPrice) {
+  const po = americanToImplied(overPrice), pu = americanToImplied(underPrice);
+  if (po != null && pu != null && (po + pu) > 0) {
+    return { over: po / (po + pu), under: pu / (po + pu) };
+  }
+  return { over: po, under: pu };
+}
+// Expected value per $1 staked, from the model's own win probability
+// against the price actually being offered. Positive = the model thinks
+// this is a better bet than the price implies.
+function calcExpectedValue(modelProb, price) {
+  const dec = americanToDecimal(price);
+  if (modelProb == null || dec == null) return null;
+  return parseFloat((modelProb * (dec - 1) - (1 - modelProb)).toFixed(4));
+}
+// Fractional-Kelly stake suggestion, as a fraction of bankroll. Uses
+// quarter-Kelly (a standard discount for real bankrolls, since full Kelly
+// assumes the win probability is known exactly — it isn't; this model's
+// own confidence score says as much) and caps at 5% of bankroll on any
+// single pick regardless of how large the calculated edge looks. Both
+// numbers are reasonable, commonly-used defaults, not backtested against
+// this app's own results — treat them as a starting point to revisit once
+// enough graded picks exist to check against (see /api/clv's
+// byConfidenceTier).
+function calcKellyStake(modelProb, price, kellyMultiplier = 0.25, maxFraction = 0.05) {
+  const dec = americanToDecimal(price);
+  if (modelProb == null || dec == null) return 0;
+  const b = dec - 1;
+  if (b <= 0) return 0;
+  const fullKelly = (modelProb * b - (1 - modelProb)) / b;
+  if (fullKelly <= 0) return 0;
+  return parseFloat(Math.min(fullKelly * kellyMultiplier, maxFraction).toFixed(4));
+}
+// One call, everything a UI needs: fair market probability (de-vigged),
+// the model's edge over that fair price, real EV, and a stake suggestion —
+// for whichever side (over/under) the model's projection actually favors.
+function calcRealEdge(direction, overProb, underProb, overPrice, underPrice) {
+  const isOver = direction === 'OVER' || direction === 'LEAN_OVER';
+  const modelProb = isOver ? overProb : underProb;
+  const price = isOver ? overPrice : underPrice;
+  if (modelProb == null || price == null) return null;
+  const fairProb = devigTwoWay(overPrice, underPrice)[isOver ? 'over' : 'under'];
+  return {
+    price,
+    modelProb: parseFloat((modelProb * 100).toFixed(1)),
+    fairMarketProb: fairProb != null ? parseFloat((fairProb * 100).toFixed(1)) : null,
+    probEdge: fairProb != null ? parseFloat(((modelProb - fairProb) * 100).toFixed(1)) : null,
+    expectedValue: calcExpectedValue(modelProb, price),
+    kellyStake: calcKellyStake(modelProb, price),
+  };
+}
 
 // ════════════════════════════════════════════════════════════════
 // NBA API BRIDGE — Live stats via nba_api Python library
@@ -2898,6 +3738,19 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// What the "DATA FEED STATUS" badge actually reads — real backend health,
+// not a hardcoded green pill. No network calls of its own; reflects
+// config presence (free) plus whatever the last real odds-API request
+// this server made actually returned (also free — no probe call).
+app.get('/api/data-status', (req, res) => {
+  const oddsConfigured = !!(process.env.ODDS_API_KEY && !process.env.ODDS_API_KEY.includes('XXXXX'));
+  res.json({
+    odds: { configured: oddsConfigured, ...oddsApiHealth, usage: oddsUsage },
+    balldontlie: { configured: !!process.env.BALLDONTLIE_KEY },
+    anthropic: { configured: !!(process.env.ANTHROPIC_KEY && !process.env.ANTHROPIC_KEY.includes('your_')) },
+  });
+});
+
 app.get('/api/today', async (req, res) => {
   if (!todaysGames.length) await fetchTodaysGames();
   res.json({
@@ -3047,6 +3900,9 @@ app.get('/api/team-compare', async (req, res) => {
       team1: { name: team1, stats: s1, last5: t1Recent.last5, topUsage: topUsage1, positionDefense: getTeamPositionDefense(league, team1), projectedStarters: starters1 },
       team2: { name: team2, stats: s2, last5: t2Recent.last5, topUsage: topUsage2, positionDefense: getTeamPositionDefense(league, team2), projectedStarters: starters2 },
       h2h: t1Recent.h2h,
+      // Your own film reads for each team, if any — folded into the AI
+      // matchup breakdown alongside the stats.
+      scoutNotes: { team1: getScoutNotes(league, { team: team1 }), team2: getScoutNotes(league, { team: team2 }) },
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -3174,24 +4030,36 @@ app.get('/api/wnba/prop-context', async (req, res) => {
   const [playerStats, oppRoster, propLines, todaysGames] = await Promise.all([
     Promise.resolve(playerStatsPre),
     fetchWNBARoster(opponent),
-    fetchWNBAPropLines(player, propType || 'points'),
+    fetchWNBAPropLines(player, propType || 'points', { opponent, playerTeam: playerStatsPre?.player?.team }),
     fetchWNBASchedule(),
   ]);
 
   const playerTeamName = playerStats?.player?.team || '';
 
-  const [playerRoster, h2hStats, gameContext] = await Promise.all([
-    playerTeamName ? fetchWNBARoster(playerTeamName) : Promise.resolve(null),
+  const [playerRoster, h2hStats, gameContext, teamMargins] = await Promise.all([
+    playerTeamName ? fetchWNBARoster(playerTeamName).then(async r => { await enrichInjuryAbsence(r, 'wnba'); return r; }) : Promise.resolve(null),
     fetchWNBAH2HStats(player, opponent),
     fetchWNBAGameContext(playerTeamName || player, opponent),
+    playerTeamName ? getTeamGameMargins('wnba', playerTeamName) : Promise.resolve([]),
   ]);
 
+  // Resolve the typed opponent to its canonical full name before matching
+  // — a raw substring match against the typed query is exploitable by
+  // short/ambiguous input: confirmed live that "atlanta dream".includes
+  // ("la") is true, so typing "LA" (meaning Los Angeles Sparks) could
+  // silently match an Atlanta Dream game instead.
+  const resolvedOpponent = WNBA_ABBR_TO_NAME[resolveWNBATeam(opponent)] || opponent;
   const todayGame = todaysGames.find(g =>
-    g.home.toLowerCase().includes(opponent.toLowerCase()) ||
-    g.away.toLowerCase().includes(opponent.toLowerCase()) ||
+    g.home.toLowerCase().includes(resolvedOpponent.toLowerCase()) ||
+    g.away.toLowerCase().includes(resolvedOpponent.toLowerCase()) ||
     g.home.toLowerCase().includes(playerTeamName.toLowerCase()) ||
     g.away.toLowerCase().includes(playerTeamName.toLowerCase())
   ) || null;
+  // Real home/away status for the upcoming game — feeds buildProjection's
+  // home/away split adjustment.
+  if (todayGame && gameContext) {
+    gameContext.isHome = todayGame.home.toLowerCase().includes(playerTeamName.toLowerCase());
+  }
 
   // Real stats.nba.com data (LeagueID=10) — same backend as NBA, just no
   // Synergy/tracking/hustle exist for the WNBA (confirmed empty, omitted).
@@ -3229,7 +4097,7 @@ app.get('/api/wnba/prop-context', async (req, res) => {
   const cacheSignature = `${currentInjuryHash}|${gcSig}|${gameContext?.isBackToBack}`;
   let mathProjection = getCachedProjection(cacheKey, propType || 'points', cacheSignature);
   if (!mathProjection) {
-    mathProjection = buildProjection(playerStats, {
+    mathProjection = buildProjection(withBlowoutTags(playerStats, teamMargins), {
       oppAdvanced, oppShooting, oppPaintDef: null, oppFourFact,
       playerRoster, playerTeamAdvanced,
       playerPlaytypes: {}, oppDefPlaytypes: {}, // no Synergy source exists for the WNBA
@@ -3242,13 +4110,31 @@ app.get('/api/wnba/prop-context', async (req, res) => {
       console.log(`[Proj-W] Calculated: ${player} ${propType} → ${mathProjection.projection}`);
     }
   }
+  if (mathProjection && propLines && !propLines.error) {
+    mathProjection = blendWithMarket(mathProjection, propLines.consensusLine, propLines.bookCount);
+  }
+
+  // Real edge/EV against the LIVE market line (propLines.softestLine),
+  // independent of whatever the user has typed into the line field —
+  // computed fresh every request, never attached to mathProjection itself
+  // (which is cached across requests; the market line isn't).
+  let liveMarket = null;
+  if (mathProjection && propLines && !propLines.error && propLines.softestLine != null) {
+    const liveEdge = calcEdgeScore(mathProjection.projection, propLines.softestLine);
+    const liveProb = calcOverUnderProbability(mathProjection.projection, mathProjection.stdDev, propLines.softestLine);
+    liveMarket = {
+      line: propLines.softestLine, consensusLine: propLines.consensusLine, bookCount: propLines.bookCount,
+      edge: liveEdge, ...liveProb,
+      realEdge: liveEdge != null && liveProb ? calcRealEdge(liveEdge > 0 ? 'OVER' : 'UNDER', liveProb.overProbability, liveProb.underProbability, propLines.overPrice, propLines.underPrice) : null,
+    };
+  }
 
   res.json({
     fetchedAt: new Date().toISOString(),
     date: getToday(),
     league: 'wnba',
     dataAvailable: wnbaStats?.dataAvailable || {},
-    mathProjection,
+    mathProjection, liveMarket,
     playerStats, playerRoster,
     playerAdvancedStats, playerMiscStats, playerScoringDist, playerShotDash,
     oppRoster, oppAdvanced, oppShooting, oppFourFact, oppMisc, playerTeamAdvanced,
@@ -3260,6 +4146,7 @@ app.get('/api/wnba/prop-context', async (req, res) => {
     h2hStats,
     h2hGamesLog: h2hStats?.games || [],
     gameContext,
+    scoutNotes: getScoutNotes('wnba', { team: opponent }), // your own offense/defense film reads on this opponent, if any
   });
 });
 
@@ -3276,19 +4163,17 @@ app.get('/api/prop-context', async (req, res) => {
   const nbaStats = loadNBAStats();
 
   // ═══════════════════════════════════════════════════════════════
-  // WAVE 1 — All external calls fire simultaneously
-  // H2H bridge fires first (slowest) alongside everything else
+  // WAVE 1 — H2H bridge fires immediately (slowest); player stats are
+  // fetched alone first so the same-team check below can run before the
+  // paid Odds API call (fetchPropLines) fires — previously that ran in
+  // the same Promise.all as this check, burning quota on every "you
+  // entered your own team as opponent" error. Matches the WNBA endpoint's
+  // existing ordering.
   // ═══════════════════════════════════════════════════════════════
   // Start H2H bridge immediately — it takes longest (nba_api multi-season)
   const h2hBridgePromise = fetchH2HViaBridge(player, opponent);
 
-  const [playerStats, oppRoster, lineups, propLines] = await Promise.all([
-    fetchPlayerStats(player),
-    fetchESPNRoster(opponent),
-    fetchLineups(),
-    fetchPropLines(player, propType || 'points'),
-  ]);
-
+  const playerStats = await fetchPlayerStats(player);
   const playerTeamName = playerStats?.player?.team || '';
 
   if (sameTeam(playerTeamName, opponent)) {
@@ -3296,6 +4181,12 @@ app.get('/api/prop-context', async (req, res) => {
       error: `${player} plays for ${playerTeamName} — that's the same team you entered as the opponent. Enter who ${playerTeamName} is actually facing.`
     });
   }
+
+  const [oppRoster, lineups, propLines] = await Promise.all([
+    fetchESPNRoster(opponent),
+    fetchLineups(),
+    fetchPropLines(player, propType || 'points', { opponent, playerTeam: playerTeamName }),
+  ]);
 
   // ═══════════════════════════════════════════════════════════════
   // WAVE 2 — Player roster + game context simultaneously
@@ -3312,7 +4203,7 @@ app.get('/api/prop-context', async (req, res) => {
   const bridgeH2H = await h2hBridgePromise;
 
   const [playerRoster, gameContext, bdlH2HFallback] = await Promise.all([
-    playerTeamName ? fetchESPNRoster(playerTeamName) : Promise.resolve(null),
+    playerTeamName ? fetchESPNRoster(playerTeamName).then(async r => { await enrichInjuryAbsence(r, 'nba'); return r; }) : Promise.resolve(null),
     fetchGameContext(playerTeamName || player, opponent, null),
     // BDL H2H runs in parallel — only if bridge returned nothing
     (!bridgeH2H && playerStats?.player?.id && oppTeamId)
@@ -3371,13 +4262,24 @@ app.get('/api/prop-context', async (req, res) => {
   const playerPaintStats = nbaStats?.playerPaint
     ? fuzzyMatchPlayer(nbaStats.playerPaint, player) : null;
 
-  // Today's confirmed game
+  // Today's confirmed game — resolve the typed opponent to its canonical
+  // full name first (same short-input collision risk as the WNBA side,
+  // e.g. a bare "LA" or other short alias matching the wrong team).
+  const resolvedOpponentNBA = resolveNBAFullName(opponent);
   const todayGame = todaysGames.find(g =>
-    g.home_team.full_name.toLowerCase().includes(opponent.toLowerCase()) ||
-    g.visitor_team.full_name.toLowerCase().includes(opponent.toLowerCase()) ||
+    g.home_team.full_name.toLowerCase().includes(resolvedOpponentNBA.toLowerCase()) ||
+    g.visitor_team.full_name.toLowerCase().includes(resolvedOpponentNBA.toLowerCase()) ||
     g.home_team.full_name.toLowerCase().includes(playerTeamName.toLowerCase()) ||
     g.visitor_team.full_name.toLowerCase().includes(playerTeamName.toLowerCase())
   ) || null;
+  // Real home/away status for the upcoming game — feeds buildProjection's
+  // home/away split adjustment. Merged in here rather than threaded
+  // through fetchGameContext since todayGame wasn't resolved yet at that
+  // call site.
+  if (todayGame && gameContext) {
+    gameContext.isHome = todayGame.home_team.full_name.toLowerCase().includes(playerTeamName.toLowerCase());
+  }
+  const teamMargins = playerTeamName ? await getTeamGameMargins('nba', playerTeamName) : [];
 
   // ── Pull ALL new stat categories for this player and opponent ──
 
@@ -3395,17 +4297,31 @@ app.get('/api/prop-context', async (req, res) => {
     if (match) playerPlaytypes[key] = match;
   }
 
-  // Opponent team defense by playtype (how well they defend each play type)
+  // Opponent team defense by playtype (how well they defend each play
+  // type), paired with where they rank league-wide defending it specifically
+  // — 1st = toughest to score on, same convention the shot-chart zone ranks
+  // use — computed from the same 30-team file already being read, no extra
+  // fetch. A handful of play types (PR Ball-Handler, PR Roll Man, Cut,
+  // Putbacks) don't have a defensive file at all right now: nba.com's own
+  // Synergy defensive endpoint times out/errors on those specific
+  // play-type+defensive combinations (confirmed live, not a bug on this
+  // end) — those simply won't appear here or in the UI rather than showing
+  // a fabricated number.
   const oppDefPlaytypes = {};
   const teamDefKeys = [
     ['iso','teamDefIso'],['transition','teamDefTransition'],
     ['prBall','teamDefPRBall'],['prRoll','teamDefPRRoll'],
     ['postUp','teamDefPostUp'],['spotUp','teamDefSpotUp'],
-    ['cut','teamDefCut'],['handoff','teamDefHandoff'],['offScreen','teamDefOffScreen'],
+    ['cut','teamDefCut'],['handoff','teamDefHandoff'],
+    ['offScreen','teamDefOffScreen'],['putbacks','teamDefPutbacks'],
   ];
   for (const [key, src] of teamDefKeys) {
-    const match = nbaStats?.[src]?.find(t => t.TEAM_NAME?.toLowerCase().includes(opponent.toLowerCase()));
-    if (match) oppDefPlaytypes[key] = match;
+    const arr = nbaStats?.[src];
+    const match = arr?.find(t => t.TEAM_NAME?.toLowerCase().includes(opponent.toLowerCase()));
+    if (!match) continue;
+    const ranked = arr.filter(t => t.PPP != null).sort((a, b) => a.PPP - b.PPP);
+    const rank = match.PPP != null ? ranked.findIndex(t => t.TEAM_ID === match.TEAM_ID) + 1 : null;
+    oppDefPlaytypes[key] = { ...match, rank: rank || null, rankOf: ranked.length || null };
   }
 
   // Player tracking stats
@@ -3491,7 +4407,7 @@ app.get('/api/prop-context', async (req, res) => {
   const cacheSignature = `${currentInjuryHash}|${gcSig}|${gameContext?.isBackToBack}`;
   let mathProjection = getCachedProjection(player, propType || 'points', cacheSignature);
   if (!mathProjection) {
-    mathProjection = buildProjection(playerStats, {
+    mathProjection = buildProjection(withBlowoutTags(playerStats, teamMargins), {
       oppAdvanced, oppShooting, oppPaintDef, oppFourFact,
       playerRoster, playerTeamAdvanced,
       playerPlaytypes, oppDefPlaytypes,
@@ -3507,12 +4423,31 @@ app.get('/api/prop-context', async (req, res) => {
   } else {
     console.log(`[Proj] Cache hit: ${player} ${propType} → ${mathProjection.projection}`);
   }
+  if (mathProjection && propLines && !propLines.error) {
+    mathProjection = blendWithMarket(mathProjection, propLines.consensusLine, propLines.bookCount);
+  }
+
+  // Real edge/EV against the LIVE market line (propLines.softestLine),
+  // independent of whatever the user has typed into the line field —
+  // computed fresh every request, never attached to mathProjection itself
+  // (which is cached across requests; the market line isn't).
+  let liveMarket = null;
+  if (mathProjection && propLines && !propLines.error && propLines.softestLine != null) {
+    const liveEdge = calcEdgeScore(mathProjection.projection, propLines.softestLine);
+    const liveProb = calcOverUnderProbability(mathProjection.projection, mathProjection.stdDev, propLines.softestLine);
+    liveMarket = {
+      line: propLines.softestLine, consensusLine: propLines.consensusLine, bookCount: propLines.bookCount,
+      edge: liveEdge, ...liveProb,
+      realEdge: liveEdge != null && liveProb ? calcRealEdge(liveEdge > 0 ? 'OVER' : 'UNDER', liveProb.overProbability, liveProb.underProbability, propLines.overPrice, propLines.underPrice) : null,
+    };
+  }
 
   res.json({
     fetchedAt:          new Date().toISOString(),
     date:               getToday(),
     dataAvailable:      nbaStats?.dataAvailable || {},
     mathProjection,     // Independent mathematical projection
+    liveMarket,         // Real edge/EV/Kelly against the live market line
     // Player
     playerStats,
     playerSeasonStats,
@@ -3550,6 +4485,7 @@ app.get('/api/prop-context', async (req, res) => {
     h2hGamesLog: h2hStats?.games || h2hStats?.recentGames || [],  // individual game box scores
     oppTeamId,
     gameContext,         // spread, total, back-to-back, adjustment details
+    scoutNotes: getScoutNotes('nba', { team: opponent }), // your own offense/defense film reads on this opponent, if any
   });
 });
 
@@ -3572,10 +4508,16 @@ const MAX_CANDIDATES_PER_EVENT   = 20; // fair per-game share — see note below
 const MAX_SLATE_CANDIDATES       = 150; // generous overall safety ceiling only
 
 async function fetchSlateCandidates(sportKey) {
-  const eventsRes = await axios.get(`${ODDS_BASE}/sports/${sportKey}/events`, {
-    params: { apiKey: process.env.ODDS_API_KEY }, timeout: 10000
-  });
-  const events = (eventsRes.data || []).slice(0, MAX_SLATE_EVENTS);
+  // "Tonight's slate" means games that tip off later TODAY. The Odds API
+  // lists every upcoming game (the NBA list started two weeks out), and the
+  // scan used to take the first 6 regardless — paying 3 credits per game to
+  // build "tonight's picks" out of opening-week games, which then also
+  // couldn't be graded on the day they were logged. Already-started games
+  // are skipped too (their lines are live, not pre-game).
+  const now = Date.now(), today = getToday();
+  const events = (await getOddsEvents(sportKey))
+    .filter(ev => { const t = new Date(ev.commence_time); return t.getTime() > now && toLocalDateStr(t) === today; })
+    .slice(0, MAX_SLATE_EVENTS);
 
   // Cap PER EVENT, not globally across the concatenated list — events are
   // fetched concurrently, so a global cap applied after the fact effectively
@@ -3592,21 +4534,43 @@ async function fetchSlateCandidates(sportKey) {
         },
         timeout: 10000
       });
-      const seen = {}; // `${player}|${propType}` → first line found
+      // `${player}|${propType}` → { bookTitle: {Over:{point,price}, Under:{point,price}} }
+      // — every book kept (not just the first-seen one) so a consensus line
+      // and the actual price can both be computed below, the same real data
+      // fetchPropLines already collects for the single-player analyzer.
+      const seen = {};
       for (const bm of (oddsRes.data.bookmakers || [])) {
         for (const mkt of (bm.markets || [])) {
           const propType = Object.entries(SLATE_PROP_MARKETS).find(([, v]) => v === mkt.key)?.[0];
           if (!propType) continue;
           for (const o of (mkt.outcomes || [])) {
-            if (o.name !== 'Over' || !o.description) continue;
+            if (!o.description || (o.name !== 'Over' && o.name !== 'Under')) continue;
             const key = `${o.description}|${propType}`;
-            if (!seen[key]) seen[key] = { line: o.point, book: bm.title };
+            if (!seen[key]) seen[key] = {};
+            if (!seen[key][bm.title]) seen[key][bm.title] = {};
+            seen[key][bm.title][o.name] = { point: o.point, price: o.price };
           }
         }
       }
-      for (const [key, v] of Object.entries(seen)) {
+      for (const [key, books] of Object.entries(seen)) {
         const [player, propType] = key.split('|');
-        candidates.push({ player, propType, line: v.line, book: v.book, homeTeam: event.home_team, awayTeam: event.away_team });
+        const overPoints = Object.values(books).map(b => b.Over?.point).filter(p => p != null).sort((a, b) => a - b);
+        if (!overPoints.length) continue;
+        // Softest (lowest) Over line — the best real number available for
+        // an Over bet, same convention fetchPropLines already uses.
+        let softestBook = null, softestLine = null;
+        for (const [book, d] of Object.entries(books)) {
+          if (d.Over?.point != null && (softestLine == null || d.Over.point < softestLine)) { softestLine = d.Over.point; softestBook = book; }
+        }
+        const mid = Math.floor(overPoints.length / 2);
+        const consensusLine = overPoints.length % 2 ? overPoints[mid] : (overPoints[mid - 1] + overPoints[mid]) / 2;
+        const softest = books[softestBook] || {};
+        candidates.push({
+          player, propType, line: softestLine, book: softestBook,
+          consensusLine: parseFloat(consensusLine.toFixed(1)), bookCount: overPoints.length,
+          overPrice: softest.Over?.price ?? null, underPrice: softest.Under?.price ?? null,
+          homeTeam: event.home_team, awayTeam: event.away_team,
+        });
       }
     } catch (_) { /* skip this event, keep scanning the rest */ }
     return candidates.slice(0, MAX_CANDIDATES_PER_EVENT);
@@ -3639,10 +4603,13 @@ async function evaluateNBACandidate(cand) {
   const oppPaintDef      = findTeam(nbaStats?.teamPaintDef);
   const oppFourFact      = findTeam(nbaStats?.teamFourFactors);
   const playerTeamAdvanced = nbaStats?.teamAdvanced?.find(t => t.TEAM_NAME?.toLowerCase().includes(playerTeam.toLowerCase())) || null;
-  const [playerRoster, gameContext] = await Promise.all([
-    fetchESPNRoster(playerTeam),
+  const [playerRoster, gameContext, teamMargins] = await Promise.all([
+    fetchESPNRoster(playerTeam).then(async r => { await enrichInjuryAbsence(r, 'nba'); return r; }),
     fetchGameContext(playerTeam, opponent, null),
+    getTeamGameMargins('nba', playerTeam),
   ]);
+  // Already have both team names on the candidate — no extra lookup needed.
+  if (gameContext) gameContext.isHome = (cand.homeTeam || '').toLowerCase().includes(playerTeam.toLowerCase());
 
   // H2H is intentionally still skipped here (unlike the WNBA slate scan,
   // which now includes it — that one's nearly free, just filtering an
@@ -3652,7 +4619,7 @@ async function evaluateNBACandidate(cand) {
   // candidate — real risk of the once-daily scan taking many minutes.
   // So an NBA slate-scan projection can still differ slightly from the
   // full single-player analysis (which does include H2H); WNBA's cannot.
-  const projection = buildProjection(playerStats, {
+  const rawProjection = buildProjection(withBlowoutTags(playerStats, teamMargins), {
     oppAdvanced, oppShooting, oppPaintDef, oppFourFact,
     playerRoster, playerTeamAdvanced,
     playerPlaytypes: {}, oppDefPlaytypes: {}, // skipped in the slate scan for speed — see note above
@@ -3660,14 +4627,28 @@ async function evaluateNBACandidate(cand) {
     h2hStats: null, gameContext,
     nbaPlayerStats: nbaStats?.playerAdvanced || nbaStats?.playerStats || [],
   }, cand.propType);
-  if (!projection) return null;
+  if (!rawProjection) return null;
+  // Same market blend as the single-player analyzer (blendWithMarket) —
+  // applied here too so a Top Plays pick and the auto-logged/CLV-graded
+  // version of that same pick are always the same number as what the
+  // analyzer would show for it, instead of two silently different
+  // definitions of "the projection" living side by side in the app.
+  const projection = blendWithMarket(rawProjection, cand.consensusLine, cand.bookCount);
 
+  const edge = calcEdgeScore(projection.projection, cand.line);
+  const prob = calcOverUnderProbability(projection.projection, projection.stdDev, cand.line);
   return {
     league: 'nba', player: playerStats.player.name, team: playerTeam, opponent,
     propType: cand.propType, line: cand.line, book: cand.book,
+    // Consensus (median across every book posting a line) — the projection
+    // above is already blended toward it (blendWithMarket), so marketEdge
+    // below shows how much edge survives after that blend, not the raw
+    // model-vs-market gap.
+    consensusLine: cand.consensusLine ?? null, bookCount: cand.bookCount ?? null,
+    marketEdge: cand.consensusLine != null ? calcEdgeScore(projection.projection, cand.consensusLine) : null,
     projection: projection.projection, confidence: projection.confidence,
-    edge: calcEdgeScore(projection.projection, cand.line),
-    ...calcOverUnderProbability(projection.projection, projection.stdDev, cand.line),
+    edge, ...prob,
+    realEdge: calcRealEdge(edge > 0 ? 'OVER' : 'UNDER', prob.overProbability, prob.underProbability, cand.overPrice, cand.underPrice),
   };
 }
 
@@ -3682,17 +4663,19 @@ async function evaluateWNBACandidate(cand) {
   // cut-down version) — this scan is day-locked to once per league per day,
   // so the extra calls are cheap and it means a Today-page pick and the
   // full analysis for that same player/prop always agree on the number.
-  const [playerRoster, h2hStats, gameContext] = await Promise.all([
-    fetchWNBARoster(playerTeam),
+  const [playerRoster, h2hStats, gameContext, teamMargins] = await Promise.all([
+    fetchWNBARoster(playerTeam).then(async r => { await enrichInjuryAbsence(r, 'wnba'); return r; }),
     fetchWNBAH2HStats(cand.player, opponent),
     fetchWNBAGameContext(playerTeam, opponent),
+    getTeamGameMargins('wnba', playerTeam),
   ]);
+  if (gameContext) gameContext.isHome = (cand.homeTeam || '').toLowerCase().includes(playerTeam.toLowerCase());
   const wnbaStats = loadWNBAStats();
   const findTeam = (arr) => arr?.find(t => t.TEAM_NAME?.toLowerCase().includes(opponent.toLowerCase())) || null;
   const oppAdvanced = findTeam(wnbaStats?.teamAdvanced);
   const playerTeamAdvanced = wnbaStats?.teamAdvanced?.find(t => t.TEAM_NAME?.toLowerCase().includes(playerTeam.toLowerCase())) || null;
 
-  const projection = buildProjection(playerStats, {
+  const rawProjection = buildProjection(withBlowoutTags(playerStats, teamMargins), {
     oppAdvanced, oppShooting: findTeam(wnbaStats?.teamOppShooting), oppPaintDef: null,
     oppFourFact: findTeam(wnbaStats?.teamFourFactors),
     playerRoster, playerTeamAdvanced,
@@ -3700,14 +4683,19 @@ async function evaluateWNBACandidate(cand) {
     dataAvailable: wnbaStats?.dataAvailable || {}, h2hStats, gameContext,
     nbaPlayerStats: wnbaStats?.playerAdvanced || [], league: 'wnba',
   }, cand.propType);
-  if (!projection) return null;
+  if (!rawProjection) return null;
+  const projection = blendWithMarket(rawProjection, cand.consensusLine, cand.bookCount);
 
+  const edge = calcEdgeScore(projection.projection, cand.line);
+  const prob = calcOverUnderProbability(projection.projection, projection.stdDev, cand.line);
   return {
     league: 'wnba', player: playerStats.player.name, team: playerTeam, opponent,
     propType: cand.propType, line: cand.line, book: cand.book,
+    consensusLine: cand.consensusLine ?? null, bookCount: cand.bookCount ?? null,
+    marketEdge: cand.consensusLine != null ? calcEdgeScore(projection.projection, cand.consensusLine) : null,
     projection: projection.projection, confidence: projection.confidence,
-    edge: calcEdgeScore(projection.projection, cand.line),
-    ...calcOverUnderProbability(projection.projection, projection.stdDev, cand.line),
+    edge, ...prob,
+    realEdge: calcRealEdge(edge > 0 ? 'OVER' : 'UNDER', prob.overProbability, prob.underProbability, cand.overPrice, cand.underPrice),
   };
 }
 
@@ -3717,11 +4705,46 @@ async function evaluateWNBACandidate(cand) {
 // re-hitting the odds API — otherwise they can disagree if evaluate() (or
 // the odds API itself) flakes differently between two separate live calls,
 // and each visit doubles real odds-API quota usage for no reason.
-const slateScanCache = {}; // league -> { data: {candidates, results}, dateKey }
+// Persisted to disk, not just memory — this scan is what actually spends
+// odds-API quota (one events call + up to 5 per-event calls, per league).
+// It was already day-locked, but only in memory: every server restart
+// silently threw away a scan that was still valid for the rest of that
+// day and paid for it again from zero. Confirmed live this session — that
+// exact pattern burned a fresh 500-request key down to 0 from nothing but
+// repeated restarts, not real traffic.
+const SLATE_CACHE_FILE = 'slate_scan_cache.json';
+function loadSlateScanCacheFromDisk() {
+  try {
+    if (!fs.existsSync(SLATE_CACHE_FILE)) return {};
+    return JSON.parse(fs.readFileSync(SLATE_CACHE_FILE, 'utf8'));
+  } catch (_) { return {}; }
+}
+function saveSlateScanCacheToDisk(cache) {
+  try { fs.writeFileSync(SLATE_CACHE_FILE, JSON.stringify(cache)); } catch (_) {}
+}
+const slateScanCache = loadSlateScanCacheFromDisk(); // league -> { data: {candidates, results}, dateKey, v }
+// Bump whenever projection/confidence math changes: the scan is cached on
+// disk for the whole day (to protect the Odds API quota), so without a
+// version stamp a logic change would keep serving numbers from the OLD
+// formula until midnight.
+const SLATE_LOGIC_VERSION = 2; // 2 = continuous confidence score (calcConfidence)
+// An empty scan (0 candidates) is ambiguous — could mean a real quota/key
+// failure, or just no props posted yet — so it's NOT trusted for the rest
+// of the day like a real successful scan is. Real bug this fixed: a key
+// that was exhausted earlier today and has since been replaced/reset
+// stayed stuck showing the fallback until midnight, because the disk
+// cache had already locked in "0 candidates" for today and had no way to
+// know the underlying problem was fixed. A successful (non-empty) scan
+// is still trusted for the full day, since it's expensive to produce and
+// clearly means everything's working.
+const EMPTY_SCAN_RETRY_MS = 20 * 60 * 1000;
 async function collectSlateResults(league) {
   const today = getToday();
   const cached = slateScanCache[league];
-  if (cached && cached.dateKey === today) return cached.data;
+  if (cached && cached.dateKey === today && cached.v === SLATE_LOGIC_VERSION) {
+    const isEmpty = !cached.data?.candidates?.length;
+    if (!isEmpty || (Date.now() - (cached.ts || 0)) < EMPTY_SCAN_RETRY_MS) return cached.data;
+  }
 
   const sportKey = league === 'wnba' ? 'basketball_wnba' : 'basketball_nba';
   const candidates = await fetchSlateCandidates(sportKey);
@@ -3735,8 +4758,75 @@ async function collectSlateResults(league) {
     } catch (_) { /* one bad candidate shouldn't sink the whole scan */ }
   }
   const data = { candidates, results };
-  slateScanCache[league] = { data, dateKey: today };
+  slateScanCache[league] = { data, dateKey: today, ts: Date.now(), v: SLATE_LOGIC_VERSION };
+  saveSlateScanCacheToDisk(slateScanCache);
+  autoLogSlatePicks(league, results);
   return data;
+}
+
+// ── AUTO-LOG — every real pick from the daily slate scan gets saved to
+// the CLV tracker automatically (source:'auto'), independent of anyone
+// using the Prop List. Without this, "does confidence actually predict
+// hit rate" can never be answered — there just wasn't enough graded data,
+// since only whatever a user happened to click "+ ADD TO LIST" on got
+// tracked. Same "real edge only" cutoff as top-plays/team-picks (edge >=
+// 1.0) — this logs exactly what the app actually recommends, not every
+// candidate it merely looked at. Runs once per fresh (non-cached) scan;
+// deduped against what's already logged today so a cache-miss retry
+// can't double-log the same pick.
+function autoLogSlatePicks(league, results) {
+  const withEdge = (results || []).filter(r => Math.abs(r.edge) >= 1.0);
+  if (!withEdge.length) return;
+  const today = getToday();
+  const entries = loadCLV();
+  const already = new Set(entries
+    .filter(e => e.source === 'auto' && e.date === today && e.league === league)
+    .map(e => `${e.player}|${e.propType}|${e.line}`));
+  let added = 0;
+  for (const r of withEdge) {
+    const key = `${r.player}|${r.propType}|${r.line}`;
+    if (already.has(key)) continue;
+    already.add(key);
+    entries.unshift({
+      id: nextId(), date: today, savedAt: new Date().toISOString(), league,
+      player: r.player, opp: r.opponent, propType: r.propType, line: r.line,
+      projection: r.projection, verdict: r.edge > 0 ? 'OVER' : 'UNDER',
+      edge: r.edge, confidence: r.confidence,
+      closingLine: null, result: null, actualStat: null, clv: null, notes: '',
+      source: 'auto', confVersion: CONFIDENCE_FORMULA_VERSION,
+      book: r.book ?? null, openConsensus: r.consensusLine ?? null,
+    });
+    added++;
+  }
+  if (added) { saveCLV(entries); console.log(`[AutoLog] ${league}: logged ${added} picks for ${today}`); }
+}
+
+// ── AUTO-GRADE — fills in result/actualStat for every auto-logged pick
+// whose game has already happened but hasn't been graded yet. Reuses the
+// exact win/loss/push logic the manual Prop List auto-grade uses
+// (checkOneProp in index.html), so a pick graded automatically and one
+// graded by opening the Prop List always agree.
+async function autoGradePendingPicks() {
+  const today = getToday();
+  const entries = loadCLV();
+  const pending = entries.filter(e => e.source === 'auto' && e.result == null && gradeDateOf(e) < today);
+  if (!pending.length) return;
+  let graded = 0;
+  for (const e of pending) {
+    try {
+      const stats = e.league === 'wnba' ? await fetchWNBAPlayerStats(e.player) : await fetchPlayerStats(e.player);
+      if (!stats || stats.error) continue;
+      const game = findGameOnDate(stats, gradeDateOf(e));
+      if (!game) continue;
+      const actual = gradeStatValue(game, e.propType);
+      const isOver  = e.verdict === 'OVER'  || e.verdict === 'LEAN_OVER';
+      const isUnder = e.verdict === 'UNDER' || e.verdict === 'LEAN_UNDER';
+      e.actualStat = actual;
+      e.result = actual === e.line ? 'PUSH' : isOver ? (actual > e.line ? 'WIN' : 'LOSS') : isUnder ? (actual < e.line ? 'WIN' : 'LOSS') : 'NO_BET';
+      graded++;
+    } catch (_) { /* leave ungraded — retried on tomorrow's run */ }
+  }
+  if (graded) { saveCLV(entries); console.log(`[AutoGrade] Graded ${graded} pending picks`); }
 }
 
 async function computeTopPlays(league) {
@@ -3756,6 +4846,8 @@ async function computeTopPlays(league) {
       direction: r.edge > 0 ? 'OVER' : 'UNDER',
       projection: r.projection, edge: r.edge, confidence: r.confidence,
       overProbability: r.overProbability ?? null, underProbability: r.underProbability ?? null,
+      consensusLine: r.consensusLine ?? null, bookCount: r.bookCount ?? null, marketEdge: r.marketEdge ?? null,
+      realEdge: r.realEdge ?? null,
     })),
   };
 }
@@ -3786,56 +4878,152 @@ async function computeTeamPicks(league) {
         direction: r.edge > 0 ? 'OVER' : 'UNDER',
         projection: r.projection, edge: r.edge, confidence: r.confidence,
         overProbability: r.overProbability ?? null, underProbability: r.underProbability ?? null,
+        consensusLine: r.consensusLine ?? null, bookCount: r.bookCount ?? null, marketEdge: r.marketEdge ?? null,
+        realEdge: r.realEdge ?? null,
       })),
     })),
   };
+}
+
+// ── FALLBACK: TOP PROJECTED PERFORMERS (needs no odds API at all) ─────
+// "Confident picks" needs a real posted line to evaluate against — with
+// the odds API down there's no line, but the math model can still
+// project real production for tonight's actual players and games.
+// Reuses the same evaluateNBACandidate/evaluateWNBACandidate used by the
+// real path — both already degrade a missing line to edge=0 and no
+// probability rather than erroring, so passing line:null is safe. Only
+// projection + confidence get surfaced here — no fabricated edge, no
+// OVER/UNDER call, since there's no real line to be over/under against.
+const fallbackProjectedCache = {}; // league -> { data, dateKey }
+async function computeFallbackProjected(league) {
+  const today = getToday();
+  const cached = fallbackProjectedCache[league];
+  if (cached && cached.dateKey === today) return cached.data;
+
+  let gameList;
+  if (league === 'wnba') {
+    gameList = (await fetchWNBASchedule()).map(g => ({ home: g.home, away: g.away }));
+  } else {
+    if (!todaysGames.length) await fetchTodaysGames();
+    gameList = todaysGames.map(g => ({ home: g.home_team.full_name, away: g.visitor_team.full_name }));
+  }
+
+  const evaluate = league === 'wnba' ? evaluateWNBACandidate : evaluateNBACandidate;
+  const byGame = [];
+  for (const g of gameList) {
+    const byTeam = {};
+    for (const team of [g.home, g.away]) {
+      try {
+        const top = await getTopUsagePlayers(league, team, 2);
+        for (const p of top) {
+          try {
+            const r = await evaluate({ player: p.name, propType: 'points', line: null, book: null, homeTeam: g.home, awayTeam: g.away });
+            if (!r || !r.projection) continue;
+            const existing = byTeam[r.team];
+            if (!existing || (r.confidence || 0) > (existing.confidence || 0)) byTeam[r.team] = r;
+          } catch (_) { /* one player shouldn't sink the rest */ }
+        }
+      } catch (_) { /* one team shouldn't sink the rest */ }
+    }
+    if (Object.keys(byTeam).length) byGame.push({ home: g.home, away: g.away, byTeam });
+  }
+
+  const allPicks = byGame.flatMap(g => Object.values(g.byTeam));
+  allPicks.sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
+
+  const data = {
+    league, generatedAt: new Date().toISOString(), fallback: true,
+    top3: allPicks.slice(0, 3).map(r => ({ player: r.player, team: r.team, opponent: r.opponent, propType: r.propType, projection: r.projection, confidence: r.confidence })),
+    games: byGame.map(g => ({
+      home: g.home, away: g.away,
+      picks: Object.values(g.byTeam).map(r => ({ team: r.team, player: r.player, opponent: r.opponent, propType: r.propType, projection: r.projection, confidence: r.confidence })),
+    })),
+  };
+  fallbackProjectedCache[league] = { data, dateKey: today };
+  return data;
+}
+
+// A cached FALLBACK result gets the same short-retry treatment as an
+// empty slate scan (see EMPTY_SCAN_RETRY_MS above) — real bug this fixed:
+// once odds failed once in a day, a mid-day key fix/quota reset stayed
+// invisible until midnight, because this layer also day-locked the
+// fallback result with no way to notice the underlying problem was gone.
+// A real successful result is still trusted for the full day.
+function isCacheStillFresh(cached, today) {
+  if (!cached || cached.dateKey !== today) return false;
+  if (!cached.data?.fallback) return true;
+  return (Date.now() - (cached.ts || 0)) < EMPTY_SCAN_RETRY_MS;
 }
 
 app.get('/api/top-plays', async (req, res) => {
   const league  = (req.query.league || 'nba').toLowerCase() === 'wnba' ? 'wnba' : 'nba';
   const today   = getToday();
   const cached  = topPlaysCache[league];
-  if (cached && cached.dateKey === today) {
+  if (isCacheStillFresh(cached, today)) {
     return res.json({ ...cached.data, cached: true });
   }
-  if (!process.env.ODDS_API_KEY || process.env.ODDS_API_KEY.includes('your_')) {
-    return res.status(500).json({ error: 'No odds key configured' });
+  const hasOddsKey = !!(process.env.ODDS_API_KEY && !process.env.ODDS_API_KEY.includes('your_'));
+  let data = null, scanFailed = false;
+  if (hasOddsKey) {
+    try {
+      data = await computeTopPlays(league);
+      if (data.scanned === 0) scanFailed = true; // key present but nothing came back — quota exhaustion, most likely
+    } catch (err) {
+      console.error(`[TopPlays] ${league} scan failed:`, err.message);
+      scanFailed = true;
+    }
   }
-  try {
-    const data = await computeTopPlays(league);
-    topPlaysCache[league] = { data, dateKey: today };
-    res.json({ ...data, cached: false });
-  } catch (err) {
-    console.error(`[TopPlays] ${league} scan failed:`, err.message);
-    res.status(500).json({ error: err.message });
+  if (!hasOddsKey || scanFailed) {
+    try {
+      const fb = await computeFallbackProjected(league);
+      const fallbackData = { league, generatedAt: fb.generatedAt, scanned: 0, evaluated: fb.top3.length, topPlays: [], fallback: true, fallbackPlays: fb.top3 };
+      topPlaysCache[league] = { data: fallbackData, dateKey: today, ts: Date.now() };
+      return res.json({ ...fallbackData, cached: false });
+    } catch (err) {
+      return res.status(500).json({ error: (hasOddsKey ? '' : 'No odds key configured. ') + 'Fallback projection also failed: ' + err.message });
+    }
   }
+  topPlaysCache[league] = { data, dateKey: today };
+  res.json({ ...data, cached: false });
 });
 
-const teamPicksCache = {}; // league -> { data, dateKey } — same day-lock as topPlaysCache
+const teamPicksCache = {}; // league -> { data, dateKey, ts } — same freshness rule as topPlaysCache
 app.get('/api/team-picks', async (req, res) => {
   const league = (req.query.league || 'nba').toLowerCase() === 'wnba' ? 'wnba' : 'nba';
   const today  = getToday();
   const cached = teamPicksCache[league];
-  if (cached && cached.dateKey === today) {
+  if (isCacheStillFresh(cached, today)) {
     return res.json({ ...cached.data, cached: true });
   }
-  if (!process.env.ODDS_API_KEY || process.env.ODDS_API_KEY.includes('your_')) {
-    return res.status(500).json({ error: 'No odds key configured' });
+  const hasOddsKey = !!(process.env.ODDS_API_KEY && !process.env.ODDS_API_KEY.includes('your_'));
+  let data = null, scanFailed = false;
+  if (hasOddsKey) {
+    try {
+      data = await computeTeamPicks(league);
+      if (!data.games.length) scanFailed = true;
+    } catch (err) {
+      console.error(`[TeamPicks] ${league} scan failed:`, err.message);
+      scanFailed = true;
+    }
   }
-  try {
-    const data = await computeTeamPicks(league);
-    teamPicksCache[league] = { data, dateKey: today };
-    res.json({ ...data, cached: false });
-  } catch (err) {
-    console.error(`[TeamPicks] ${league} scan failed:`, err.message);
-    res.status(500).json({ error: err.message });
+  if (!hasOddsKey || scanFailed) {
+    try {
+      const fb = await computeFallbackProjected(league);
+      const fallbackData = { league, generatedAt: fb.generatedAt, fallback: true, games: fb.games };
+      teamPicksCache[league] = { data: fallbackData, dateKey: today, ts: Date.now() };
+      return res.json({ ...fallbackData, cached: false });
+    } catch (err) {
+      return res.status(500).json({ error: (hasOddsKey ? '' : 'No odds key configured. ') + 'Fallback projection also failed: ' + err.message });
+    }
   }
+  teamPicksCache[league] = { data, dateKey: today };
+  res.json({ ...data, cached: false });
 });
 
 // ─────────────────────────────────────────────────────
 // CLAUDE PROXY
 // ─────────────────────────────────────────────────────
-app.post('/api/analyze', async (req, res) => {
+app.post('/api/analyze', analyzeRateLimiter, async (req, res) => {
   const { prompt } = req.body;
   if (!prompt) return res.status(400).json({ error: 'prompt required' });
   if (!process.env.ANTHROPIC_KEY || process.env.ANTHROPIC_KEY.includes('your_')) {
@@ -3993,19 +5181,52 @@ app.get('/api/debug-matchup', async (req, res) => {
 // CACHE CLEAR — force fresh data on next request
 // Clears: projections, player stats, H2H bridge, rosters, nba stats
 // ─────────────────────────────────────────────────────────────
+// Shared by the manual "clear all" route and the midnight cron — previously
+// each only reset 5 of ~15 in-memory caches (projections/playerStats/
+// bridge/rosters/nbaStats), so prop lines, shot charts, WNBA gamelogs,
+// team schedules, position-defense, and the slate-scan/top-plays/team-
+// picks/fallback caches could all still serve stale data after either a
+// manual clear or the daily reset.
+function clearAllCaches() {
+  projectionCache  = {};
+  playerStatsCache = {};
+  lastPlayerStatsFetch = {};
+  Object.keys(nbaApiBridgeCache).forEach(k => delete nbaApiBridgeCache[k]);
+  rosterCache      = {};
+  lastRosterFetch  = {};
+  nbaStatsCache    = null;
+  lastStatsDiskRead = 0;
+  lineupCache      = null;
+  wnbaStatsCache      = null;
+  wnbaRosterCache     = {};
+  lastWnbaRosterFetch = {};
+  wnbaPlayerIndex     = {};
+  wnbaTodaysGames  = [];
+  lastWnbaSchedule = 0;
+  playersListCache = {};
+  Object.keys(posCategoryCache).forEach(k => delete posCategoryCache[k]);
+  Object.keys(leaguePosCategoryCache).forEach(k => delete leaguePosCategoryCache[k]);
+  Object.keys(teamScheduleCache).forEach(k => delete teamScheduleCache[k]);
+  Object.keys(propLinesCache).forEach(k => delete propLinesCache[k]);
+  Object.keys(oddsEventsCache).forEach(k => delete oddsEventsCache[k]);
+  Object.keys(injuryAbsenceCache).forEach(k => delete injuryAbsenceCache[k]);
+  Object.keys(eventOddsCache).forEach(k => delete eventOddsCache[k]);
+  Object.keys(wnbaGamelogCache).forEach(k => delete wnbaGamelogCache[k]);
+  Object.keys(shotChartCache).forEach(k => delete shotChartCache[k]);
+  Object.keys(topPlaysCache).forEach(k => delete topPlaysCache[k]);
+  Object.keys(fallbackProjectedCache).forEach(k => delete fallbackProjectedCache[k]);
+  Object.keys(teamPicksCache).forEach(k => delete teamPicksCache[k]);
+  Object.keys(slateScanCache).forEach(k => delete slateScanCache[k]);
+  saveSlateScanCacheToDisk(slateScanCache);
+}
+
 app.post('/api/cache-clear', (req, res) => {
   const { target } = req.body || {};
 
   if (!target || target === 'all') {
-    projectionCache  = {};
-    playerStatsCache = {};
-    Object.keys(nbaApiBridgeCache).forEach(k => delete nbaApiBridgeCache[k]);
-    rosterCache      = {};
-    lastRosterFetch  = {};
-    nbaStatsCache    = null;
-    lastStatsDiskRead = 0;
+    clearAllCaches();
     console.log('[Cache] ALL caches cleared by user request');
-    return res.json({ ok: true, cleared: ['projections','playerStats','h2hBridge','rosters','nbaStats'] });
+    return res.json({ ok: true, cleared: ['projections','playerStats','h2hBridge','rosters','nbaStats','propLines','shotCharts','wnbaGamelogs','teamSchedules','posDefense','slateScan','topPlays','teamPicks','fallbackProjected'] });
   }
 
   const cleared = [];
@@ -4032,19 +5253,6 @@ app.post('/api/cache-clear', (req, res) => {
 
   console.log(`[Cache] Cleared: ${cleared.join(', ')}`);
   res.json({ ok: true, cleared });
-});
-
-// Also expose as GET for quick browser testing
-app.get('/api/cache-clear', (req, res) => {
-  projectionCache  = {};
-  playerStatsCache = {};
-  Object.keys(nbaApiBridgeCache).forEach(k => delete nbaApiBridgeCache[k]);
-  rosterCache      = {};
-  lastRosterFetch  = {};
-  nbaStatsCache    = null;
-  lastStatsDiskRead = 0;
-  console.log('[Cache] ALL caches cleared via GET');
-  res.json({ ok: true, cleared: 'all', message: 'All caches cleared — next analysis will fetch fresh data' });
 });
 
 // ── ROSTER REFRESH ────────────────────────────────────────────────
@@ -4090,7 +5298,6 @@ app.get('/api/debug', async (req, res) => {
     anthropic: !!(process.env.ANTHROPIC_KEY && !process.env.ANTHROPIC_KEY.includes('your_')),
     oddsApi: !!process.env.ODDS_API_KEY,
     rapidApi: !!process.env.RAPIDAPI_KEY,
-    anthropicKeyPrefix: process.env.ANTHROPIC_KEY?.slice(0,12) + '...'
   };
   const fs = require('fs');
   results.dataFiles = {
@@ -4139,20 +5346,24 @@ cron.schedule('15 7 * * *', () => {
   });
 });
 cron.schedule('0 0 * * *', () => {                                                      // midnight reset
-  playerStatsCache = {};
-  projectionCache  = {};   // clear projections for new day
-  lineupCache      = null;
-  rosterCache      = {};   // clear rosters — trades announced overnight
-  lastRosterFetch  = {};
-  nbaStatsCache    = null;
-  wnbaStatsCache      = null;
-  wnbaRosterCache     = {};
-  lastWnbaRosterFetch = {};
-  wnbaPlayerIndex     = {};
+  clearAllCaches();
   console.log('[CRON] All caches cleared');
 });
 cron.schedule('0 12,17 * * *', () => { lastLineupFetch = null; fetchLineups(); });     // lineup refresh at noon + 5pm
 cron.schedule('0 8,12,16 * * *', () => { rosterCache = {}; lastRosterFetch = {}; });         // roster refresh every morning
+// Proactively runs (and thereby auto-logs) each day's slate scan even if
+// nobody opens the app — accuracy tracking shouldn't depend on a visit.
+cron.schedule('0 10 * * *', () => {
+  collectSlateResults('nba').catch(err => console.error('[AutoLog] nba scan failed:', err.message));
+  collectSlateResults('wnba').catch(err => console.error('[AutoLog] wnba scan failed:', err.message));
+});
+// Closing-line capture — cheap tick (the events list is free); only spends
+// odds requests within CLOSING_WINDOW_MIN of a tip-off with pending picks.
+cron.schedule('*/5 * * * *', () => captureClosingLines().catch(err => console.error('[Closing] failed:', err.message)));
+setTimeout(() => captureClosingLines().catch(err => console.error('[Closing] failed:', err.message)), 20000);
+// Well after any real-world game could still be in progress — grades
+// everything auto-logged for days that have already fully passed.
+cron.schedule('0 6 * * *', () => autoGradePendingPicks().catch(err => console.error('[AutoGrade] failed:', err.message)));
 
 // ─────────────────────────────────────────────────────
 // START
@@ -4326,6 +5537,132 @@ function saveCLV(data) {
   } catch (_) { return false; }
 }
 
+// Direction-adjusted closing-line value (positive = the market moved toward
+// our side). Auto picks are logged at the SOFTEST book's line, so comparing
+// that to a closing consensus would hand every OVER positive CLV and every
+// UNDER negative CLV by construction. Their CLV is therefore measured as
+// market movement: closing consensus vs. the consensus at logging time.
+// What the softest-book shopping itself was worth is kept separately as
+// lineShopGain. Manual entries keep the original line-vs-close definition.
+function applyCLV(e) {
+  if (e.closingLine == null) return;
+  const sign = (e.verdict === 'OVER' || e.verdict === 'LEAN_OVER') ? 1
+             : (e.verdict === 'UNDER' || e.verdict === 'LEAN_UNDER') ? -1 : 0;
+  if (!sign) return;
+  const base = e.source === 'auto' ? e.openConsensus : e.line;
+  if (base != null) e.clv = parseFloat((sign * (e.closingLine - base)).toFixed(1));
+  if (e.source === 'auto' && e.line != null) e.lineShopGain = parseFloat((sign * (e.closingLine - e.line)).toFixed(1));
+}
+
+// ── AUTOMATIC CLOSING-LINE CAPTURE ──────────────────────────────────
+// Closing lines used to be typed in by hand, so auto-logged picks never had
+// one and CLV (the only fast signal of whether the model beats the market)
+// could not be measured. A 5-minute tick finds each pending pick's game via
+// the (free) events list and, once tip-off is within CLOSING_WINDOW_MIN,
+// makes ONE odds call per game for just the markets that have pending picks
+// (~1 request per market). Never captured after tip-off: live lines are a
+// different thing, and those picks are marked 'missed' instead of faked.
+const CLOSING_WINDOW_MIN = 12;
+const PROP_MARKET_BY_TYPE = {
+  points: 'player_points', rebounds: 'player_rebounds', assists: 'player_assists', '3pm': 'player_threes',
+  pra: 'player_points_rebounds_assists', steals: 'player_steals', blocks: 'player_blocks',
+};
+const closingNextCheck = {}; // league -> epoch ms; skips pointless polling until near tip-off
+let closingRunning = false;
+
+function entryEvent(entry, events) {
+  const opp = (entry.opp || '').toLowerCase().trim();
+  if (!opp) return null;
+  const saved = new Date(entry.savedAt || 0).getTime();
+  const last = opp.split(' ').pop();
+  const hits = (events || []).filter(ev => {
+    const h = (ev.home_team || '').toLowerCase(), a = (ev.away_team || '').toLowerCase();
+    // short strings match exactly only — "la" is a substring of "atlanta dream"
+    if (h === opp || a === opp) return true;
+    if (opp.length >= 5 && (h.includes(opp) || a.includes(opp))) return true;
+    return last.length >= 4 && (h.endsWith(last) || a.endsWith(last));
+  }).filter(ev => new Date(ev.commence_time).getTime() > saved - 3 * 3600 * 1000)
+    .sort((x, y) => new Date(x.commence_time) - new Date(y.commence_time));
+  return hits[0] || null; // earliest game involving that opponent after the pick was logged
+}
+
+async function captureClosingLines() {
+  if (closingRunning) return;
+  if (!process.env.ODDS_API_KEY || process.env.ODDS_API_KEY.includes('your_')) return;
+  closingRunning = true;
+  try {
+    const now = Date.now();
+    const pending = loadCLV().filter(e => e.closingLine == null && !e.result && !e.closingCapture &&
+      (e.league === 'nba' || e.league === 'wnba') && now - new Date(e.savedAt || 0).getTime() < 36 * 3600 * 1000);
+    if (!pending.length) return;
+
+    const patches = new Map(); // id -> fields to merge (re-applied to a FRESH read below, so a pick saved while we were on the network isn't overwritten)
+    const addPatch = (id, fields) => patches.set(id, { ...(patches.get(id) || {}), ...fields });
+    for (const league of ['nba', 'wnba']) {
+      const mine = pending.filter(e => e.league === league);
+      if (!mine.length || now < (closingNextCheck[league] || 0)) continue;
+      const sportKey = league === 'wnba' ? 'basketball_wnba' : 'basketball_nba';
+      const evRes = await axios.get(`${ODDS_BASE}/sports/${sportKey}/events`, { params: { apiKey: process.env.ODDS_API_KEY }, timeout: 10000 });
+
+      const byEvent = new Map();
+      for (const e of mine) {
+        const ev = entryEvent(e, evRes.data || []);
+        if (!ev) continue; // game not listed (yet) — stays pending, ages out after 36h
+        if (!byEvent.has(ev.id)) byEvent.set(ev.id, { ev, list: [] });
+        byEvent.get(ev.id).list.push(e);
+        if (e.gameStart !== ev.commence_time) patches.set(e.id, { gameStart: ev.commence_time }); // only when new/changed — avoids rewriting the file every tick
+      }
+
+      let earliestTip = Infinity;
+      for (const { ev, list } of byEvent.values()) {
+        const mins = (new Date(ev.commence_time).getTime() - now) / 60000;
+        if (mins > CLOSING_WINDOW_MIN) { earliestTip = Math.min(earliestTip, mins); continue; }
+        if (mins <= 0) { list.forEach(e => addPatch(e.id, { closingCapture: 'missed' })); continue; }
+
+        const markets = [...new Set(list.map(e => PROP_MARKET_BY_TYPE[e.propType]).filter(Boolean))];
+        if (!markets.length) { list.forEach(e => addPatch(e.id, { closingCapture: 'unsupported' })); continue; }
+        const oddsRes = await axios.get(`${ODDS_BASE}/sports/${sportKey}/events/${ev.id}/odds`, {
+          params: { apiKey: process.env.ODDS_API_KEY, regions: 'us', markets: markets.join(','), oddsFormat: 'american' }, timeout: 10000,
+        });
+        for (const e of list) {
+          const market = PROP_MARKET_BY_TYPE[e.propType];
+          const lines = {};
+          for (const bm of (oddsRes.data.bookmakers || [])) {
+            for (const mkt of (bm.markets || [])) {
+              if (mkt.key !== market) continue;
+              for (const o of (mkt.outcomes || [])) {
+                if (matchesOutcomeName(o.description, e.player) && (o.name === 'Over' || o.name === 'Under')) {
+                  if (!lines[bm.title]) lines[bm.title] = {};
+                  lines[bm.title][o.name] = { point: o.point, price: o.price };
+                }
+              }
+            }
+          }
+          const c = consensusFromLines(lines);
+          addPatch(e.id, c.consensusLine != null
+            ? { closingLine: c.consensusLine, closingBookCount: c.bookCount, closingCapturedAt: new Date().toISOString(), closingCapture: 'auto' }
+            : { closingCapture: 'unavailable' }); // player no longer posted at close
+        }
+        console.log(`[Closing] ${league}: ${ev.away_team} @ ${ev.home_team} — captured ${list.length} pick(s), ${Math.round(mins)} min to tip`);
+      }
+      const waitMin = earliestTip === Infinity ? 30 : Math.min(30, Math.max(1, earliestTip - CLOSING_WINDOW_MIN - 5));
+      closingNextCheck[league] = Date.now() + waitMin * 60000;
+      console.log(`[Closing] ${league}: ${mine.length} pending, ${earliestTip === Infinity ? 'no upcoming game matched' : Math.round(earliestTip) + ' min to first tip'} — next check in ${Math.round(waitMin)} min`);
+    }
+
+    if (patches.size) {
+      const fresh = loadCLV();
+      for (const e of fresh) {
+        const patch = patches.get(e.id);
+        if (!patch || e.closingLine != null || e.result) continue;
+        Object.assign(e, patch);
+        applyCLV(e);
+      }
+      saveCLV(fresh);
+    }
+  } finally { closingRunning = false; }
+}
+
 // Save a new analysis entry
 app.post('/api/clv/save', (req, res) => {
   const { player, opp, propType, line, projection, verdict, edge, confidence, gameDate, league } = req.body;
@@ -4333,7 +5670,7 @@ app.post('/api/clv/save', (req, res) => {
 
   const entries = loadCLV();
   const entry = {
-    id:          Date.now(),
+    id:          nextId(),
     date:        gameDate || getToday(),
     savedAt:     new Date().toISOString(),
     league:      league === 'wnba' ? 'wnba' : 'nba',
@@ -4341,7 +5678,8 @@ app.post('/api/clv/save', (req, res) => {
     projection:  parseFloat(projection) || null,
     verdict,
     edge:        parseFloat(edge) || null,
-    confidence:  parseInt(confidence) || null,
+    confidence:  parseFloat(confidence) || null,
+    confVersion: CONFIDENCE_FORMULA_VERSION,
     // These get filled in after the game
     closingLine: null,
     result:      null,   // 'WIN' | 'LOSS' | 'PUSH' | 'NO_BET'
@@ -4373,26 +5711,17 @@ app.post('/api/clv/update', (req, res) => {
   entries[idx].actualStat  = actualStat != null && actualStat !== '' ? parseFloat(actualStat) : entries[idx].actualStat;
   entries[idx].notes       = notes || entries[idx].notes;
 
-  // Calculate CLV: how much better was our line vs closing line. LEAN_OVER/
-  // LEAN_UNDER are still directional picks and get the same treatment as
-  // OVER/UNDER — only PASS has no direction to measure CLV against.
-  if (entries[idx].closingLine != null && entries[idx].line != null) {
-    const isOver  = entries[idx].verdict === 'OVER'  || entries[idx].verdict === 'LEAN_OVER';
-    const isUnder = entries[idx].verdict === 'UNDER' || entries[idx].verdict === 'LEAN_UNDER';
-    if (isOver) {
-      // For OVER bets: lower closing line = positive CLV (we got better number)
-      entries[idx].clv = parseFloat((entries[idx].closingLine - entries[idx].line).toFixed(1));
-    } else if (isUnder) {
-      // For UNDER bets: higher closing line = positive CLV
-      entries[idx].clv = parseFloat((entries[idx].line - entries[idx].closingLine).toFixed(1));
-    }
-  }
+  applyCLV(entries[idx]);
 
   saveCLV(entries);
   res.json({ ok: true, entry: entries[idx] });
 });
 
 // Get all CLV entries with summary stats
+// Same bands the frontend's confTier() uses for the colored confidence
+// number — kept in sync so "70% confidence" means the same tier everywhere.
+function clvConfTier(c) { return c >= 75 ? 'strong' : c >= 55 ? 'lean' : 'thin'; }
+
 app.get('/api/clv', (req, res) => {
   const entries = loadCLV();
   const withResult = entries.filter(e => e.result && e.result !== 'NO_BET');
@@ -4404,6 +5733,21 @@ app.get('/api/clv', (req, res) => {
     ? parseFloat((clvEntries.reduce((s, e) => s + e.clv, 0) / clvEntries.length).toFixed(2))
     : null;
 
+  // The actual point of auto-logging: does a higher confidence score really
+  // mean a higher real hit rate? Graded-with-a-confidence-number picks only
+  // — a pick with no confidence recorded can't be tiered.
+  // Only entries scored on the current confidence scale are tiered —
+  // older entries used a different formula (a yes/no data checklist), so
+  // mixing them would make "75%+ = strong" mean two different things.
+  const tierable = withResult.filter(e => e.confVersion === CONFIDENCE_FORMULA_VERSION);
+  const confidenceTierExcluded = withResult.filter(e => e.confidence != null && e.confVersion !== CONFIDENCE_FORMULA_VERSION).length;
+  const byConfidenceTier = {};
+  for (const tier of ['strong', 'lean', 'thin']) {
+    const g = tierable.filter(e => e.confidence != null && clvConfTier(e.confidence) === tier);
+    const w = g.filter(e => e.result === 'WIN').length;
+    byConfidenceTier[tier] = { graded: g.length, wins: w, winRate: g.length ? parseFloat((w / g.length * 100).toFixed(1)) : null };
+  }
+
   res.json({
     entries,
     summary: {
@@ -4414,6 +5758,22 @@ app.get('/api/clv', (req, res) => {
       avgCLV,
       positiveCLV: clvEntries.filter(e => e.clv > 0).length,
       negativeCLV: clvEntries.filter(e => e.clv < 0).length,
+      byConfidenceTier,
+      confidenceTierExcluded,
+      // Market movement after each auto pick was flagged (see applyCLV):
+      // the fast read on whether the model is ahead of the market, long
+      // before enough picks are graded for win rate to mean anything.
+      autoCLV: (() => {
+        const c = entries.filter(e => e.source === 'auto' && e.clv != null);
+        return {
+          captured: c.length,
+          beat: c.filter(e => e.clv > 0).length,
+          flat: c.filter(e => e.clv === 0).length,
+          worse: c.filter(e => e.clv < 0).length,
+          avg: c.length ? parseFloat((c.reduce((t, e) => t + e.clv, 0) / c.length).toFixed(2)) : null,
+          missed: entries.filter(e => e.source === 'auto' && e.closingCapture === 'missed').length,
+        };
+      })(),
     }
   });
 });
@@ -4448,6 +5808,23 @@ app.get('/api/current-line', async (req, res) => {
 // fetched for the game-log chart) rather than a separate box-score call.
 const GRADE_COMBO_KEYS = { pra: ['pts','reb','ast'], pr: ['pts','reb'], pa: ['pts','ast'], ra: ['reb','ast'] };
 const GRADE_STAT_KEY   = { points: 'pts', rebounds: 'reb', assists: 'ast', '3pm': 'fg3m', steals: 'stl', blocks: 'blk' };
+// nba_api game logs carry dates like "Apr 30, 2026" while ESPN (WNBA) uses
+// ISO "2026-10-04". Both graders compared the first 10 characters to a
+// YYYY-MM-DD string, which can never match the NBA format — so NBA picks
+// were never gradable, automatically or via CHECK RESULTS. Normalizes both.
+function gameDateISO(g) {
+  const raw = (g && g.date) || '';
+  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
+  const t = new Date(raw);
+  return isNaN(t) ? '' : toLocalDateStr(t);
+}
+function findGameOnDate(stats, dateISO) {
+  return (stats.gameLog20 || []).find(g => gameDateISO(g) === dateISO);
+}
+// A pick is graded against the day its GAME is played, which is not
+// always the day it was logged (a scan can list games days away) — the
+// closing-line capture records the real start time as gameStart.
+function gradeDateOf(e) { return e.gameStart ? toLocalDateStr(new Date(e.gameStart)) : e.date; }
 function gradeStatValue(g, propType) {
   const combo = GRADE_COMBO_KEYS[propType];
   if (combo) return combo.reduce((s, k) => s + (parseFloat(g[k]) || 0), 0);
@@ -4463,11 +5840,99 @@ app.get('/api/grade-prop', async (req, res) => {
   const stats = league === 'wnba' ? await fetchWNBAPlayerStats(player) : await fetchPlayerStats(player);
   if (!stats || stats.error) return res.json({ graded: false, reason: stats?.error || 'stats unavailable' });
 
-  const game = (stats.gameLog20 || []).find(g => (g.date || '').slice(0, 10) === date);
+  const game = findGameOnDate(stats, date);
   if (!game) {
     const reason = date < getToday() ? 'no matching game found in recent log' : 'game not final yet';
     return res.json({ graded: false, reason });
   }
   res.json({ graded: true, actualStat: gradeStatValue(game, propType), opponent: game.opponent || null, date: game.date });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// SCOUTING NOTES — private, hand-entered film reads, one running list of
+// OFFENSE notes and one of DEFENSE notes per team (no per-player scoping)
+// that get woven into the AI breakdown for every future analysis
+// involving that team. Writing is gated behind ADMIN_TOKEN — this is
+// intentionally NOT a feature any site visitor can use, only whoever
+// holds the token (you + cofounder).
+// Reading happens server-side only, folded into /api/prop-context,
+// /api/wnba/prop-context, and /api/team-compare — never a public,
+// unauthenticated read endpoint either, since these are your own
+// proprietary scouting reads.
+// ═══════════════════════════════════════════════════════════════════
+const NOTES_FILE = 'scouting_notes.json';
+
+function loadNotes() {
+  try {
+    if (!fs.existsSync(NOTES_FILE)) return [];
+    return JSON.parse(fs.readFileSync(NOTES_FILE, 'utf8'));
+  } catch (_) { return []; }
+}
+function saveNotes(data) {
+  try { fs.writeFileSync(NOTES_FILE, JSON.stringify(data, null, 2)); return true; }
+  catch (_) { return false; }
+}
+
+// Fails closed: if ADMIN_TOKEN was never configured, nobody can write —
+// not "anyone can write" (the opposite of a missing-config default would
+// silently expose this to every visitor).
+function requireAdmin(req, res, next) {
+  const configured = process.env.ADMIN_TOKEN && !process.env.ADMIN_TOKEN.includes('XXXXX');
+  if (!configured) return res.status(503).json({ error: 'ADMIN_TOKEN not configured on the server — set it in .env' });
+  const supplied = req.headers['x-admin-token'] || '';
+  const expected = process.env.ADMIN_TOKEN;
+  // Constant-time compare — a plain !== leaks how many leading bytes
+  // matched via response timing. Buffers must be equal length for
+  // timingSafeEqual, so a length mismatch is checked (and rejected) first,
+  // itself in constant time relative to the shorter of the two strings.
+  const suppliedBuf = Buffer.from(supplied);
+  const expectedBuf = Buffer.from(expected);
+  const valid = suppliedBuf.length === expectedBuf.length && crypto.timingSafeEqual(suppliedBuf, expectedBuf);
+  if (!valid) return res.status(401).json({ error: 'Invalid admin token' });
+  next();
+}
+
+// Used internally by the analysis endpoints — a note matches if its team
+// (case-insensitive substring either direction) matches what's being
+// analyzed. League-scoped so an NBA "Lakers" note never leaks into a
+// WNBA analysis of a differently-named team. Team-only, no player
+// scoping — notes are organized per-team, split into OFFENSE/DEFENSE.
+function getScoutNotes(league, { team } = {}) {
+  const notes = loadNotes().filter(n => n.league === league);
+  const teamLower = (team || '').toLowerCase();
+  if (!teamLower) return [];
+  return notes.filter(n => {
+    const noteTeam = (n.team || '').toLowerCase();
+    return noteTeam && (teamLower.includes(noteTeam) || noteTeam.includes(teamLower));
+  }).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+// List/manage all notes — admin only.
+app.get('/api/admin/notes', requireAdmin, (req, res) => {
+  res.json({ notes: loadNotes().sort((a, b) => b.createdAt.localeCompare(a.createdAt)) });
+});
+
+app.post('/api/admin/notes', requireAdmin, (req, res) => {
+  const { league, team, category, text } = req.body;
+  if (!text || !text.trim()) return res.status(400).json({ error: 'text required' });
+  if (!team || !team.trim()) return res.status(400).json({ error: 'team required' });
+  const note = {
+    id: nextId(),
+    league: league === 'wnba' ? 'wnba' : 'nba',
+    team: team.trim(),
+    category: category === 'defense' ? 'defense' : 'offense',
+    text: text.trim(),
+    createdAt: new Date().toISOString(),
+  };
+  const notes = loadNotes();
+  notes.unshift(note);
+  saveNotes(notes);
+  res.json({ ok: true, note });
+});
+
+app.delete('/api/admin/notes/:id', requireAdmin, (req, res) => {
+  const notes = loadNotes().filter(n => n.id !== parseInt(req.params.id));
+  saveNotes(notes);
+  res.json({ ok: true });
 });
 

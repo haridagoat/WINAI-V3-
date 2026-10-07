@@ -207,11 +207,11 @@ def calc_avgs(games):
     if mins: avgs['min'] = round(sum(mins) / len(mins), 1)
     return avgs
 
-def get_log(pid, season, max_attempts=2):
+def get_log(pid, season, season_type='Regular Season', max_attempts=2):
     """Fetch a game log with 429/rate-limit backoff — mirrors fetch_stats.py's retry logic."""
     for attempt in range(max_attempts):
         try:
-            log = playergamelog.PlayerGameLog(player_id=pid, season=season, timeout=30)
+            log = playergamelog.PlayerGameLog(player_id=pid, season=season, season_type_all_star=season_type, timeout=30)
             return log.get_data_frames()[0]
         except Exception as e:
             msg = str(e)
@@ -237,7 +237,19 @@ def main():
 
     pid = player['id']
 
-    # Fetch current season
+    # Playoffs, checked first — nba_api's PlayerGameLog defaults to
+    # 'Regular Season' and the rest of this file never overrode that, so the
+    # model was silently blind to the playoffs: once the postseason starts,
+    # a player's real minutes/rotation (tighter, starters at 33+) never
+    # showed up, and every projection kept running on stale regular-season
+    # box scores. Empty for ~10 months of the year (season hasn't reached
+    # playoffs yet) — that's the normal case and falls through harmlessly.
+    try:
+        df_playoffs = get_log(pid, season, season_type='Playoffs')
+    except Exception:
+        df_playoffs = None
+
+    # Fetch current season (regular season)
     try:
         df = get_log(pid, season)
     except Exception as e:
@@ -253,11 +265,20 @@ def main():
             if not df2.empty: df = df2
         except: pass
 
-    if df.empty:
+    if df.empty and (df_playoffs is None or df_playoffs.empty):
         print(json.dumps({'error': f'No game log for {player_name}'}))
         sys.exit(1)
 
-    all_games = [row_to_game(row) for _, row in df.iterrows()]
+    playoff_games = []
+    if df_playoffs is not None and not df_playoffs.empty:
+        playoff_games = [row_to_game(row) for _, row in df_playoffs.iterrows()]
+        for g in playoff_games: g['seasonType'] = 'Playoffs'
+    regular_games = [row_to_game(row) for _, row in df.iterrows()] if not df.empty else []
+    # Playoffs always come after the regular season chronologically within
+    # the same season string, and each half is already newest-first on its
+    # own (confirmed directly against nba_api) — concatenating keeps the
+    # combined list newest-first with no re-sort needed.
+    all_games = playoff_games + regular_games
 
     # ── H2H MODE ────────────────────────────────────────────────────
     if opponent:

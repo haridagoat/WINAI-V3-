@@ -14,6 +14,7 @@ Usage:
   python3 shotchart.py wnba defense "Chicago Sky"      [season]
 """
 import sys, json, os, time
+from collections import Counter
 import requests
 
 try:
@@ -125,16 +126,64 @@ def wnba_zone_benchmark(rows):
             b['fga'] += z['fga']
     return {z: round(v['fgm'] / v['fga'] * 100, 1) for z, v in tally.items() if v['fga']}
 
-def get_league_benchmark(league, season):
-    """League-wide FG% by zone — every zone rating below is judged against
-    this, not a fixed cutoff, since 'good' varies by zone and by league."""
+RANKED_ZONES = ['Restricted Area', 'In The Paint (Non-RA)', 'Mid-Range',
+                'Above the Break 3', 'Left Corner 3', 'Right Corner 3']
+
+def compute_team_defense_ranks(df):
+    """Where every team ranks in FG% allowed, zone by zone (1 = toughest to
+    score on). Built from the same league-wide shot table the benchmark
+    already fetches, so it costs no extra API call: each shot row carries the
+    home/visitor team codes, and whichever of the two isn't the shooter's own
+    team is the defender. A team's own code is the one code present in every
+    one of its shot rows.
+
+    Returns {team_id (str): {zone: {'pct', 'rank', 'rankOf'}}}, or {} if the
+    table doesn't have the columns (ranks are an extra, never required)."""
+    try:
+        needed = {'TEAM_ID', 'HTM', 'VTM', 'SHOT_ZONE_BASIC', 'SHOT_MADE_FLAG'}
+        if not len(df) or not needed.issubset(df.columns):
+            return {}
+        own = {}
+        for tid, grp in df.groupby('TEAM_ID'):
+            own[int(tid)] = Counter(list(grp['HTM']) + list(grp['VTM'])).most_common(1)[0][0]
+        abbr_to_id = {ab: tid for tid, ab in own.items()}
+        shooter_abbr = df['TEAM_ID'].map(own)
+        defender = df['VTM'].where(shooter_abbr == df['HTM'], df['HTM'])
+        sub = df[df['SHOT_ZONE_BASIC'].isin(RANKED_ZONES)].copy()
+        sub['DEF'] = defender[sub.index]
+        agg = sub.groupby(['DEF', 'SHOT_ZONE_BASIC'])['SHOT_MADE_FLAG'].agg(['sum', 'count'])
+        pct_by_zone = {}
+        for (abbr, zone), row in agg.iterrows():
+            if row['count'] > 0:
+                pct_by_zone.setdefault(zone, {})[abbr] = row['sum'] / row['count'] * 100
+        out = {}
+        for zone, by_abbr in pct_by_zone.items():
+            values = sorted(by_abbr.values())
+            for abbr, v in by_abbr.items():
+                tid = abbr_to_id.get(abbr)
+                if tid is None:
+                    continue
+                out.setdefault(str(tid), {})[zone] = {
+                    'pct': round(v, 1),
+                    'rank': 1 + sum(1 for x in values if x < v),  # ties share the better rank
+                    'rankOf': len(values),
+                }
+        return out
+    except Exception:
+        return {}
+
+def get_league_bundle(league, season):
+    """One league-wide fetch feeds both things that need it: the per-zone
+    league FG% benchmark, and each team's defensive rank in every zone."""
     league_id = LEAGUE_IDS.get(league, '00')
     cache_file = os.path.join(HERE, f'.shotchart_benchmark_{league}_{season}.json')
     try:
         with open(cache_file) as f:
             cached = json.load(f)
-        if time.time() - cached.get('ts', 0) < BENCHMARK_TTL:
-            return cached['zones']
+        # Files written before team ranks existed have no 'defense' key —
+        # treat those as a miss so ranks get built once.
+        if time.time() - cached.get('ts', 0) < BENCHMARK_TTL and 'defense' in cached:
+            return {'zones': cached['zones'], 'defense': cached['defense']}
     except Exception:
         pass
 
@@ -153,12 +202,18 @@ def get_league_benchmark(league, season):
         if row.get('SHOT_MADE_FLAG') == 1:
             b['fgm'] += 1
     benchmark = {z: round(v['fgm'] / v['fga'] * 100, 1) for z, v in tally.items() if v['fga']}
+    defense = compute_team_defense_ranks(df)
     try:
         with open(cache_file, 'w') as f:
-            json.dump({'ts': time.time(), 'zones': benchmark}, f)
+            json.dump({'ts': time.time(), 'zones': benchmark, 'defense': defense}, f)
     except Exception:
         pass
-    return benchmark
+    return {'zones': benchmark, 'defense': defense}
+
+def get_league_benchmark(league, season):
+    """League-wide FG% by zone — every zone rating below is judged against
+    this, not a fixed cutoff, since 'good' varies by zone and by league."""
+    return get_league_bundle(league, season)['zones']
 
 def zone_rating(pct, benchmark_pct, threshold=3.0):
     """green = notably above league average for this zone, red = notably
@@ -243,7 +298,8 @@ def resolve_team(league, name):
             return t
     return None
 
-def aggregate_by_zone(records, benchmark=None):
+def aggregate_by_zone(records, benchmark=None, ranks=None):
+    """ranks: {zone: {'rank', 'rankOf'}} for one team's defense (optional)."""
     zones = {}
     for row in records:
         z = row.get('SHOT_ZONE_BASIC', 'Unknown')
@@ -258,6 +314,9 @@ def aggregate_by_zone(records, benchmark=None):
         if benchmark and z in benchmark:
             entry['leagueAvgPct'] = benchmark[z]
             entry['rating'] = zone_rating(pct, benchmark[z])
+        if ranks and z in ranks:
+            entry['rank'] = ranks[z]['rank']
+            entry['rankOf'] = ranks[z]['rankOf']
         out.append(entry)
     out.sort(key=lambda x: -x['fga'])
     return out
@@ -284,7 +343,8 @@ def main():
     league_id = LEAGUE_IDS.get(league, '00')
 
     try:
-        benchmark = get_league_benchmark(league, season)
+        bundle = get_league_bundle(league, season)
+        benchmark = bundle['zones']
         if mode == 'player':
             player = resolve_nba_player(name) if league == 'nba' else resolve_wnba_player(name, season)
             if not player:
@@ -347,7 +407,7 @@ def main():
                 'team': team.get('full_name', name),
                 'season': season,
                 'totalShotsFaced': len(records),
-                'zones': aggregate_by_zone(records, benchmark),
+                'zones': aggregate_by_zone(records, benchmark, bundle['defense'].get(str(team['id']))),
             }))
         else:
             print(json.dumps({'error': 'mode must be "player" or "defense"'}))

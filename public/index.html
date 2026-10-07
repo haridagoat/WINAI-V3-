@@ -15,8 +15,8 @@
   *{box-sizing:border-box;margin:0;padding:0;}
   body{background:var(--bg);color:var(--text);font-family:'Space Grotesk',sans-serif;min-height:100vh;}
   header{border-bottom:1px solid var(--border);padding:18px 28px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:rgba(11,18,32,0.97);backdrop-filter:blur(12px);z-index:100;}
-  .logo{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:23px;letter-spacing:0.5px;color:var(--gold);line-height:1;}
-  .logo span{color:var(--muted);font-size:11px;font-family:'Space Grotesk',sans-serif;letter-spacing:2px;display:block;margin-top:2px;}
+  .logo{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:23px;letter-spacing:0.5px;color:var(--gold);line-height:1;display:flex;flex-direction:column;gap:2px;}
+  .logo span{color:var(--muted);font-size:9px;font-family:'Space Grotesk',sans-serif;letter-spacing:1.5px;line-height:1;}
   .live-dot{width:7px;height:7px;border-radius:50%;background:var(--green);display:inline-block;margin-right:6px;animation:pulse 2s infinite;}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
   .today-games{font-family:'Space Grotesk',sans-serif;font-size:11px;color:var(--muted);background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:7px 0;max-width:min(560px,44vw);display:flex;flex-direction:column;gap:6px;overflow:hidden;}
@@ -31,6 +31,14 @@
   .ticker-item .t-time{color:var(--gold);margin-left:5px;}
   .ticker-empty{flex-shrink:0;white-space:nowrap;color:var(--muted);font-style:italic;}
   .tabs{display:flex;gap:2px;padding:14px 28px 0;border-bottom:1px solid var(--border);overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;}
+  /* Nothing hinted the tab bar scrolls — PROP LIST/HISTORY were only
+     discoverable by accident. Fade overlays at either edge, shown only
+     when there's actually more to scroll to in that direction. */
+  .tabs-wrap{position:relative;}
+  .tabs-fade{position:absolute;top:0;bottom:1px;width:32px;pointer-events:none;opacity:0;transition:opacity 0.15s;z-index:2;}
+  .tabs-fade.visible{opacity:1;}
+  .tabs-fade-left{left:0;background:linear-gradient(to right, var(--bg), transparent);}
+  .tabs-fade-right{right:0;background:linear-gradient(to left, var(--bg), transparent);}
   .tab{font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;padding:9px 18px;border:1px solid transparent;border-bottom:none;border-radius:6px 6px 0 0;cursor:pointer;color:var(--muted);background:transparent;transition:all 0.15s;flex-shrink:0;white-space:nowrap;}
   .tab.active{color:var(--gold);border-color:var(--border2);background:var(--surface);border-bottom:1px solid var(--surface);margin-bottom:-1px;box-shadow:inset 0 2px 0 0 var(--gold),0 -3px 10px -2px rgba(212,168,68,0.4);}
   .tab:hover:not(.active){color:var(--text);}
@@ -68,6 +76,8 @@
   .dfs-label{display:flex;align-items:center;gap:6px;font-family:'Space Grotesk',sans-serif;font-size:9px;letter-spacing:1px;color:var(--muted);}
   .dfs-synced{display:flex;align-items:center;gap:5px;font-family:'Space Grotesk',sans-serif;font-size:9px;letter-spacing:1px;padding:3px 9px;border-radius:20px;background:rgba(46,204,113,0.1);border:1px solid rgba(46,204,113,0.25);color:var(--green);}
   .dfs-synced .dfs-dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:pulse 2s infinite;}
+  .dfs-synced.degraded{background:rgba(229,72,77,0.1);border-color:rgba(229,72,77,0.3);color:var(--red);}
+  .dfs-synced.degraded .dfs-dot{background:var(--red);animation:none;}
 
   .matchup-banner{display:none;align-items:center;gap:8px;font-family:'Space Grotesk',sans-serif;font-size:11px;padding:9px 12px;border-radius:8px;margin-top:2px;}
   .matchup-banner.confirmed{display:flex;background:rgba(46,204,113,0.08);border:1px solid rgba(46,204,113,0.25);color:var(--green);}
@@ -192,6 +202,125 @@
   .ta-block.matchup{border-left-color:var(--amber);}
   .ta-block.matchup .ta-block-title{color:var(--amber);}
 
+  /* Analyzer result — top-level tabs (Overview/Shot Chart/Game Log &
+     H2H/Advanced) replacing one long scroll, plus a sticky sidebar that
+     stays visible across every tab instead of confidence/edge only living
+     wherever they happened to be laid out in the flow. */
+  .result-shell{display:grid;grid-template-columns:1fr 250px;gap:18px;align-items:start;margin-top:14px;}
+  /* Same breakpoint the old 2-col result-split used — below it the result
+     area (already sharing a row with the 340px input card) is too narrow
+     for a main column plus a 250px sidebar, so the sidebar stacks under. */
+  @media(max-width:1150px){.result-shell{grid-template-columns:1fr;}.result-sidebar{position:static !important;}}
+  .result-main-col{min-width:0;}
+  .result-toptabs{display:flex;gap:2px;border-bottom:1px solid var(--border);margin-bottom:16px;flex-wrap:wrap;}
+  .result-toptab{font-family:'Space Grotesk',sans-serif;font-size:10px;letter-spacing:1px;text-transform:uppercase;padding:9px 13px;border:1px solid transparent;border-bottom:none;border-radius:7px 7px 0 0;cursor:pointer;color:var(--muted);background:transparent;transition:all 0.15s;white-space:nowrap;}
+  .result-toptab.active{color:var(--gold);border-color:var(--border2);background:var(--surface2);margin-bottom:-1px;box-shadow:inset 0 2px 0 0 var(--gold);}
+  .result-toptab:hover:not(.active){color:var(--muted2);}
+  .result-tabpanel{display:none;}
+  .result-tabpanel.active{display:block;}
+  .result-sidebar{background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:18px;position:sticky;top:90px;display:flex;flex-direction:column;gap:16px;}
+  .rs-label{font-family:'Space Grotesk',sans-serif;font-size:9px;letter-spacing:2px;color:var(--gold);text-transform:uppercase;text-align:center;}
+  .rs-ring-wrap{display:flex;justify-content:center;}
+  .rs-edge{text-align:center;}
+  .rs-edge .ev{font-family:'Space Grotesk',sans-serif;font-size:24px;font-weight:700;}
+  .rs-edge .el{font-family:'Space Grotesk',sans-serif;font-size:9px;color:var(--muted);letter-spacing:1px;margin-top:2px;}
+  .rs-block{border-top:1px solid var(--border);padding-top:14px;}
+  .rs-block-title{font-family:'Space Grotesk',sans-serif;font-size:9px;letter-spacing:1.2px;color:var(--gold);text-transform:uppercase;margin-bottom:8px;}
+  .rs-rec{border-radius:8px;padding:10px 12px;font-family:'Space Grotesk',sans-serif;font-size:11px;line-height:1.6;}
+  .rs-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;}
+  .rs-list li{font-family:'Space Grotesk',sans-serif;font-size:10.5px;color:var(--muted2);padding-left:14px;position:relative;line-height:1.5;}
+  .rs-list li::before{content:'—';position:absolute;left:0;color:var(--green);}
+  .rs-list.risk li::before{color:var(--red);}
+  .mv-card{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin:12px 0;font-family:'Space Grotesk',sans-serif;}
+  .mv-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px;}
+  .mv-title{font-size:9px;letter-spacing:1.4px;color:var(--gold);text-transform:uppercase;}
+  .mv-big{font-size:20px;font-weight:700;}
+  .mv-big small{font-size:9px;letter-spacing:1px;color:var(--muted);font-weight:400;margin-left:6px;}
+  .mv-row{display:flex;justify-content:space-between;gap:12px;font-size:11px;padding:4px 0;border-top:1px solid var(--border);}
+  .mv-row span:first-child{color:var(--muted);}
+  .mv-row span:last-child{color:var(--text);text-align:right;}
+  .mv-note{font-size:10px;color:var(--muted2);line-height:1.5;margin-top:8px;}
+  .mv-warn{font-size:10.5px;line-height:1.5;margin-top:8px;padding:8px 10px;border-radius:7px;background:rgba(243,156,18,0.1);border:1px solid rgba(243,156,18,0.3);color:var(--amber);}
+  .ev-chip{font-family:'Space Grotesk',sans-serif;font-size:9px;letter-spacing:.5px;padding:1px 6px;border-radius:4px;border:1px solid var(--border2);color:var(--muted2);white-space:nowrap;}
+  .ev-chip.pos{color:var(--green);border-color:rgba(46,204,113,0.35);}
+  .ev-chip.neg{color:var(--red);border-color:rgba(231,76,60,0.35);}
+
+  /* Game log chart — hit rate up front, movable line, colors = hit/miss for
+     the selected side. Scoped under .gl2 so it can't touch other components. */
+  .gl2{--surface3:#1d2b49;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:14px;font-variant-numeric:tabular-nums;}
+  .gl2 button{font-family:inherit;cursor:pointer;}
+  .gl2 button:focus-visible,.gl2 input:focus-visible{outline:2px solid var(--gold);outline-offset:2px;}
+  .gl2-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;}
+  .gl2-title{font-family:'Space Grotesk',sans-serif;font-size:10px;letter-spacing:1.5px;color:var(--gold);text-transform:uppercase;}
+  .gl2-linewrap{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  .gl2-note{font-size:10px;color:var(--muted);}
+  .gl2-reset{font-size:10px;letter-spacing:0.5px;color:var(--gold);background:transparent;border:1px solid rgba(212,168,68,0.35);border-radius:6px;padding:5px 9px;}
+  .gl2-reset:hover{background:rgba(212,168,68,0.1);}
+  .gl2-linectl{display:flex;align-items:center;border:1px solid var(--border2);border-radius:9px;overflow:hidden;background:var(--surface2);}
+  .gl2-lbl{font-size:9px;letter-spacing:1.2px;color:var(--muted);text-transform:uppercase;padding:0 10px;}
+  .gl2-linectl button{width:32px;height:34px;border:none;background:transparent;color:var(--gold);font-size:17px;line-height:1;}
+  .gl2-linectl button:hover{background:var(--surface3);}
+  .gl2-linectl input{width:62px;height:34px;border:none;border-left:1px solid var(--border);border-right:1px solid var(--border);border-radius:0;background:var(--bg);color:var(--text);text-align:center;font-size:14px;font-weight:600;font-family:inherit;padding:0;-moz-appearance:textfield;}
+  .gl2-linectl input::-webkit-outer-spin-button,.gl2-linectl input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
+  .gl2-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px;}
+  .gl2-spacer{flex:1;}
+  .gl2-pills{display:flex;gap:6px;flex-wrap:wrap;}
+  .gl2-pill{font-size:11px;letter-spacing:0.5px;padding:6px 10px;border-radius:20px;border:1px solid var(--border);background:var(--surface2);color:var(--muted2);font-weight:500;}
+  .gl2-pill:hover{color:var(--text);border-color:var(--border2);}
+  .gl2-pill[aria-selected="true"]{color:#0b1220;background:var(--gold);border-color:var(--gold);font-weight:700;}
+  .gl2-seg{display:flex;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:3px;gap:2px;flex-wrap:wrap;}
+  .gl2-seg button{border:none;background:transparent;color:var(--muted);font-size:11px;letter-spacing:0.8px;padding:7px 13px;border-radius:7px;font-weight:500;}
+  .gl2-seg button:hover{color:var(--text);}
+  .gl2-seg button[aria-selected="true"]{background:rgba(212,168,68,0.16);color:var(--gold2);box-shadow:inset 0 0 0 1px rgba(212,168,68,0.35);}
+  .gl2-side{display:flex;background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:3px;gap:2px;}
+  .gl2-side button{border:none;background:transparent;color:var(--muted);font-size:11px;letter-spacing:1px;padding:6px 12px;border-radius:6px;font-weight:600;}
+  .gl2-side button[aria-selected="true"][data-side="over"]{background:rgba(46,204,113,0.16);color:var(--green);}
+  .gl2-side button[aria-selected="true"][data-side="under"]{background:rgba(231,76,60,0.16);color:var(--red);}
+  .gl2-summary{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;margin-top:16px;padding-top:16px;border-top:1px solid var(--border);align-items:end;}
+  @media(max-width:640px){.gl2-summary{grid-template-columns:1fr;}}
+  /* Stat/range/side pills are comfortably clickable with a mouse at their
+     base padding, but come out around 26-28px tall — below a comfortable
+     touch target — so give them a bit more room specifically on phones. */
+  @media(max-width:480px){
+    .gl2-pill{padding:9px 12px;}
+    .gl2-seg button{padding:10px 13px;}
+    .gl2-side button{padding:9px 12px;}
+  }
+  .gl2-hitlabel{font-size:10px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase;}
+  .gl2-hitbig{display:flex;align-items:baseline;gap:10px;margin-top:2px;flex-wrap:wrap;}
+  .gl2-hitpct{font-size:38px;font-weight:700;letter-spacing:-1px;line-height:1;}
+  .gl2-hitof{font-size:12px;color:var(--muted2);}
+  .gl2-avgmed{font-size:12px;color:var(--muted);margin-top:8px;}
+  .gl2-avgmed b{color:var(--text);font-weight:600;margin:0 12px 0 3px;}
+  .gl2-rates{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;}
+  .gl2-rate{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 4px;text-align:center;}
+  .gl2-rl{font-size:9px;letter-spacing:1px;color:var(--muted);text-transform:uppercase;}
+  .gl2-rv{font-size:15px;font-weight:700;margin-top:1px;}
+  .gl2-rn{font-size:9px;color:var(--muted);}
+  .gl2-strong{color:var(--green);} .gl2-lean{color:var(--amber);} .gl2-thin{color:var(--red);}
+  .gl2-chartbox{position:relative;margin-top:16px;border-top:1px solid var(--border);padding-top:12px;}
+  .gl2-chartbox svg{display:block;width:100%;height:auto;overflow:visible;}
+  .gl2-axis{fill:var(--muted);font-size:10px;font-family:inherit;}
+  .gl2-xd{fill:var(--muted2);font-size:10px;font-weight:500;font-family:inherit;}
+  .gl2-xo{fill:var(--muted);font-size:9px;font-family:inherit;}
+  .gl2-val{font-weight:700;font-family:inherit;text-anchor:middle;}
+  .gl2-empty{padding:50px 0;text-align:center;color:var(--muted);font-size:12px;}
+  .gl2-tip{position:absolute;pointer-events:none;background:#0d1526;border:1px solid var(--border2);border-radius:9px;padding:9px 11px;min-width:150px;z-index:5;box-shadow:0 8px 24px rgba(0,0,0,0.45);opacity:0;transition:opacity .12s;}
+  .gl2-tip.show{opacity:1;}
+  .gl2-th{font-size:10px;color:var(--gold);margin-bottom:6px;white-space:nowrap;letter-spacing:0.3px;}
+  .gl2-tg{display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;font-size:10px;color:var(--muted);white-space:nowrap;}
+  .gl2-tg b{color:var(--text);font-weight:600;margin-left:3px;}
+  .gl2-tf{margin-top:7px;padding-top:6px;border-top:1px solid var(--border);font-size:10px;font-weight:600;}
+  .gl2-legend{display:flex;gap:16px;flex-wrap:wrap;font-size:10px;color:var(--muted);margin-top:6px;}
+  .gl2-legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;vertical-align:-1px;}
+  .gl2-ln{display:inline-block;width:16px;border-top:2px dashed var(--gold);margin-right:6px;vertical-align:3px;}
+  .gl2-tiles{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin-top:16px;}
+  @media(max-width:760px){.gl2-tiles{grid-template-columns:repeat(3,minmax(0,1fr));}}
+  .gl2-tile{background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:10px 8px;text-align:center;}
+  .gl2-tv{font-size:17px;font-weight:700;}
+  .gl2-tl{font-size:9px;letter-spacing:1px;color:var(--muted);text-transform:uppercase;margin-top:2px;}
+  @media (prefers-reduced-motion: reduce){.gl2-tip{transition:none;}}
+
   .recommend-box{background:rgba(212,168,68,0.05);border:1px solid rgba(212,168,68,0.18);border-left:3px solid var(--gold);border-radius:8px;padding:12px 14px;margin:14px 0;}
   .recommend-title{font-family:'Space Grotesk',sans-serif;font-size:10px;letter-spacing:2px;color:var(--gold);margin-bottom:8px;display:flex;align-items:center;gap:6px;}
   .recommend-row{margin-bottom:8px;font-size:12px;line-height:1.6;}
@@ -218,6 +347,16 @@
   .ls{font-family:'Space Grotesk',sans-serif;font-size:11px;color:var(--muted);letter-spacing:1px;opacity:0;transition:opacity 0.25s;}
   .ls.on{opacity:1;color:var(--gold);}
   .ls.done{opacity:0.35;color:var(--muted);}
+  /* Skeleton loading — shaped like the matchup dashboard that's about to
+     land (title bar, favor bar, stat grid) so the wait reads as "in
+     progress" instead of a blank spinner. */
+  .sk{border-radius:6px;background:linear-gradient(90deg,var(--surface) 25%,var(--surface2) 37%,var(--surface) 63%);background-size:400% 100%;animation:sk-shimmer 1.6s ease infinite;}
+  @keyframes sk-shimmer{0%{background-position:100% 0;}100%{background-position:0 0;}}
+  .sk-matchup-title{height:20px;width:60%;margin:0 auto 14px;}
+  .sk-matchup-bar{height:8px;width:100%;border-radius:4px;margin-bottom:22px;}
+  .sk-matchup-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+  .sk-matchup-chip{height:44px;border-radius:9px;}
+  @media (prefers-reduced-motion: reduce){ .sk{animation:none;} }
   .schedule-strip{display:flex;gap:8px;overflow-x:auto;padding:16px 0 4px;margin-bottom:20px;}
   .game-chip{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 14px;white-space:nowrap;cursor:pointer;font-family:'Space Grotesk',sans-serif;font-size:11px;color:var(--muted);transition:all 0.15s;flex-shrink:0;}
   .game-chip:hover{border-color:var(--gold);color:var(--gold);}
@@ -302,9 +441,13 @@
   .mu-risk-badge.high{color:var(--red);background:rgba(231,76,60,0.12);}
   /* Collapsible accordion — everything below the odds banner */
   .mu-accordion-item{border:1px solid var(--border);border-radius:10px;margin-bottom:10px;background:var(--surface2);overflow:hidden;}
-  .mu-accordion-header{display:flex;align-items:center;justify-content:space-between;padding:13px 16px;cursor:pointer;user-select:none;}
+  .mu-accordion-header{display:flex;align-items:center;justify-content:space-between;padding:13px 16px;cursor:pointer;user-select:none;gap:10px;}
   .mu-accordion-header:hover{background:rgba(255,255,255,0.02);}
   .mu-accordion-title{font-family:'Space Grotesk',sans-serif;font-size:10px;letter-spacing:1.5px;color:var(--gold);text-transform:uppercase;}
+  .mu-accordion-title-wrap{display:flex;align-items:center;gap:8px;flex:1;min-width:0;}
+  .mu-accordion-preview{font-family:'Space Grotesk',sans-serif;font-size:9px;letter-spacing:0.5px;color:var(--muted);background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:3px 9px;white-space:nowrap;flex-shrink:0;}
+  .mu-accordion-preview.flag{color:var(--amber);background:rgba(243,156,18,0.1);border-color:rgba(243,156,18,0.3);}
+  .mu-accordion-preview.ok{color:var(--green);background:rgba(46,204,113,0.1);border-color:rgba(46,204,113,0.25);}
   .mu-accordion-chevron{color:var(--muted);font-size:10px;transition:transform 0.2s;flex-shrink:0;margin-left:10px;}
   .mu-accordion-item.open .mu-accordion-chevron{transform:rotate(180deg);}
   .mu-accordion-body{max-height:0;overflow:hidden;transition:max-height 0.25s ease;padding:0 16px;}
@@ -404,16 +547,29 @@
   .top-plays-refresh{cursor:pointer;color:var(--muted);font-size:13px;}
   .top-plays-refresh:hover{color:var(--gold);}
   .top-plays-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;}
-  .top-play-card{background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:11px 13px;}
+  .top-play-card{background:linear-gradient(180deg,var(--surface2) 0%,var(--surface) 65%);border:1px solid var(--border);border-radius:9px;padding:11px 13px;box-shadow:0 8px 20px -14px rgba(0,0,0,0.6);}
   .top-play-rank{font-family:'Space Grotesk',sans-serif;font-size:22px;color:var(--gold);line-height:1;margin-right:8px;}
   .top-play-player{font-size:13px;font-weight:500;}
   .top-play-meta{font-family:'Space Grotesk',sans-serif;font-size:10px;color:var(--muted);margin-top:2px;}
-  .top-play-row{display:flex;align-items:center;justify-content:space-between;margin-top:8px;}
-  .top-play-dir{font-family:'Space Grotesk',sans-serif;font-size:14px;letter-spacing:1px;padding:2px 10px;border-radius:100px;}
+  .top-play-row{display:flex;align-items:center;justify-content:space-between;margin-top:8px;gap:8px;}
+  .top-play-dir{font-family:'Space Grotesk',sans-serif;font-size:14px;letter-spacing:1px;padding:2px 10px;border-radius:100px;white-space:nowrap;flex-shrink:0;}
   .top-play-dir.over{color:var(--green);background:rgba(46,204,113,0.12);}
   .top-play-dir.under{color:var(--red);background:rgba(231,76,60,0.12);}
-  .top-play-conf{font-family:'Space Grotesk',sans-serif;font-size:10px;color:var(--muted);}
+  .top-play-conf{font-family:'Space Grotesk',sans-serif;font-size:10px;color:var(--muted);text-align:right;}
   .top-plays-empty{color:var(--muted);font-family:'Space Grotesk',sans-serif;font-size:11px;padding:6px 0;}
+
+  /* Confidence tier coloring + reusable mini bar — shared across pick
+     cards, top plays, and history so a strong pick reads at a glance
+     instead of requiring the number to be read. */
+  .conf-num{font-weight:600;}
+  .conf-num.strong{color:var(--green);}
+  .conf-num.lean{color:var(--amber);}
+  .conf-num.thin{color:var(--red);}
+  .mini-conf-bar{display:inline-block;width:60px;height:3px;background:var(--surface);border-radius:2px;overflow:hidden;margin-top:5px;vertical-align:middle;}
+  .mini-conf-fill{height:100%;border-radius:2px;}
+  .mini-conf-fill.strong{background:var(--green);}
+  .mini-conf-fill.lean{background:var(--amber);}
+  .mini-conf-fill.thin{background:var(--red);}
 
   /* SHOT CHARTS */
   /* min-width:0 on the grid item is required — without it, a grid item's
@@ -434,13 +590,95 @@
   .shotchart-legend span{display:inline-flex;align-items:center;gap:4px;}
   .shotchart-dot{width:7px;height:7px;border-radius:50%;display:inline-block;flex-shrink:0;}
 
+  /* Shot chart — one court, six zones, chips = FG% + opponent league rank. */
+  .sc2{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;font-variant-numeric:tabular-nums;}
+  .sc2 button{font-family:inherit;cursor:pointer;}
+  .sc2 button:focus-visible{outline:2px solid var(--gold);outline-offset:2px;}
+  .sc2-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap;}
+  .sc2-title{font-family:'Space Grotesk',sans-serif;font-size:10px;letter-spacing:1.5px;color:var(--gold);text-transform:uppercase;}
+  .sc2-sub{font-size:12px;color:var(--muted);margin-top:3px;}
+  .sc2-seg{display:flex;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:3px;gap:2px;}
+  .sc2-seg button{border:none;background:transparent;color:var(--muted);font-size:11px;letter-spacing:0.8px;padding:7px 15px;border-radius:7px;font-weight:500;}
+  .sc2-seg button:hover{color:var(--text);}
+  .sc2-seg button[aria-selected="true"]{background:rgba(212,168,68,0.16);color:var(--gold2);box-shadow:inset 0 0 0 1px rgba(212,168,68,0.35);}
+  .sc2-overlap{margin-top:14px;display:flex;gap:10px;align-items:flex-start;background:rgba(212,168,68,0.07);border:1px solid rgba(212,168,68,0.28);border-radius:10px;padding:10px 12px;}
+  .sc2-tag{font-size:9px;letter-spacing:1.3px;color:var(--gold);text-transform:uppercase;white-space:nowrap;padding-top:2px;}
+  .sc2-txt{font-size:12.5px;color:var(--muted2);line-height:1.55;}
+  .sc2-txt b{color:var(--text);font-weight:600;}
+  .sc2-court{position:relative;width:100%;max-width:560px;margin:16px auto 0;aspect-ratio:500/470;--s:1;}
+  .sc2-court svg{position:absolute;inset:0;width:100%;height:100%;display:block;}
+  /* Position scales naturally with the court (left/top are %); only the
+     box (padding/min-width) shrinks via --s on a small court — text stays
+     a fixed, always-legible size instead of shrinking with it. Scaling
+     the whole chip (including its font) used to render labels at an
+     effective ~6px on a phone-width court — unreadable. */
+  .sc2-chip{position:absolute;transform:translate(-50%,-50%);text-align:center;background:rgba(11,18,32,0.9);border:1px solid rgba(255,255,255,0.16);border-radius:9px;padding:calc(5px * var(--s)) calc(9px * var(--s));min-width:calc(80px * var(--s));pointer-events:none;box-shadow:0 4px 14px rgba(0,0,0,0.35);}
+  .sc2-chip.small{min-width:calc(66px * var(--s));padding:calc(4px * var(--s)) calc(7px * var(--s));}
+  .sc2-cn{font-size:9px;letter-spacing:1px;color:var(--muted2);text-transform:uppercase;font-weight:600;}
+  .sc2-cp{font-size:14px;font-weight:700;line-height:1.2;margin-top:1px;}
+  .sc2-cs{font-size:9.5px;color:var(--muted);white-space:nowrap;margin-top:1px;}
+  .sc2-cs .up{color:var(--green);font-weight:600;} .sc2-cs .dn{color:var(--red);font-weight:600;}
+  .sc2-chip.low{background:rgba(11,18,32,0.78);border-color:rgba(255,255,255,0.09);}
+  .sc2-chip.low .sc2-cp{color:var(--muted);}
+  .sc2-chip.ov{border-color:rgba(212,168,68,0.75);box-shadow:0 0 0 1px rgba(212,168,68,0.35),0 4px 14px rgba(0,0,0,0.35);}
+  .sc2-legend{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;font-size:10.5px;color:var(--muted2);margin-top:14px;}
+  .sc2-legend span{display:inline-flex;align-items:center;gap:6px;}
+  .sc2-legend i{display:inline-block;width:10px;height:10px;border-radius:3px;}
+  .sc2-legend .hatch{background:repeating-linear-gradient(45deg,#26324d 0 3px,#3a4868 3px 5px);}
+  .sc2-legend .ring{background:transparent;border:2px solid var(--gold);}
+  .sc2-foot{margin-top:10px;text-align:center;font-size:10.5px;color:var(--muted);}
+  /* List fallback for phone width — see scChipsList()'s comment. Both
+     markups render every time; only one is ever visible. */
+  .sc2l-rows{display:none;flex-direction:column;margin-top:14px;}
+  .sc2l-row{display:grid;grid-template-columns:8px 1fr 52px auto;align-items:center;gap:10px;padding:9px 2px;border-bottom:1px solid var(--border);font-size:12px;}
+  .sc2l-row:last-child{border-bottom:none;}
+  .sc2l-row.ov{background:rgba(212,168,68,0.06);}
+  .sc2l-dot{width:8px;height:8px;border-radius:50%;background:#6b7390;}
+  .sc2l-dot.hi{background:#2bb673;} .sc2l-dot.lo{background:#d8493e;}
+  .sc2l-dot.low{background:transparent;border:1.5px dashed var(--muted);}
+  .sc2l-label{color:var(--text);}
+  .sc2l-pct{font-weight:700;text-align:right;font-variant-numeric:tabular-nums;}
+  .sc2l-sub{font-size:10.5px;color:var(--muted);white-space:nowrap;}
+  .sc2l-sub .up{color:var(--green);font-weight:600;} .sc2l-sub .dn{color:var(--red);font-weight:600;}
+  .sc2l-na{font-style:italic;}
+  @media(max-width:480px){
+    .sc2-court .sc2-chip{display:none;}
+    .sc2l-rows{display:flex;}
+  }
+
+  /* Play-type breakdown — how a player gets their points, and where the
+     opponent ranks defending each type. Same column layout for the header
+     and every row so numbers line up. */
+  .pt2{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;font-variant-numeric:tabular-nums;}
+  .pt2-sub{font-size:11.5px;color:var(--muted);line-height:1.5;margin-bottom:14px;}
+  .pt2-colheads,.pt2-row{display:grid;grid-template-columns:118px minmax(60px,1fr) 56px 62px 56px 100px;gap:10px;align-items:center;}
+  .pt2-colheads{font-family:'Space Grotesk',sans-serif;font-size:9px;letter-spacing:1px;color:var(--muted);text-transform:uppercase;padding:0 2px 8px;border-bottom:1px solid var(--border);}
+  .pt2-colheads span:nth-child(3),.pt2-colheads span:nth-child(4),.pt2-colheads span:nth-child(5){text-align:right;}
+  .pt2-rows{display:flex;flex-direction:column;}
+  .pt2-row{padding:9px 2px;border-bottom:1px solid var(--border);}
+  .pt2-row:last-child{border-bottom:none;}
+  .pt2-label{font-size:11.5px;color:var(--text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .pt2-bar-track{height:6px;background:var(--surface2);border-radius:3px;overflow:hidden;}
+  .pt2-bar-fill{height:100%;background:var(--gold);border-radius:3px;}
+  .pt2-freq{font-size:12px;color:var(--gold);font-weight:600;text-align:right;}
+  .pt2-pts,.pt2-ppp{font-size:11px;color:var(--muted2);text-align:right;}
+  .pt2-rank{font-size:9.5px;letter-spacing:0.3px;padding:3px 8px;border-radius:20px;background:var(--surface2);color:var(--muted2);white-space:nowrap;justify-self:end;}
+  .pt2-rank.up{color:var(--green);background:rgba(46,204,113,0.1);}
+  .pt2-rank.dn{color:var(--red);background:rgba(231,76,60,0.1);}
+  .pt2-rank.na{color:var(--muted);font-style:italic;}
+  @media(max-width:640px){
+    .pt2-colheads,.pt2-row{grid-template-columns:90px minmax(40px,1fr) 44px;}
+    .pt2-pts,.pt2-ppp,.pt2-colheads span:nth-child(4),.pt2-colheads span:nth-child(5){display:none;}
+    .pt2-rank{grid-column:1/-1;justify-self:start;margin-top:4px;}
+  }
+
   /* TODAY / HOME PAGE */
   .today-layout{display:grid;grid-template-columns:220px 1fr;gap:20px;}
   @media(max-width:860px){.today-layout{grid-template-columns:1fr;}}
   .today-sidebar{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px;height:fit-content;position:sticky;top:90px;}
   .today-sidebar select{width:100%;background:var(--surface2);border:1px solid var(--border2);border-radius:7px;padding:9px 12px;color:var(--text);font-family:'Space Grotesk',sans-serif;font-size:13px;outline:none;}
   .today-main{display:flex;flex-direction:column;gap:14px;}
-  .game-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;}
+  .game-card{background:linear-gradient(180deg,var(--surface2) 0%,var(--surface) 55%);border:1px solid var(--border2);border-radius:12px;padding:16px 18px;box-shadow:0 10px 26px -16px rgba(0,0,0,0.65);}
   .game-card-header{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:17px;letter-spacing:0.2px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;border-radius:8px;transition:background 0.15s;margin-left:-6px;margin-right:-6px;padding-left:6px;padding-right:6px;}
   .game-card-header:hover{background:rgba(212,168,68,0.06);}
   .game-card-matchup{display:flex;align-items:center;gap:8px;}
@@ -473,13 +711,17 @@
   </div>
 </header>
 
-<div class="tabs">
-  <button class="tab active" onclick="switchTab('today',this)">TODAY</button>
-  <button class="tab" onclick="switchTab('analyzer',this)">NBA</button>
-  <button class="tab" onclick="switchTab('wnba',this)">WNBA</button>
-  <button class="tab" onclick="switchTab('matchups',this)">DAILY MATCHUPS</button>
-  <button class="tab" onclick="switchTab('history',this)">HISTORY / CLV</button>
-  <button class="tab" onclick="switchTab('betslip',this)">PROP LIST <span id="betslip-count" style="display:none;background:var(--gold);color:#000;border-radius:10px;padding:1px 6px;font-size:9px;margin-left:4px;">0</span></button>
+<div class="tabs-wrap">
+  <div class="tabs" id="tabs-scroll">
+    <button class="tab active" onclick="switchTab('today',this)">TODAY</button>
+    <button class="tab" onclick="switchTab('analyzer',this)">NBA</button>
+    <button class="tab" onclick="switchTab('wnba',this)">WNBA</button>
+    <button class="tab" onclick="switchTab('matchups',this)">DAILY MATCHUPS</button>
+    <button class="tab" onclick="switchTab('history',this)">HISTORY / CLV</button>
+    <button class="tab" onclick="switchTab('betslip',this)">PROP LIST <span id="betslip-count" style="display:none;background:var(--gold);color:#000;border-radius:10px;padding:1px 6px;font-size:9px;margin-left:4px;">0</span></button>
+  </div>
+  <div class="tabs-fade tabs-fade-left" id="tabs-fade-left"></div>
+  <div class="tabs-fade tabs-fade-right" id="tabs-fade-right"></div>
 </div>
 
 <div id="panel-today" class="panel active">
@@ -505,7 +747,7 @@
     <div class="input-card">
       <div class="data-feed-status">
         <span class="dfs-label"><span style="opacity:0.7;">📶</span> DATA FEED STATUS</span>
-        <span class="dfs-synced"><span class="dfs-dot"></span> DATA SYNCED</span>
+        <span class="dfs-synced" id="dfs-status-nba"><span class="dfs-dot"></span> CHECKING...</span>
       </div>
       <div class="card-label">Player Prop Input</div>
       <div class="field-group">
@@ -578,7 +820,7 @@
     <div class="input-card">
       <div class="data-feed-status">
         <span class="dfs-label"><span style="opacity:0.7;">📶</span> DATA FEED STATUS</span>
-        <span class="dfs-synced"><span class="dfs-dot"></span> DATA SYNCED</span>
+        <span class="dfs-synced" id="dfs-status-wnba"><span class="dfs-dot"></span> CHECKING...</span>
       </div>
       <div class="card-label">WNBA Player Prop Input</div>
       <div class="field-group">
@@ -685,6 +927,7 @@
       <button class="mini-btn" onclick="clearBetslip()" style="color:var(--red);">CLEAR ALL</button>
     </div>
   </div>
+  <div id="accuracy-panel" style="margin-bottom:16px;"></div>
   <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;" id="betslip-summary-bar"></div>
   <div id="betslip-list">
     <div style="color:var(--muted);font-family:'Space Grotesk',sans-serif;font-size:11px;padding:20px 0;text-align:center;">
@@ -759,7 +1002,10 @@ window.addEventListener('DOMContentLoaded', () => {
   loadFullPlayerLists();
   renderTodayPage();
   initMatchupDayPicker();
-  populateMatchupTeamSelects();
+  setDefaultMatchupLeague();
+  checkDataFeedStatus();
+  document.getElementById('tabs-scroll')?.addEventListener('scroll', updateTabsFade);
+  updateTabsFade();
   document.addEventListener('click', e => {
     if (e.target.closest('.field-wrap') || e.target.closest('.field-lookup')) return;
     closeSuggestions('nba'); closeSuggestions('wnba');
@@ -821,7 +1067,7 @@ function onPlayerInput(val, league='nba') {
   if (val.length < 2) { box.classList.remove('open'); return; }
   const matches = list.filter(p => p.toLowerCase().includes(val.toLowerCase())).slice(0, 6);
   if (!matches.length) { box.classList.remove('open'); return; }
-  box.innerHTML = matches.map(p => `<div class="suggestion-item" onclick="selectPlayer('${p}','${league}')">${p}</div>`).join('');
+  box.innerHTML = matches.map(p => `<div class="suggestion-item" onclick="selectPlayer('${p.replace(/'/g,"\\'")}','${league}')">${escapeHtml(p)}</div>`).join('');
   box.classList.add('open');
   // Also trigger matchup lookup for manual typing (debounced 800ms)
   clearTimeout(_matchupTimer[league]);
@@ -974,6 +1220,7 @@ DATA AVAILABILITY FOR THIS ANALYSIS:
   Opponent misc stats — paint pts, FB (${statsDomainLabel}): ${ctx.oppMisc ? 'YES' : 'NO'}
   Hustle stats (NBA only, no WNBA source exists): ${ctx.playerHustle ? 'YES' : 'NO'}
   Head-to-head history vs this opponent: ${ctx.h2hStats?.gamesVsOpp ? `YES — ${ctx.h2hStats.gamesVsOpp} career games, use these numbers directly` : 'NO'}
+  Scout notes from film study (your own read, not stats): ${ctx.scoutNotes?.length ? `YES — ${ctx.scoutNotes.length} note(s), weigh heavily` : 'NO'}
   Today confirmed game: ${ctx.todayGame ? 'YES' : 'NO'}`;
 
   // Real numbers block
@@ -1283,6 +1530,15 @@ HEAD-TO-HEAD HISTORY vs ${opp} — SOURCE: ${h2h.source || statsSourceLabel} (VE
 ${h2hGameLines || '  (log unavailable)'}`;
   }
 
+  // ── SCOUT NOTES — your own film study, not derived from any stats feed ──
+  const scoutNotes = ctx.scoutNotes || [];
+  if (scoutNotes.length) {
+    const noteLines = scoutNotes.map(n => `  [${(n.category || 'other').toUpperCase()}] ${n.text}`).join('\n');
+    realDataBlock += `
+SCOUT NOTES — YOUR OWN FILM STUDY (source: you, not a stats feed — tag as [SCOUT], weigh as directly relevant, real observed intel):
+${noteLines}`;
+  }
+
   // Math projection block - passed to Claude as ground truth
   const mp = ctx.mathProjection;
   let mpOverPct = null;
@@ -1305,7 +1561,7 @@ Projection: ${mp.projection} ${propType} (baseline was ${mp.l10Avg}, ${mp.baseli
   Defensive Coefficient: ${mp.dvpCoeff} (opp def rating ${mp.oppDefRtg || 'N/A'})
   Usage Multiplier: ${mp.usageMult} (teammate injuries factored — split between minutes and per-minute rate, not double-counted)
   Form: ${mp.form}
-  Math Confidence (data quality/reliability, NOT probability): ${mp.confidence}%
+  Math Confidence (projection reliability — consistency, minutes stability, sample depth, data coverage; NOT probability): ${fmtConf(mp.confidence)}%
   Sample size: ${mp.sampleSize} recent games, ${mp.seasonGames} season games
 
 REAL DISTRIBUTION (not just a point estimate):
@@ -1330,6 +1586,7 @@ IMPORTANT: Your projection in the response MUST be close to ${mp.projection} —
 CRITICAL INSTRUCTION — DATA SOURCING RULES:
 You MUST label every specific statistic you cite in your analysis with one of these tags:
   [LIVE] = came from the verified data block below
+  [SCOUT] = the user's own hand-entered film read (SCOUT NOTES block below, if present) — real observed intel, not a stat, weigh it as directly relevant
   [AI] = from your training knowledge (may be outdated — flag it)
   [N/A] = data not available in the feed
 
@@ -1374,7 +1631,7 @@ MATHEMATICAL OUTLOOK:
 - [1-2 bullets on what the server-calculated math projection says and the strongest driver behind it — tag source as LIVE or AI]
 
 MATCHUP & CONSISTENCY:
-- [1-2 bullets on how this specific matchup fits the player's profile, and how consistent/volatile their recent performance has been — tag source as LIVE or AI. If HEAD-TO-HEAD HISTORY is in the live data block above, factor it in directly here (e.g. how this player has historically performed against this specific opponent vs their season baseline), don't leave it only for the H2H INSIGHT line below]
+- [1-2 bullets on how this specific matchup fits the player's profile, and how consistent/volatile their recent performance has been — tag source as LIVE or AI. If HEAD-TO-HEAD HISTORY is in the live data block above, factor it in directly here (e.g. how this player has historically performed against this specific opponent vs their season baseline), don't leave it only for the H2H INSIGHT line below. If SCOUT NOTES are present, incorporate them directly here too — tag as [SCOUT] — this is real film study the math model can't see (a scheme tendency, a role change, something the stats haven't caught up to yet)]
 
 RISK FACTORS:
 - [1-2 bullets on what could make this bet wrong — injury uncertainty, small sample, variance, role change — tag source as LIVE or AI]
@@ -1398,6 +1655,14 @@ BOTTOM LINE: [One sentence. Direct take.]`;
 }
 
 // ── ANALYZE ───────────────────────────────────────────
+// Per-league request generation counter — guards against a stale response
+// overwriting a fresher one. Two rapid clicks (or a goToTodayPick/
+// jumpToAnalyzePlayer call landing while a manual analysis is still in
+// flight) can both be in-flight at once; disabling the button alone
+// doesn't stop a programmatic re-entrant call, and doesn't stop an older
+// request's network response from simply arriving after a newer one's.
+const _analyzeRequestGen = { nba: 0, wnba: 0 };
+
 async function analyzeProp(league='nba') {
   const matchupRoute = league === 'wnba' ? '/api/wnba/player-matchup' : '/api/player-matchup';
   const contextRoute = league === 'wnba' ? '/api/wnba/prop-context'  : '/api/prop-context';
@@ -1410,10 +1675,16 @@ async function analyzeProp(league='nba') {
   if (!player || !line) { alert('Fill in player name and prop line.'); return; }
   if (parseFloat(line) <= 0) { alert('Line must be a positive number.'); return; }
 
+  const myGen = ++_analyzeRequestGen[league];
+  const isCurrent = () => _analyzeRequestGen[league] === myGen;
+  const btn = elFor(league,'analyze-btn');
+  btn.disabled = true; btn.textContent = 'FETCHING...';
+
   // Auto-detect opponent if field is empty
   if (!opp) {
     try {
       const matchup = await apiGet(`${matchupRoute}?name=${encodeURIComponent(player)}`);
+      if (!isCurrent()) return; // a newer request has already taken over this league's UI
       if (matchup.playing && matchup.opponent) {
         opp = matchup.opponent;
         elFor(league,'opp-team').value = opp;
@@ -1424,19 +1695,21 @@ async function analyzeProp(league='nba') {
         elFor(league,'matchup-info').style.color = 'var(--green)';
       } else if (matchup.found && !matchup.playing) {
         alert(`${player}'s team has no game today. Enter opponent manually.`);
+        btn.disabled = false; btn.textContent = 'ANALYZE PROP';
         return;
       } else {
         alert('Could not find today\'s matchup. Please enter opponent manually.');
+        btn.disabled = false; btn.textContent = 'ANALYZE PROP';
         return;
       }
     } catch (e) {
+      if (!isCurrent()) return;
       alert('Please enter the opposing team manually.');
+      btn.disabled = false; btn.textContent = 'ANALYZE PROP';
       return;
     }
   }
 
-  const btn = elFor(league,'analyze-btn');
-  btn.disabled = true; btn.textContent = 'FETCHING...';
   showLoading(league);
 
   try {
@@ -1448,10 +1721,12 @@ async function analyzeProp(league='nba') {
       apiGet(`${contextRoute}?player=${encodeURIComponent(player)}&opponent=${encodeURIComponent(opp)}&propType=${propType}`),
       fetchShotChartData(league, player, opp),
     ]);
+    if (!isCurrent()) return;
     updateStep(1, league);
     const prompt = buildEnrichedPrompt(player, opp, propType, line, context, ctx, league, playerShotChart, oppShotChart);
     updateStep(2, league);
     const claudeRes = await apiPost('/api/analyze', { prompt });
+    if (!isCurrent()) return; // a newer request already rendered its own result
     updateStep(3, league);
     const parsedVerdict = parseVerdict(claudeRes.response, { ...ctx, _postedLine: line });
     elFor(league,'result-area').innerHTML = renderResult(claudeRes.response, player, opp, propType, line, ctx, parsedVerdict, league);
@@ -1462,6 +1737,7 @@ async function analyzeProp(league='nba') {
     renderHistory();
     renderShotChartsInto(league, player, opp, playerShotChart, oppShotChart);
   } catch (err) {
+    if (!isCurrent()) return;
     const errMsg = err.message || 'Unknown error';
     elFor(league,'result-area').innerHTML = `
       <div class="result-placeholder">
@@ -1480,7 +1756,7 @@ async function analyzeProp(league='nba') {
         </div>
       </div>`;
   }
-  btn.disabled = false; btn.textContent = 'ANALYZE PROP';
+  if (isCurrent()) { btn.disabled = false; btn.textContent = 'ANALYZE PROP'; }
 }
 
 const STEPS = ['PULLING LIVE STATS...','LOADING DEFENSIVE DATA...','RUNNING AI ANALYSIS...','RENDERING...'];
@@ -1505,71 +1781,256 @@ function gameStatValue(g, propType) {
   return parseFloat(g[PROP_STATKEY[propType] || 'pts']) || 0;
 }
 
-function renderGameLogBars(games, line, propType) {
-  if (!games || !games.length) return '<div class="top-plays-empty">No games available for this filter</div>';
-  const lineNum = parseFloat(line) || 0;
-  const vals = games.map(g => gameStatValue(g, propType));
-  const maxVal = Math.max(...vals, lineNum) * 1.15 || 1;
-  // Team name fits under the bar only for a small set (L5) — past that,
-  // dates are all that fit without overlapping; team still shows on hover.
-  const showTeamLabel = games.length <= 5;
-  const bars = games.map((g, i) => {
-    const v = vals[i];
-    const pct = Math.max(2, (v / maxVal) * 100);
-    const hit = lineNum ? (v > lineNum ? 'over' : 'under') : '';
-    const dateLabel = (g.date || '').slice(5) || '—';
-    const teamLabel = (g.opponent || '').split(' ').pop() || '—';
-    const label = showTeamLabel ? teamLabel : dateLabel;
-    const boxScore = [
-      ['PTS', g.pts], ['REB', g.reb], ['AST', g.ast], ['3PM', g.fg3m],
-      ['STL', g.stl], ['BLK', g.blk], ['TOV', g.tov], ['MIN', g.min],
-    ].filter(([,val]) => val != null).map(([k,val]) => `<span>${k} <b>${val}</b></span>`).join('');
-    return `
-      <div class="gl-bar-col">
-        <div class="gl-bar-val">${v}</div>
-        <div class="gl-bar-track"><div class="gl-bar-fill ${hit}" style="height:${pct}%"></div></div>
-        <div class="gl-bar-label">${escapeHtml(label)}</div>
-        <div class="gl-tooltip">
-          <div class="gl-tooltip-hdr">${escapeHtml(g.date||'')}${g.opponent?' vs '+escapeHtml(g.opponent):''}${g.home===false?' (Away)':g.home===true?' (Home)':''}</div>
-          <div class="gl-tooltip-box">${boxScore}</div>
-        </div>
-      </div>`;
-  }).join('');
-  const linePct = lineNum ? Math.min(96, (lineNum / maxVal) * 100) : null;
-  return `<div class="gl-chart">${bars}${linePct != null ? `<div class="gl-line-ref" style="bottom:${linePct}%;"><span>LINE ${line}</span></div>` : ''}</div>`;
+// ── GAME LOG CHART ────────────────────────────────────────────────
+// Hit rate up front, a line you can move, every stat in one chart. Colors
+// mean HIT / MISS for whichever side is selected (Over or Under), so flipping
+// the toggle flips which bars are green — not just which ones are counted.
+window._gl = {};   // league -> chart state (data sets, stat, range, side, lines)
+window._glRO = {}; // league -> ResizeObserver (chart redraws to its real width)
+
+// Same ten props as the "Prop Type" dropdown, in the same order.
+const GL_STAT_TABS = [['points','PTS'], ['rebounds','REB'], ['assists','AST'], ['3pm','3PM'], ['pra','PRA'], ['pr','P+R'], ['pa','P+A'], ['ra','R+A'], ['steals','STL'], ['blocks','BLK']];
+const GL_RANGES = [['l5','L5'], ['l10','L10'], ['l20','L20'], ['h2h','H2H'], ['home','HOME'], ['away','AWAY']];
+const GL_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+// Server game logs are newest-first; the chart reads oldest -> newest.
+function glChron(arr) {
+  const a = (arr || []).slice();
+  const dated = a.length && a.every(g => /^\d{4}-\d{2}-\d{2}/.test(g.date || ''));
+  return dated ? a.sort((x, y) => (x.date < y.date ? -1 : x.date > y.date ? 1 : 0)) : a.reverse();
+}
+// NBA rows carry nba_api's "PHX vs. PHI" / "PHX @ PHI"; WNBA rows carry a
+// full team name plus a home flag. Normalize both to {abbr, home}.
+function glGameMeta(g) {
+  const raw = String(g.opponent || g.matchup || '');
+  const m = raw.match(/(vs\.?|@)\s*([A-Za-z0-9]+)\s*$/i);
+  let home = typeof g.home === 'boolean' ? g.home : null;
+  let abbr;
+  if (m) { abbr = m[2].toUpperCase(); if (home === null) home = !m[1].startsWith('@'); }
+  else { const last = raw.split(' ').pop() || '—'; abbr = GL_WNBA_ABBR[last] || last; }
+  return { abbr, home };
+}
+const GL_WNBA_ABBR = { Dream:'ATL', Sky:'CHI', Sun:'CON', Wings:'DAL', Valkyries:'GS', Fever:'IND', Aces:'LV', Sparks:'LA', Lynx:'MIN', Liberty:'NY', Mercury:'PHX', Fire:'POR', Storm:'SEA', Tempo:'TOR', Mystics:'WSH' };
+function glMD(g) { const m = String(g.date || '').match(/^\d{4}-(\d{2})-(\d{2})/); return m ? `${+m[1]}/${+m[2]}` : '—'; }
+function glLongDate(g) { const m = String(g.date || '').match(/^\d{4}-(\d{2})-(\d{2})/); return m ? `${GL_MONTHS[+m[1]-1]} ${+m[2]}` : '—'; }
+function glFmt(n) { return (Math.round(n * 10) / 10).toString(); }
+function glMedian(a) { const s = a.slice().sort((x, y) => x - y), m = Math.floor(s.length / 2); return s.length % 2 ? s[m] : (s[m-1] + s[m]) / 2; }
+function glHit(v, L, side) { return side === 'over' ? v > L : v < L; }
+function glTier(p) { return p >= 70 ? 'gl2-strong' : p >= 50 ? 'gl2-lean' : 'gl2-thin'; }
+function glRate(vals, L, side) { const h = vals.filter(v => glHit(v, L, side)).length; return { h, n: vals.length, p: vals.length ? Math.round(h / vals.length * 100) : 0 }; }
+function glNiceStep(max) {
+  const raw = max / 4, mag = Math.pow(10, Math.floor(Math.log10(raw))), n = raw / mag;
+  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * mag;
 }
 
-window._glSets = {};
-function renderGameLogSection(ctx, propType, line, league) {
+function renderGameLogSection(ctx, propType, line, league, defaultSide) {
   const stats = ctx?.playerStats;
   if (!stats || stats.error) return '';
   const h2hGames = ctx?.h2hStats?.games || ctx?.h2hStats?.recentGames || [];
   const gl20 = stats.gameLog20 || stats.last10Games || [];
   const sets = {
-    l5: stats.last5Games || [],
-    l10: stats.last10Games || [],
-    h2h: h2hGames,
-    away10: gl20.filter(g => g.home === false).slice(0, 10),
-    home10: gl20.filter(g => g.home === true).slice(0, 10),
+    l5:   glChron(stats.last5Games),
+    l10:  glChron(stats.last10Games),
+    l20:  glChron(gl20.slice(0, 20)),
+    h2h:  glChron(h2hGames),
+    home: glChron(gl20.filter(g => g.home === true).slice(0, 10)),
+    away: glChron(gl20.filter(g => g.home === false).slice(0, 10)),
   };
-  window._glSets[league] = { sets, propType, line };
-  const tabs = [['l5','L5'], ['l10','L10'], ['h2h','H2H'], ['away10','AWAY L10'], ['home10','HOME L10']];
-  return `
-    <div class="edge-model-chart">
-      <div style="font-family:'Space Grotesk',sans-serif;font-size:10px;letter-spacing:1.5px;color:var(--gold);margin-bottom:8px;">PROP EDGE MODEL — GAME LOG</div>
-      <div class="gl-tabs" id="gl-tabs-${league}">
-        ${tabs.map(([k,label]) => `<div class="gl-tab ${k==='l5'?'active':''}" data-key="${k}" onclick="switchGameLogTab('${league}','${k}')">${label} <span class="gl-tab-n">(${sets[k].length})</span></div>`).join('')}
-      </div>
-      <div id="gl-chart-${league}">${renderGameLogBars(sets.l5, line, propType)}</div>
-    </div>`;
+  const tabs = GL_STAT_TABS.slice();
+  if (!tabs.some(([k]) => k === propType)) tabs.unshift([propType, PROP_LABEL[propType] || propType.toUpperCase()]);
+  const posted = parseFloat(line);
+  const base = sets.l10.length ? sets.l10 : sets.l5;
+  const lines = {};
+  // The analyzed prop starts at the posted line; the other stats have none
+  // posted, so they start at the player's L10 median and can be nudged.
+  tabs.forEach(([k]) => {
+    lines[k] = (k === propType && posted > 0) ? posted
+      : base.length ? Math.floor(glMedian(base.map(g => gameStatValue(g, k)))) + 0.5 : 0.5;
+  });
+  const range = ['l10','l5','l20','h2h'].find(k => sets[k].length) || 'l10';
+  window._gl[league] = { sets, tabs, propType, posted: posted > 0 ? posted : null, stat: propType, range, side: defaultSide === 'under' ? 'under' : 'over', lines, W: 720 };
+  // The chart needs its real pixel width; the caller assigns this markup with
+  // innerHTML right after we return, so measure on the next tick.
+  setTimeout(() => glMount(league), 0);
+  return `<div class="gl2" id="gl2-${league}">${glInner(league)}</div>`;
 }
 
-function switchGameLogTab(league, key) {
-  const entry = window._glSets[league];
-  if (!entry) return;
-  document.querySelectorAll(`#gl-tabs-${league} .gl-tab`).forEach(el => el.classList.toggle('active', el.dataset.key === key));
-  const box = document.getElementById(`gl-chart-${league}`);
-  if (box) box.innerHTML = renderGameLogBars(entry.sets[key], entry.line, entry.propType);
+function glInner(league) {
+  const st = window._gl[league];
+  if (!st) return '';
+  const L = st.lines[st.stat];
+  const statLabel = (st.tabs.find(t => t[0] === st.stat) || [])[1] || st.stat.toUpperCase();
+  const set = st.sets[st.range];
+  const vals = set.map(g => gameStatValue(g, st.stat));
+  const r = glRate(vals, L, st.side);
+  const rangeLabel = (GL_RANGES.find(x => x[0] === st.range) || [])[1] || '';
+  const isPropStat = st.stat === st.propType;
+  const changed = isPropStat && st.posted != null && Math.abs(L - st.posted) > 0.001;
+  const lineNote = changed
+    ? `<button type="button" class="gl2-reset" onclick="glResetLine('${league}')">Reset to posted ${glFmt(st.posted)}</button>`
+    : !isPropStat ? `<span class="gl2-note">No posted line — starts at L10 median</span>` : '';
+
+  let tiles = '';
+  if (vals.length) {
+    const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+    let streak = 0; for (let i = vals.length - 1; i >= 0; i--) { if (glHit(vals[i], L, st.side)) streak++; else break; }
+    const margin = avg - L;
+    const marginGood = st.side === 'over' ? margin > 0 : margin < 0;
+    const items = [
+      ['Average', glFmt(avg), ''], ['Median', glFmt(glMedian(vals)), ''],
+      ['High', glFmt(Math.max(...vals)), ''], ['Low', glFmt(Math.min(...vals)), ''],
+      ['Streak', streak ? `${streak} straight` : 'Broke last game', streak >= 3 ? 'gl2-strong' : ''],
+      ['Avg vs line', (margin > 0 ? '+' : '') + glFmt(margin), margin === 0 ? '' : marginGood ? 'gl2-strong' : 'gl2-thin'],
+    ];
+    tiles = `<div class="gl2-tiles">${items.map(([l, v, c]) => `<div class="gl2-tile"><div class="gl2-tv ${c}"${l === 'Streak' ? ' style="font-size:13px;line-height:1.5;"' : ''}>${v}</div><div class="gl2-tl">${l}</div></div>`).join('')}</div>`;
+  }
+  const rates = ['l5','l10','l20','h2h'].map(k => {
+    const x = glRate(st.sets[k].map(g => gameStatValue(g, st.stat)), L, st.side);
+    return `<div class="gl2-rate"><div class="gl2-rl">${GL_RANGES.find(y => y[0] === k)[1]}</div><div class="gl2-rv ${x.n ? glTier(x.p) : ''}">${x.n ? x.p + '%' : '—'}</div><div class="gl2-rn">${x.h}/${x.n}</div></div>`;
+  }).join('');
+  const hitWord = st.side === 'over' ? 'over' : 'under';
+  const missWord = st.side === 'over' ? 'under' : 'over';
+
+  return `
+    <div class="gl2-head">
+      <div class="gl2-title">Game Log</div>
+      <div class="gl2-linewrap">
+        <div class="gl2-linectl" role="group" aria-label="Prop line">
+          <span class="gl2-lbl">Line</span>
+          <button type="button" aria-label="Lower line by 0.5" onclick="glStep('${league}',-0.5)">−</button>
+          <input type="number" step="0.5" value="${glFmt(L)}" aria-label="Prop line" onchange="glSetLine('${league}',this.value)">
+          <button type="button" aria-label="Raise line by 0.5" onclick="glStep('${league}',0.5)">+</button>
+        </div>
+        ${lineNote}
+      </div>
+    </div>
+    <div class="gl2-row">
+      <div class="gl2-pills" role="tablist" aria-label="Stat">
+        ${st.tabs.map(([k, lab]) => `<button type="button" class="gl2-pill" role="tab" aria-selected="${k === st.stat}" onclick="glSet('${league}','stat','${k}')">${lab}</button>`).join('')}
+      </div>
+      <div class="gl2-spacer"></div>
+      <div class="gl2-side" role="tablist" aria-label="Side">
+        <button type="button" role="tab" data-side="over" aria-selected="${st.side === 'over'}" onclick="glSet('${league}','side','over')">OVER</button>
+        <button type="button" role="tab" data-side="under" aria-selected="${st.side === 'under'}" onclick="glSet('${league}','side','under')">UNDER</button>
+      </div>
+    </div>
+    <div class="gl2-row" style="margin-top:12px;">
+      <div class="gl2-seg" role="tablist" aria-label="Range">
+        ${GL_RANGES.map(([k, lab]) => `<button type="button" role="tab" aria-selected="${k === st.range}" onclick="glSet('${league}','range','${k}')">${lab}</button>`).join('')}
+      </div>
+    </div>
+    <div class="gl2-summary">
+      <div>
+        <div class="gl2-hitlabel">${rangeLabel} hit rate · ${statLabel} ${hitWord}</div>
+        <div class="gl2-hitbig">
+          <span class="gl2-hitpct ${r.n ? glTier(r.p) : ''}">${r.n ? r.p + '%' : '—'}</span>
+          <span class="gl2-hitof">${r.n ? `${r.h} of ${r.n} games ${hitWord} ${glFmt(L)}` : 'no games in this range'}</span>
+        </div>
+        ${r.n ? `<div class="gl2-avgmed">Average <b>${glFmt(vals.reduce((a, b) => a + b, 0) / vals.length)}</b>Median <b>${glFmt(glMedian(vals))}</b></div>` : ''}
+      </div>
+      <div class="gl2-rates">${rates}</div>
+    </div>
+    <div class="gl2-chartbox">
+      <div id="gl2-chart-${league}" onmousemove="glHover('${league}',event)" onmouseleave="glHideTip('${league}')" ontouchstart="glHover('${league}',event)">${glChartSVG(league)}</div>
+      <div class="gl2-tip" id="gl2-tip-${league}"></div>
+      <div class="gl2-legend">
+        <span><i style="background:var(--green)"></i>Hit — ${hitWord} the line</span>
+        <span><i style="background:var(--red)"></i>Miss — ${missWord} the line</span>
+        <span><span class="gl2-ln"></span>Prop line</span>
+      </div>
+    </div>
+    ${tiles}`;
+}
+
+// Bars are colored by HIT / MISS for the selected side: with Over selected an
+// over-the-line game is green; flip to Under and the same game turns red.
+function glChartSVG(league) {
+  const st = window._gl[league];
+  const set = st.sets[st.range], L = st.lines[st.stat];
+  const vals = set.map(g => gameStatValue(g, st.stat));
+  if (!vals.length) return '<div class="gl2-empty">No games available for this filter</div>';
+  const W = Math.max(280, st.W || 720), H = W < 520 ? 280 : 340;
+  const ml = 42, mr = 8, mt = 26, mb = 44, pw = W - ml - mr, ph = H - mt - mb;
+  const top = Math.max(Math.max(...vals), L) * 1.08, step = glNiceStep(top), yMax = Math.ceil(top / step) * step;
+  const y = v => mt + ph - (v / yMax) * ph;
+  const slot = pw / vals.length, bw = Math.min(58, slot * 0.66);
+  const showVals = slot >= 19, xEvery = slot < 22 ? 3 : slot < 34 ? 2 : 1, fs = slot < 26 ? 9 : 11;
+  let out = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Game-by-game chart against a line of ${glFmt(L)}">`;
+  for (let t = 0; t <= yMax + 1e-9; t += step) {
+    const ty = y(t);
+    out += `<line x1="${ml}" x2="${W - mr}" y1="${ty}" y2="${ty}" stroke="rgba(255,255,255,${t === 0 ? 0.16 : 0.06})" stroke-width="1"/>`;
+    if (Math.abs(ty - y(L)) >= 12) out += `<text class="gl2-axis" x="${ml - 8}" y="${ty + 3}" text-anchor="end">${glFmt(t)}</text>`;
+  }
+  vals.forEach((v, i) => {
+    const g = set[i], meta = glGameMeta(g);
+    const cx = ml + slot * i + slot / 2, x0 = cx - bw / 2, yt = y(v), h = Math.max(2, mt + ph - yt), r = Math.min(5, bw / 2);
+    const col = v === L ? '#d4a844' : glHit(v, L, st.side) ? '#2ecc71' : '#e74c3c';
+    out += `<path d="M${x0},${yt + h} L${x0},${yt + r} Q${x0},${yt} ${x0 + r},${yt} L${x0 + bw - r},${yt} Q${x0 + bw},${yt} ${x0 + bw},${yt + r} L${x0 + bw},${yt + h} Z" fill="${col}"/>`;
+    out += `<rect data-i="${i}" x="${cx - slot / 2}" y="${mt}" width="${slot}" height="${ph + mb}" fill="transparent"/>`;
+    if (showVals) out += `<text class="gl2-val" x="${cx}" y="${yt - 6}" fill="${col}" style="font-size:${fs}px">${glFmt(v)}</text>`;
+    if (i % xEvery === 0 || i === vals.length - 1 && xEvery === 1) {
+      out += `<text class="gl2-xd" x="${cx}" y="${H - mb + 16}" text-anchor="middle">${glMD(g)}</text>`;
+      out += `<text class="gl2-xo" x="${cx}" y="${H - mb + 29}" text-anchor="middle">${meta.home === null ? '' : (meta.home ? 'vs ' : '@ ')}${escapeHtml(meta.abbr)}</text>`;
+    }
+  });
+  const ly = y(L);
+  out += `<line x1="${ml}" x2="${W - mr}" y1="${ly}" y2="${ly}" stroke="#d4a844" stroke-width="1.5" stroke-dasharray="5 4"/>`;
+  out += `<rect x="2" y="${ly - 10}" width="${ml - 6}" height="20" rx="6" fill="#d4a844"/>`;
+  out += `<text x="${(ml - 6) / 2 + 2}" y="${ly + 4}" text-anchor="middle" fill="#0b1220" style="font-size:11px;font-weight:700;font-family:inherit">${glFmt(L)}</text>`;
+  return out + '</svg>';
+}
+
+function glMount(league) {
+  const st = window._gl[league], el = document.getElementById(`gl2-chart-${league}`);
+  if (!st || !el) return;
+  if (window._glRO[league]) window._glRO[league].disconnect();
+  const redraw = () => {
+    const w = el.clientWidth; // 0 while the Game Log tab is hidden — redraws when it opens
+    if (w > 0 && Math.abs(w - st.W) > 1) { st.W = w; el.innerHTML = glChartSVG(league); }
+  };
+  if (window.ResizeObserver) { const ro = new ResizeObserver(redraw); ro.observe(el); window._glRO[league] = ro; }
+  redraw();
+}
+function glRefresh(league) {
+  const root = document.getElementById(`gl2-${league}`);
+  if (!root) return;
+  root.innerHTML = glInner(league);
+  glMount(league);
+}
+function glSet(league, key, val) { const st = window._gl[league]; if (!st) return; st[key] = val; glRefresh(league); }
+function glStep(league, d) { const st = window._gl[league]; if (!st) return; st.lines[st.stat] = Math.max(0.5, Math.round((st.lines[st.stat] + d) * 2) / 2); glRefresh(league); }
+function glSetLine(league, v) { const st = window._gl[league], n = parseFloat(v); if (!st) return; if (isFinite(n) && n > 0) st.lines[st.stat] = n; glRefresh(league); }
+function glResetLine(league) { const st = window._gl[league]; if (!st || st.posted == null) return; st.lines[st.stat] = st.posted; glRefresh(league); }
+
+function glHideTip(league) { document.getElementById(`gl2-tip-${league}`)?.classList.remove('show'); }
+function glHover(league, e) {
+  const st = window._gl[league], tip = document.getElementById(`gl2-tip-${league}`);
+  if (!st || !tip) return;
+  const pt = e.touches && e.touches[0] ? e.touches[0] : e;
+  let t = e.touches && e.touches[0] ? document.elementFromPoint(pt.clientX, pt.clientY) : e.target;
+  t = t && t.closest ? t.closest('[data-i]') : null;
+  const g = t ? st.sets[st.range][+t.dataset.i] : null;
+  if (!g) { tip.classList.remove('show'); return; }
+  const L = st.lines[st.stat], val = gameStatValue(g, st.stat), diff = val - L, meta = glGameMeta(g);
+  const statLabel = (st.tabs.find(x => x[0] === st.stat) || [])[1] || '';
+  const col = diff === 0 ? 'var(--gold)' : glHit(val, L, st.side) ? 'var(--green)' : 'var(--red)';
+  tip.innerHTML = `<div class="gl2-th">${glLongDate(g)} · ${meta.home === null ? '' : (meta.home ? 'vs ' : '@ ')}${escapeHtml(meta.abbr)}</div>`
+    + `<div class="gl2-tg"><span>PTS<b>${g.pts ?? '—'}</b></span><span>REB<b>${g.reb ?? '—'}</b></span><span>AST<b>${g.ast ?? '—'}</b></span><span>3PM<b>${g.fg3m ?? '—'}</b></span><span>MIN<b>${g.min ?? '—'}</b></span><span>${statLabel}<b>${glFmt(val)}</b></span></div>`
+    + `<div class="gl2-tf" style="color:${col}">${diff > 0 ? '+' : ''}${glFmt(diff)} vs line ${glFmt(L)}${diff === 0 ? ' · push' : glHit(val, L, st.side) ? ' · hit' : ' · miss'}</div>`;
+  const br = tip.parentElement.getBoundingClientRect();
+  let x = pt.clientX - br.left + 14;
+  const tw = tip.offsetWidth || 170;
+  if (x + tw > br.width) x = pt.clientX - br.left - tw - 14;
+  tip.style.left = Math.max(0, x) + 'px';
+  tip.style.top = Math.max(0, pt.clientY - br.top - 70) + 'px';
+  tip.classList.add('show');
+}
+
+// Analyzer result tabs (Overview / Shot Chart / Game Log & H2H / Advanced).
+// Scoped by league so the NBA and WNBA panels never toggle each other.
+function switchResultTab(league, key) {
+  document.querySelectorAll(`#result-toptabs-${league} .result-toptab`).forEach(el => el.classList.toggle('active', el.dataset.key === key));
+  document.querySelectorAll(`#result-tabpanels-${league} .result-tabpanel`).forEach(el => el.classList.toggle('active', el.dataset.panel === key));
 }
 
 function renderConfGauge(confidence, vc) {
@@ -1579,13 +2040,13 @@ function renderConfGauge(confidence, vc) {
   const pct = Math.max(0, Math.min(100, confidence)) / 100;
   const offset = circumference * (1 - pct);
   const color = (vc==='over'||vc==='lean-over') ? 'var(--green)' : (vc==='under'||vc==='lean-under') ? 'var(--red)' : 'var(--gold)';
-  const fontSize = confidence >= 100 ? 15 : 17;
+  const fontSize = 15;
   return `
     <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
       <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--border2)" stroke-width="5"/>
       <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${color}" stroke-width="5" stroke-linecap="round"
         stroke-dasharray="${circumference.toFixed(1)}" stroke-dashoffset="${offset.toFixed(1)}" transform="rotate(-90 ${cx} ${cy})"/>
-      <text x="${cx}" y="${cy-2}" text-anchor="middle" dominant-baseline="middle" font-family="'Space Grotesk',sans-serif" font-size="${fontSize}" fill="var(--text)">${confidence}%</text>
+      <text x="${cx}" y="${cy-2}" text-anchor="middle" dominant-baseline="middle" font-family="'Space Grotesk',sans-serif" font-size="${fontSize}" fill="var(--text)">${fmtConf(confidence)}%</text>
       <text x="${cx}" y="${cy+12}" text-anchor="middle" dominant-baseline="middle" font-family="'Space Grotesk',sans-serif" font-size="6.5" fill="var(--muted)" letter-spacing="1">CONF</text>
     </svg>`;
 }
@@ -1743,7 +2204,7 @@ function renderResult(raw, player, opp, propType, line, ctx, precomputedVerdict,
         ${ctx.mathProjection.dvpCoeff != null ? `<span>DvP coeff: <span style="color:var(--text)">${ctx.mathProjection.dvpCoeff}x</span></span>` : ''}
         <span>Usage mult: <span style="color:var(--text)">${ctx.mathProjection.usageMult}x</span></span>
         <span>Form: <span style="color:${ctx.mathProjection.form==='HOT'?'var(--green)':ctx.mathProjection.form==='COLD'?'var(--red)':'var(--muted)'}">${ctx.mathProjection.form}</span></span>
-        <span>Math conf: <span style="color:var(--blue)">${ctx.mathProjection.confidence}%</span></span>
+        <span>Math conf: <span style="color:var(--blue)">${fmtConf(ctx.mathProjection.confidence)}%</span></span>
       </div>
       ${ctx.mathProjection.stdDev ? (() => {
         const sd = ctx.mathProjection.stdDev, med = ctx.mathProjection.medianProjection ?? projection;
@@ -1774,12 +2235,15 @@ function renderResult(raw, player, opp, propType, line, ctx, precomputedVerdict,
       </div>
     </div>` : ''}` : '';
 
-  const taBlock = (icon, title, body, cls='') => body ? `<div class="ta-block ${cls}"><div class="ta-block-title"><span>${icon}</span>${title}</div><div class="ta-block-body">${body}</div></div>` : '';
-  const textualAnalysis = (mathOutlook || matchupConsistency || riskFactors) ? `
-    <div class="textual-analysis-hdr">Textual Analysis</div>
-    ${taBlock('📊', 'Mathematical Outlook', mathOutlook)}
-    ${taBlock('🎯', 'Matchup &amp; Consistency', matchupConsistency, 'matchup')}
-    ${taBlock('⚠️', 'Risk Factors', riskFactors, 'risk')}` : '';
+  // Textual analysis as collapsible drawers — reuses the same accordion the
+  // Daily Matchups dashboard already uses, so heavy AI prose no longer
+  // stretches the Overview tab.
+  const acBody = (t) => `<div class="ta-block-body" style="padding:2px 4px 4px;">${t}</div>`;
+  const textualAccordions = (mathOutlook || matchupConsistency || riskFactors) ? `
+    <div class="section-divider">Textual Analysis</div>
+    ${mathOutlook ? renderAccordionItem(`acc-mathout-${league}`, 'Mathematical Outlook', acBody(mathOutlook), true) : ''}
+    ${matchupConsistency ? renderAccordionItem(`acc-matchup-${league}`, 'Matchup & Consistency', acBody(matchupConsistency), false) : ''}
+    ${riskFactors ? renderAccordionItem(`acc-risk-${league}`, 'Risk Factors', acBody(riskFactors), false) : ''}` : '';
 
   const recommendations = (bottomLine || alternativePlays) ? `
     <div class="recommend-box">
@@ -1789,56 +2253,10 @@ function renderResult(raw, player, opp, propType, line, ctx, precomputedVerdict,
     </div>` : '';
 
   const playerId = ctx?.playerAdvancedStats?.PLAYER_ID || null;
-  return `
-    ${sourceBanner}
-    <div class="result-player-header" style="margin-bottom:6px;">
-      ${renderResultHeadshot(league, playerId, player)}
-      <div>
-        <div style="font-family:'Space Grotesk',sans-serif;font-size:26px;letter-spacing:2px;">${escapeHtml(player)}</div>
-        <div style="font-family:'Space Grotesk',sans-serif;font-size:11px;color:var(--muted);margin-top:2px;">${propType.toUpperCase()} · LINE ${line} · PROJECTION ${projection}</div>
-      </div>
-    </div>
-    ${chips}
-    <div class="result-split">
-      <div class="result-col-mid">
-        <div style="margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
-          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-            <div class="verdict-badge ${vc}">${vc==='over'?'▲ OVER':vc==='lean-over'?'△ LEAN OVER':vc==='under'?'▼ UNDER':vc==='lean-under'?'▽ LEAN UNDER':'◈ PASS'}</div>
-          ${vc==='pass' && precomputedVerdict?.direction !== 'NEUTRAL' ? `<div style="font-family:'Space Grotesk',sans-serif;font-size:10px;padding:4px 10px;border-radius:5px;background:${precomputedVerdict.direction==='OVER_LEAN'?'rgba(46,204,113,0.08)':'rgba(231,76,60,0.08)'};color:${precomputedVerdict.direction==='OVER_LEAN'?'var(--green)':'var(--red)'};border:1px solid ${precomputedVerdict.direction==='OVER_LEAN'?'rgba(46,204,113,0.2)':'rgba(231,76,60,0.2)'}">${precomputedVerdict.direction==='OVER_LEAN'?'slight over lean':'slight under lean'}</div>` : ''}
-          </div>
-          <button id="add-to-list-btn" onclick="addToBetslip()" style="font-family:'Space Grotesk',sans-serif;font-size:10px;padding:7px 16px;border-radius:7px;border:1px solid var(--gold);background:rgba(212,168,68,0.1);color:var(--gold);cursor:pointer;letter-spacing:1px;white-space:nowrap;" onmouseover="this.style.background='rgba(212,168,68,0.25)'" onmouseout="this.style.background='rgba(212,168,68,0.1)'">+ ADD TO LIST</button>
-          <div style="font-family:'Space Grotesk',sans-serif;font-size:11px;color:var(--muted);">EDGE: <span style="color:${edge>0?'var(--green)':edge<0?'var(--red)':'var(--muted)'};">${edge>0?'+':''}${edge}</span></div>
-        </div>
-        <div class="conf-wrap">
-          <div class="conf-labels"><span>CONFIDENCE</span><span>${confidence}%</span></div>
-          <div class="conf-bar"><div class="conf-fill ${vc}" style="width:${confidence}%"></div></div>
-        </div>
-        <div class="edge-model-row">
-          ${renderGameLogSection(ctx, propType, line, league)}
-          <div class="edge-model-side">
-            ${renderConfGauge(confidence, vc)}
-            <div style="font-family:'Space Grotesk',sans-serif;font-size:19px;letter-spacing:1px;color:${edge>0?'var(--green)':edge<0?'var(--red)':'var(--muted)'};">${edge>0?'+':''}${edge}pt EDGE</div>
-          </div>
-        </div>
-        <div class="section-divider">Shot Charts</div>
-        <div id="shotchart-container-${league}"><div class="top-plays-empty">Loading shot charts...</div></div>
-        ${mathBreakdownBox}
-        ${oppRosterDisplay}
-        ${playerTeamInjuries}
-        ${isElite?`<div class="outlier-strip"><div style="font-size:20px;">★</div><p><strong>OUTLIER ALERT</strong> — ${escapeHtml(player)} is flagged as elite/matchup-resistant.</p></div>`:''}
-        ${recommendations}
-      </div>
-      <div class="result-col-insights">
-        ${textualAnalysis}
-        <div class="section-divider">Key Factors</div>
-        <div class="factor-grid" style="grid-template-columns:1fr;">${factorHTML}</div>
-      </div>
-    </div>
-    ${defStats}
-    ${last5Table}
-    ${blowout?`<div class="section-divider">Blowout Scenario</div><div class="analysis-box">${blowout}</div>`:''}
-    ${shotChart?`<div class="section-divider">Shot Chart vs Defense</div><div class="analysis-box">${shotChart}</div>`:''}
-    ${(function(){
+
+  // Head-to-head block — built once here so it can be placed in the Game
+  // Log & H2H tab instead of being inlined at the bottom of one long page.
+  const h2hSection = (function(){
     var hLog = (ctx && ctx.h2hGamesLog) || (ctx && ctx.h2hStats && ctx.h2hStats.games) || (ctx && ctx.h2hStats && ctx.h2hStats.recentGames) || [];
     var hMeta = ctx && ctx.h2hStats;
     var src = (hMeta && hMeta.source) || 'BDL';
@@ -1895,8 +2313,101 @@ function renderResult(raw, player, opp, propType, line, ctx, precomputedVerdict,
     }
     if (h2h) out += '<div class="analysis-box">'+h2h+'</div>';
     return out;
-  }())}
-    ${fullAnalysis?`<div class="analysis-text">${fullAnalysis}</div>`:''}
+  }());
+
+  // ── Tabs + sticky sidebar assembly ─────────────────────────────
+  const edgeColor = edge>0 ? 'var(--green)' : edge<0 ? 'var(--red)' : 'var(--muted)';
+  const isOverSide  = vc==='over'  || vc==='lean-over';
+  const isUnderSide = vc==='under' || vc==='lean-under';
+  const tone = isOverSide  ? { bg:'rgba(46,204,113,0.08)', bd:'rgba(46,204,113,0.25)', tx:'var(--green)' }
+             : isUnderSide ? { bg:'rgba(231,76,60,0.08)',  bd:'rgba(231,76,60,0.25)',  tx:'var(--red)' }
+             :               { bg:'rgba(212,168,68,0.08)', bd:'rgba(212,168,68,0.25)', tx:'var(--gold)' };
+  const verdictLabel = vc==='over'?'▲ OVER':vc==='lean-over'?'△ LEAN OVER':vc==='under'?'▼ UNDER':vc==='lean-under'?'▽ LEAN UNDER':'◈ PASS';
+  const leanTag = vc==='pass' && precomputedVerdict?.direction !== 'NEUTRAL'
+    ? `<div style="font-family:'Space Grotesk',sans-serif;font-size:10px;padding:4px 10px;border-radius:5px;background:${precomputedVerdict.direction==='OVER_LEAN'?'rgba(46,204,113,0.08)':'rgba(231,76,60,0.08)'};color:${precomputedVerdict.direction==='OVER_LEAN'?'var(--green)':'var(--red)'};border:1px solid ${precomputedVerdict.direction==='OVER_LEAN'?'rgba(46,204,113,0.2)':'rgba(231,76,60,0.2)'}">${precomputedVerdict.direction==='OVER_LEAN'?'slight over lean':'slight under lean'}</div>`
+    : '';
+  const posFactors = factors.filter(f => f.type === 'pos');
+  const negFactors = factors.filter(f => f.type === 'neg');
+  const outlierStrip = isElite ? `<div class="outlier-strip"><div style="font-size:20px;">★</div><p><strong>OUTLIER ALERT</strong> — ${escapeHtml(player)} is flagged as elite/matchup-resistant.</p></div>` : '';
+
+  const overviewTab = `
+    ${chips}
+    <div style="margin:10px 0 8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div class="verdict-badge ${vc}">${verdictLabel}</div>
+        ${leanTag}
+      </div>
+      <button id="add-to-list-btn" onclick="addToBetslip()" style="font-family:'Space Grotesk',sans-serif;font-size:10px;padding:7px 16px;border-radius:7px;border:1px solid var(--gold);background:rgba(212,168,68,0.1);color:var(--gold);cursor:pointer;letter-spacing:1px;white-space:nowrap;" onmouseover="this.style.background='rgba(212,168,68,0.25)'" onmouseout="this.style.background='rgba(212,168,68,0.1)'">+ ADD TO LIST</button>
+    </div>
+    <div class="conf-wrap">
+      <div class="conf-labels"><span>CONFIDENCE</span><span>${confNumHtml(confidence)}</span></div>
+      <div class="conf-bar"><div class="conf-fill ${vc}" style="width:${confidence}%"></div></div>
+    </div>
+    ${renderMarketValue(ctx, line)}
+    ${renderGameLogSection(ctx, propType, line, league, isUnderSide ? 'under' : 'over')}
+    ${h2hSection}
+    ${textualAccordions}
+    ${recommendations}
+    ${oppRosterDisplay}
+    ${playerTeamInjuries}
+    ${outlierStrip}`;
+
+  const shotChartTab = `
+    <div id="shotchart-container-${league}"><div class="top-plays-empty">Loading shot charts...</div></div>
+    ${shotChart?`<div class="section-divider">Shot Chart vs Defense</div><div class="analysis-box">${shotChart}</div>`:''}
+    ${renderPlaytypeBreakdown(ctx, player, opp, league)}`;
+
+  const advancedTab = `
+    ${mathBreakdownBox}
+    ${defStats}
+    ${last5Table}
+    <div class="section-divider">Key Factors</div>
+    <div class="factor-grid" style="grid-template-columns:1fr;">${factorHTML || '<div class="top-plays-empty">No factors listed</div>'}</div>
+    ${blowout?`<div class="section-divider">Blowout Scenario</div><div class="analysis-box">${blowout}</div>`:''}
+    ${fullAnalysis?`<div class="analysis-text">${fullAnalysis}</div>`:''}`;
+
+  const sidebar = `
+    <div>
+      <div class="rs-label">Confidence</div>
+      <div class="rs-ring-wrap">${renderConfGauge(confidence, vc)}</div>
+    </div>
+    <div class="rs-edge">
+      <div class="ev" style="color:${edgeColor};">${edge>0?'+':''}${edge}</div>
+      <div class="el">EDGE VS. LINE ${escapeHtml(String(line))}</div>
+    </div>
+    <div class="rs-block">
+      <div class="rs-block-title">Recommendation</div>
+      <div class="rs-rec" style="background:${tone.bg};border:1px solid ${tone.bd};">
+        <div style="color:${tone.tx};font-weight:700;letter-spacing:0.5px;">${verdictLabel}</div>
+        <div style="color:var(--muted2);margin-top:4px;">${bottomLine ? escapeHtml(bottomLine) : `Projection ${projection} vs. line ${escapeHtml(String(line))}.`}</div>
+      </div>
+    </div>
+    ${posFactors.length ? `<div class="rs-block"><div class="rs-block-title">Key Factors</div><ul class="rs-list">${posFactors.map(f => `<li>${escapeHtml(f.text)}</li>`).join('')}</ul></div>` : ''}
+    ${negFactors.length ? `<div class="rs-block"><div class="rs-block-title">Risk Factors</div><ul class="rs-list risk">${negFactors.map(f => `<li>${escapeHtml(f.text)}</li>`).join('')}</ul></div>` : ''}`;
+
+  const tabDefs = [['overview','Overview'], ['shotchart','Shot Chart'], ['advanced','Advanced']];
+  return `
+    ${sourceBanner}
+    <div class="result-player-header" style="margin-bottom:6px;">
+      ${renderResultHeadshot(league, playerId, player)}
+      <div>
+        <div style="font-family:'Space Grotesk',sans-serif;font-size:26px;letter-spacing:2px;">${escapeHtml(player)}</div>
+        <div style="font-family:'Space Grotesk',sans-serif;font-size:11px;color:var(--muted);margin-top:2px;">${propType.toUpperCase()} · LINE ${line} · PROJECTION ${projection}</div>
+      </div>
+    </div>
+    <div class="result-shell">
+      <div class="result-main-col">
+        <div class="result-toptabs" id="result-toptabs-${league}">
+          ${tabDefs.map(([k,label],i) => `<div class="result-toptab ${i===0?'active':''}" data-key="${k}" onclick="switchResultTab('${league}','${k}')">${label}</div>`).join('')}
+        </div>
+        <div id="result-tabpanels-${league}">
+          <div class="result-tabpanel active" data-panel="overview">${overviewTab}</div>
+          <div class="result-tabpanel" data-panel="shotchart">${shotChartTab}</div>
+          <div class="result-tabpanel" data-panel="advanced">${advancedTab}</div>
+        </div>
+      </div>
+      <div class="result-sidebar">${sidebar}</div>
+    </div>
   `;
 }
 
@@ -1961,6 +2472,59 @@ async function loadScheduleForDate(dateStr) {
 function escapeJsStr(s) { return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
 
 // ── DAILY MATCHUPS — team select dropdowns ─────────────────────────
+function updateTabsFade() {
+  const el = document.getElementById('tabs-scroll');
+  const left = document.getElementById('tabs-fade-left');
+  const right = document.getElementById('tabs-fade-right');
+  if (!el || !left || !right) return;
+  left.classList.toggle('visible', el.scrollLeft > 4);
+  right.classList.toggle('visible', el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+}
+window.addEventListener('resize', updateTabsFade);
+
+// The "DATA SYNCED" badge used to be hardcoded green regardless of real
+// backend health — it kept saying everything was fine through the whole
+// odds-quota-exhaustion episode. This reads real status from the server
+// (config presence + the last real odds-API response it saw) instead.
+async function checkDataFeedStatus() {
+  let status;
+  try { status = await apiGet('/api/data-status'); }
+  catch (_) { return; } // leave the "CHECKING..." placeholder rather than claim a false state
+  const degraded = !status.odds.configured || status.odds.exhausted;
+  const label = !status.odds.configured ? 'ODDS API NOT CONFIGURED'
+    : status.odds.exhausted ? 'ODDS QUOTA EXHAUSTED'
+    : 'DATA SYNCED';
+  const title = status.odds.exhausted
+    ? `Odds API quota used up (0 requests remaining as of last check) — confident picks, prop lines, and live odds are unavailable until it resets or a new key is added.`
+    : '';
+  ['dfs-status-nba', 'dfs-status-wnba'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.toggle('degraded', degraded);
+    el.title = title;
+    el.innerHTML = `<span class="dfs-dot"></span> ${label}`;
+  });
+}
+
+// Defaulted to NBA unconditionally before — dead during NBA offseason
+// (or any day NBA just has no games) when WNBA is the only live league.
+// Checks which league actually has games today and defaults to that.
+async function setDefaultMatchupLeague() {
+  try {
+    const [nbaToday, wnbaToday] = await Promise.all([
+      apiGet('/api/today').catch(() => ({ games: [] })),
+      apiGet('/api/wnba/today').catch(() => ({ games: [] })),
+    ]);
+    const nbaHasGames = (nbaToday.games || []).length > 0;
+    const wnbaHasGames = (wnbaToday.games || []).length > 0;
+    if (!nbaHasGames && wnbaHasGames) {
+      const sel = document.getElementById('matchup-league');
+      if (sel) sel.value = 'wnba';
+    }
+  } catch (_) { /* fall through to the default NBA selection */ }
+  populateMatchupTeamSelects();
+}
+
 function populateMatchupTeamSelects() {
   const league = document.getElementById('matchup-league').value;
   const list = league === 'wnba' ? WNBA_TEAMS : NBA_TEAMS;
@@ -2137,14 +2701,45 @@ function renderStatTable(s1, s2, t1, t2) {
     ${(s1?.source || s2?.source) ? `<div style="font-family:'Space Grotesk',sans-serif;font-size:8px;color:var(--muted);margin-top:8px;">${s1?.source?`⚠ ${escapeHtml(t1)}: ${escapeHtml(s1.source)}`:''}${s1?.source&&s2?.source?' · ':''}${s2?.source?`⚠ ${escapeHtml(t2)}: ${escapeHtml(s2.source)}`:''}</div>` : ''}`;
 }
 
+// Real points/rebounds/assists/3PM allowed broken down by position group
+// (Guards/Wings/Bigs) — built server-side from real box scores (not a
+// stats.nba.com stat; that API only tracks FG% by position). Fetched
+// upfront alongside the rest of the matchup data (not after render) so
+// the AI prompt can reference it too, not just this visible card.
+function renderPositionCategoryTable(teamName, posDef) {
+  if (!posDef?.available) return '<div class="top-plays-empty">Not enough recent box-score data available</div>';
+  const CATS = [['pts','PTS'], ['reb','REB'], ['ast','AST'], ['fg3m','3PM']];
+  const rows = ['Guards', 'Wings', 'Bigs'].map(group => {
+    const cells = CATS.map(([key, label]) => {
+      const val = posDef.byPosition?.[group]?.[key];
+      const rankInfo = posDef.ranks?.[group]?.[key];
+      return `<td>${val ?? '—'}${rankInfo ? `<span class="rank">#${rankInfo.rank}</span>` : ''}</td>`;
+    }).join('');
+    return `<tr><td class="tc-metric-name">${group}</td>${cells}</tr>`;
+  }).join('');
+  return `
+    <div style="font-family:'Space Grotesk',sans-serif;font-size:10px;color:var(--gold);letter-spacing:1px;margin-bottom:6px;">${escapeHtml(teamName).toUpperCase()} — ALLOWED PER GAME BY POSITION</div>
+    <table class="tc-stat-table">
+      <thead><tr><th>GROUP</th>${CATS.map(([,label])=>`<th>${label}</th>`).join('')}</tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div style="font-family:'Space Grotesk',sans-serif;font-size:8px;color:var(--muted);margin-top:6px;">Last ${posDef.gamesAnalyzed} games · rank out of ${posDef.leagueSize} teams · lower = tougher defense at that spot</div>`;
+}
+
 // Collapsible accordion — wraps every section below the odds banner.
 // bodyHtml may be a placeholder (e.g. a loading spinner) that gets swapped
 // out later via document.getElementById(bodyId).innerHTML/.outerHTML.
-function renderAccordionItem(id, title, bodyHtml, openByDefault) {
+// previewHtml is a small badge rendered before the chevron, e.g. "3
+// LISTED", so a collapsed section signals whether it's worth opening
+// instead of every section looking equally empty.
+function renderAccordionItem(id, title, bodyHtml, openByDefault, previewHtml) {
   return `
     <div class="mu-accordion-item${openByDefault ? ' open' : ''}" id="${id}">
       <div class="mu-accordion-header" onclick="toggleAccordion('${id}')">
-        <span class="mu-accordion-title">${escapeHtml(title)}</span>
+        <span class="mu-accordion-title-wrap">
+          <span class="mu-accordion-title">${escapeHtml(title)}</span>
+        </span>
+        ${previewHtml ? `<span class="mu-accordion-preview-slot">${previewHtml}</span>` : ''}
         <span class="mu-accordion-chevron">▼</span>
       </div>
       <div class="mu-accordion-body">${bodyHtml}</div>
@@ -2154,7 +2749,7 @@ function toggleAccordion(id) {
   document.getElementById(id)?.classList.toggle('open');
 }
 
-function renderMatchupDashboard(compare, t1, t2, targets, r1, r2, odds) {
+function renderMatchupDashboard(compare, t1, t2, targets, r1, r2, odds, posDef1, posDef2) {
   const div = document.getElementById('matchup-result');
   const s1 = compare.team1.stats, s2 = compare.team2.stats;
 
@@ -2176,6 +2771,21 @@ function renderMatchupDashboard(compare, t1, t2, targets, r1, r2, odds) {
     : '<div class="top-plays-empty">No meetings yet this season</div>';
 
   const gameflowLoadingBody = `<div class="top-plays-empty" style="padding:10px 0;"><div class="spinner" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:8px;"></div>Loading AI gameflow + defensive projection...</div>`;
+  const posDefBody = renderPositionCategoryTable(t1, posDef1) + `<div style="height:14px;"></div>` + renderPositionCategoryTable(t2, posDef2);
+
+  // Preview badges — real counts pulled from the same data the section
+  // body renders from, so a collapsed row still signals whether it's
+  // worth opening (e.g. an empty injury report vs. 3 players listed).
+  const injuryPreview = realInjured.length
+    ? `<span class="mu-accordion-preview flag">${realInjured.length} LISTED</span>`
+    : `<span class="mu-accordion-preview ok">NONE LISTED</span>`;
+  const targetsPreview = targets?.length
+    ? `<span class="mu-accordion-preview">${targets.length} TARGET${targets.length===1?'':'S'}</span>`
+    : '';
+  const h2hCount = (compare.h2h || []).length;
+  const h2hPreview = h2hCount
+    ? `<span class="mu-accordion-preview">${h2hCount} MEETING${h2hCount===1?'':'S'}</span>`
+    : '';
 
   div.innerHTML = `
     <div class="tc-header">
@@ -2186,11 +2796,12 @@ function renderMatchupDashboard(compare, t1, t2, targets, r1, r2, odds) {
     ${renderAccordionItem('acc-stats', 'Team Stats', renderStatTable(s1, s2, t1, t2), true)}
     ${renderDataQualityCard(s1, s2, t1, t2)}
     ${renderAccordionItem('acc-gameflow', 'Gameflow & Defensive Breakdown', gameflowLoadingBody, false)}
-    ${renderAccordionItem('acc-injury', 'Injury & Availability Report', renderInjuryReport(realInjured), false)}
-    ${renderAccordionItem('acc-targets', 'Top Targets — by real usage + form', renderTargetBox(targets, t1, t2), false)}
+    ${renderAccordionItem('acc-posdef', 'Defense by Position (PTS/REB/AST/3PM)', posDefBody, false)}
+    ${renderAccordionItem('acc-injury', 'Injury & Availability Report', renderInjuryReport(realInjured), false, injuryPreview)}
+    ${renderAccordionItem('acc-targets', 'Top Targets — by real usage + form', renderTargetBox(targets, t1, t2), false, targetsPreview)}
     ${renderAccordionItem('acc-lineups', 'Projected Starting Lineup', renderLineupBox(t1, t2, compare.team1.projectedStarters?.starters, compare.team2.projectedStarters?.starters), false)}
     ${renderAccordionItem('acc-last5', 'Last 5 Games', last5Body, false)}
-    ${renderAccordionItem('acc-h2h', 'Head-to-Head (this season)', h2hBody, false)}`;
+    ${renderAccordionItem('acc-h2h', 'Head-to-Head (this season)', h2hBody, false, h2hPreview)}`;
 }
 
 // ── Daily Matchups AI breakdown — structured cards, real data only ──
@@ -2302,7 +2913,7 @@ function renderGameflowDefenseCard(gameflow1, gameflow2, t1, t2, defenseText, bl
     </div>`;
 }
 
-async function loadMatchupAIAnalysis(compare, t1, t2, league, zone1, zone2, r1, r2) {
+async function loadMatchupAIAnalysis(compare, t1, t2, league, zone1, zone2, r1, r2, posDef1, posDef2) {
   const s1 = compare.team1.stats, s2 = compare.team2.stats;
   let liveData = '';
   if (s1) liveData += `\n${t1} LIVE STATS: Record=${s1.record}, Pace=${s1.pace ?? 'unavailable'}, OffRtg=${s1.offRating ?? 'unavailable'}, DefRtg=${s1.defRating ?? 'unavailable'}, PPG=${s1.ppg}`;
@@ -2319,6 +2930,22 @@ async function loadMatchupAIAnalysis(compare, t1, t2, league, zone1, zone2, r1, 
   if (pd1) liveData += `\n${t1} DEFENSE BY POSITION (stats.nba.com tracking data): ` + Object.entries(pd1).filter(([,v])=>v).map(([g,v]) => `vs ${g} allows ${v.defFgPct}% FG (league-normal ${v.normalFgPct}%)`).join(', ');
   if (pd2) liveData += `\n${t2} DEFENSE BY POSITION (stats.nba.com tracking data): ` + Object.entries(pd2).filter(([,v])=>v).map(([g,v]) => `vs ${g} allows ${v.defFgPct}% FG (league-normal ${v.normalFgPct}%)`).join(', ');
 
+  // Real PTS/REB/AST/3PM allowed by position group, built from actual box
+  // scores (not a stats.nba.com stat — that API only tracks FG% by
+  // position, the block above). Complements it with raw production
+  // allowed rather than just shooting efficiency.
+  const posLine = (teamLabel, posDef) => {
+    if (!posDef?.available) return '';
+    const parts = Object.entries(posDef.byPosition || {}).map(([group, v]) => {
+      const r = posDef.ranks?.[group];
+      const rankTxt = (cat) => r?.[cat] ? ` (#${r[cat].rank}/${r[cat].of})` : '';
+      return `${group} allow ${v.pts}pts${rankTxt('pts')}, ${v.reb}reb${rankTxt('reb')}, ${v.ast}ast${rankTxt('ast')}, ${v.fg3m} threes made${rankTxt('fg3m')} per game`;
+    });
+    return `\n${teamLabel} DEFENSE BY POSITION — REAL PRODUCTION ALLOWED (from actual box scores, last ${posDef.gamesAnalyzed} games): ` + parts.join('; ');
+  };
+  liveData += posLine(t1, posDef1);
+  liveData += posLine(t2, posDef2);
+
   // Real opponent-defense-by-zone — "where teams allow/don't allow points".
   if (zone1?.zones?.length) liveData += `\n${t1} SHOT DEFENSE BY ZONE (real, verified): ` + zone1.zones.filter(z=>z.fga>0).map(z => `${z.zone} allows ${z.fgPct}% (league avg ${z.leagueAvgPct ?? '—'}%)`).join(', ');
   if (zone2?.zones?.length) liveData += `\n${t2} SHOT DEFENSE BY ZONE (real, verified): ` + zone2.zones.filter(z=>z.fga>0).map(z => `${z.zone} allows ${z.fgPct}% (league avg ${z.leagueAvgPct ?? '—'}%)`).join(', ');
@@ -2331,13 +2958,21 @@ async function loadMatchupAIAnalysis(compare, t1, t2, league, zone1, zone2, r1, 
     rosterData += `\n${t2} ROSTER (ESPN, live): ${r2.players.map(p=>p.name).slice(0,10).join(', ')}`;
   }
 
+  // Your own film reads on each team, if any — not derived from stats.
+  const sn1 = compare.scoutNotes?.team1 || [], sn2 = compare.scoutNotes?.team2 || [];
+  let scoutData = '';
+  if (sn1.length) scoutData += `\n${t1} SCOUT NOTES (your own film study, not a stats feed): ` + sn1.map(n => `[${(n.category||'other').toUpperCase()}] ${n.text}`).join(' | ');
+  if (sn2.length) scoutData += `\n${t2} SCOUT NOTES (your own film study, not a stats feed): ` + sn2.map(n => `[${(n.category||'other').toUpperCase()}] ${n.text}`).join(' | ');
+
   const gameflowBody = document.querySelector('#acc-gameflow .mu-accordion-body');
 
   try {
     const prompt = `You are WIN AI. Analyze ${t1} vs ${t2} (${league.toUpperCase()}) for player prop betting.
 ${liveData ? `\nVERIFIED LIVE DATA:\n${liveData}` : ''}
 ${rosterData ? `\nESPN ROSTERS (live):\n${rosterData}` : ''}
-${(liveData || rosterData) ? `\nUse verified data above and tag all stats as [LIVE] or [AI], EXCEPT in the GAMEFLOW BREAKDOWN sections — those must read as clean flowing prose with no bracketed citations at all.` : ''}
+${scoutData ? `\nSCOUT NOTES — real film study from the user, not a stat feed. Weigh as directly relevant intel, not a guess:${scoutData}` : ''}
+${(liveData || rosterData) ? `\nUse verified data above and tag all stats as [LIVE] or [AI], EXCEPT in the GAMEFLOW BREAKDOWN sections — those must read as clean flowing prose with no bracketed citations at all (scout notes can still shape that prose, just without a [SCOUT] tag cluttering it).` : ''}
+${scoutData ? `\nIn DEFENSIVE SCHEME BREAKDOWN specifically, if a team has SCOUT NOTES above, work them in directly and tag that content [SCOUT] — this is real observed intel the stats can't capture (a scheme tendency, a rotation habit, anything from actually watching them play).` : ''}
 
 Respond with exactly these sections, in this order:
 
@@ -2348,7 +2983,7 @@ GAMEFLOW BREAKDOWN ${t2.toUpperCase()}:
 Same structure, for ${t2}.
 
 DEFENSIVE SCHEME BREAKDOWN:
-Prose, tag numbers as [LIVE] or [AI].
+Prose, tag numbers as [LIVE] or [AI] (and [SCOUT] where applicable, per the instruction above).
 
 BLOWOUT RISK:
 Start the line with LOW, MODERATE, or HIGH, then 1-2 sentences.`;
@@ -2374,12 +3009,18 @@ async function analyzeMatchup() {
   if (!t1 || !t2 || t1 === t2) { alert('Pick two different teams.'); return; }
 
   const div = document.getElementById('matchup-result');
-  div.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:200px;gap:14px;"><div class="spinner"></div><div style="font-family:'Space Grotesk',sans-serif;font-size:11px;color:var(--muted);">SCANNING...</div></div>`;
+  div.innerHTML = `
+    <div class="sk sk-matchup-title"></div>
+    <div class="sk sk-matchup-bar"></div>
+    <div class="sk-matchup-grid">
+      <div class="sk sk-matchup-chip"></div><div class="sk sk-matchup-chip"></div><div class="sk sk-matchup-chip"></div>
+      <div class="sk sk-matchup-chip"></div><div class="sk sk-matchup-chip"></div><div class="sk sk-matchup-chip"></div>
+    </div>`;
 
   const rosterRoute = league === 'wnba' ? '/api/wnba/roster' : '/api/roster';
-  let compare, zone1, zone2, targetsRes, r1, r2, odds;
+  let compare, zone1, zone2, targetsRes, r1, r2, odds, posDef1, posDef2;
   try {
-    [compare, zone1, zone2, targetsRes, r1, r2, odds] = await Promise.all([
+    [compare, zone1, zone2, targetsRes, r1, r2, odds, posDef1, posDef2] = await Promise.all([
       apiGet(`/api/team-compare?league=${league}&team1=${encodeURIComponent(t1)}&team2=${encodeURIComponent(t2)}`),
       // Real opponent-defense-by-zone — same shot-chart bridge already used
       // by the single-player analyzer. Failure here shouldn't sink the
@@ -2396,14 +3037,18 @@ async function analyzeMatchup() {
       // Real spread/moneyline/total (ESPN, free) — honest {available:false}
       // when the teams aren't scheduled to play each other soon.
       apiGet(`/api/game-odds?league=${league}&team1=${encodeURIComponent(t1)}&team2=${encodeURIComponent(t2)}`).catch(() => ({ available: false })),
+      // Fetched upfront (not after render) so the AI prompt below can
+      // actually reference it, not just the visible card.
+      apiGet(`/api/position-category-defense?league=${league}&team=${encodeURIComponent(t1)}`).catch(() => ({ available: false })),
+      apiGet(`/api/position-category-defense?league=${league}&team=${encodeURIComponent(t2)}`).catch(() => ({ available: false })),
     ]);
   } catch (err) {
     div.innerHTML = `<div style="color:var(--red);font-family:'Space Grotesk',sans-serif;font-size:12px;padding:20px;">ERROR: ${err.message}</div>`;
     return;
   }
 
-  renderMatchupDashboard(compare, t1, t2, targetsRes?.targets, r1, r2, odds);
-  loadMatchupAIAnalysis(compare, t1, t2, league, zone1, zone2, r1, r2);
+  renderMatchupDashboard(compare, t1, t2, targetsRes?.targets, r1, r2, odds, posDef1, posDef2);
+  loadMatchupAIAnalysis(compare, t1, t2, league, zone1, zone2, r1, r2, posDef1, posDef2);
 }
 
 // ── HISTORY ───────────────────────────────────────────
@@ -2412,7 +3057,7 @@ function renderHistory() {
   if (!analysisHistory.length) { el.innerHTML = '<div style="color:var(--muted);font-family:\'Space Grotesk\',sans-serif;font-size:11px;padding:16px 0;">NO ANALYSES YET</div>'; return; }
   el.innerHTML = analysisHistory.map((h, i) => `
     <div class="history-item" onclick="loadHistory(${i})">
-      <div><div class="h-player">${escapeHtml(h.player)} <span style="font-family:'Space Grotesk',sans-serif;font-size:9px;color:${h.league==='wnba'?'#c77dff':'var(--gold)'};letter-spacing:1px;">${(h.league||'nba').toUpperCase()}</span></div><div class="h-meta">${h.propType?.toUpperCase()} ${h.line} · vs ${escapeHtml(h.opp)} · ${h.confidence}% · ${h.time?.toLocaleTimeString()}</div></div>
+      <div><div class="h-player">${escapeHtml(h.player)} <span style="font-family:'Space Grotesk',sans-serif;font-size:9px;color:${h.league==='wnba'?'#c77dff':'var(--gold)'};letter-spacing:1px;">${(h.league||'nba').toUpperCase()}</span></div><div class="h-meta">${h.propType?.toUpperCase()} ${h.line} · vs ${escapeHtml(h.opp)} · ${confNumHtml(h.confidence)} · ${h.time?.toLocaleTimeString()}</div></div>
       <div class="h-verdict ${h.verdict?.toLowerCase()}">${h.verdict}</div>
     </div>`).join('');
 }
@@ -2459,7 +3104,7 @@ function parseVerdict(text, ctx) {
   let projection, edge, confidence;
   if (mp?.projection) {
     projection = mp.projection.toString();
-    confidence = Math.max(30, Math.min(88, mp.confidence));
+    confidence = Math.max(25, Math.min(97, mp.confidence));
     if (postedLine && postedLine > 0) {
       // ABSOLUTE diff — not percentage
       edge = Math.max(-10, Math.min(10, parseFloat((mp.projection - postedLine).toFixed(1))));
@@ -2520,7 +3165,6 @@ document.addEventListener('keydown', e => {
   else if (document.getElementById('panel-wnba').classList.contains('active') && !document.getElementById('analyze-btn-wnba').disabled) analyzeProp('wnba');
 });
 
-// ── TODAY / HOME PAGE — today's games + a top pick per team ──────
 let _todayPicks = []; // flat list so onclick can reference by index (player names can contain quotes/apostrophes)
 
 async function renderTodayPage() {
@@ -2545,13 +3189,36 @@ async function renderTodayPage() {
     const picksByGame = {};
     (nbaPicks.games || []).forEach(g => { picksByGame[`nba|${g.away}@${g.home}`] = g.picks; });
     (wnbaPicks.games || []).forEach(g => { picksByGame[`wnba|${g.away}@${g.home}`] = g.picks; });
+    // Odds API down = no real posted line to pick OVER/UNDER against — the
+    // server falls back to the math model's own top-projected players
+    // instead of going dark. Rendered with its own honest template below,
+    // never dressed up to look like a real line-based pick.
+    const fallbackByLeague = { nba: !!nbaPicks.fallback, wnba: !!wnbaPicks.fallback };
+    const shownConf = uniqueConfs(Object.values(picksByGame).flat());
+    const cShown = (p) => shownConf.get(p) ?? p.confidence;
 
     box.innerHTML = allGames.map(g => {
       const key = `${g.league}|${g.away}@${g.home}`;
       const picks = picksByGame[key] || [];
+      const isFallback = fallbackByLeague[g.league];
       const pickRows = picks.length
         ? picks.map(p => {
             const idx = _todayPicks.push({ league: g.league, ...p }) - 1;
+            if (isFallback) {
+              return `
+                <div class="team-pick-row" onclick="goToTodayPick(${idx})">
+                  <div>
+                    <div class="team-pick-team">${p.team}</div>
+                    <div class="team-pick-player">${p.player} — ${PROP_LABEL[p.propType]||p.propType.toUpperCase()}</div>
+                    <div class="team-pick-meta">vs ${p.opponent} · no live odds, model projection only</div>
+                  </div>
+                  <div style="text-align:right;">
+                    <div class="top-play-dir" style="color:var(--gold);border-color:rgba(212,168,68,0.3);">≈ PROJ ${p.projection}</div>
+                    <div class="team-pick-meta">${confNumHtml(cShown(p))} conf</div>
+                    ${miniConfBar(cShown(p))}
+                  </div>
+                </div>`;
+            }
             return `
               <div class="team-pick-row" onclick="goToTodayPick(${idx})">
                 <div>
@@ -2561,7 +3228,9 @@ async function renderTodayPage() {
                 </div>
                 <div style="text-align:right;">
                   <div class="top-play-dir ${p.direction.toLowerCase()}">${p.direction==='OVER'?'▲':'▼'} ${p.direction}</div>
-                  <div class="team-pick-meta">${p.confidence}% conf</div>
+                  <div class="team-pick-meta">${pickProbability(p) != null ? `${pickProbability(p)}% chance · ` : ''}${confNumHtml(cShown(p))} conf</div>
+                  ${miniConfBar(cShown(p))}
+                  ${evChip(p)}
                 </div>
               </div>`;
           }).join('')
@@ -2595,22 +3264,127 @@ function goToTodayPick(idx) {
   elFor(league,'player-name').value = p.player;
   elFor(league,'opp-team').value = p.opponent;
   elFor(league,'prop-type').value = p.propType;
+  // Fallback (no-odds) picks have a real projection but no posted line —
+  // nothing to prefill or run an analysis against yet, so just get the
+  // player/opponent/prop teed up and let the user enter a line themselves.
+  if (p.line == null) { elFor(league,'prop-line').focus(); return; }
   elFor(league,'prop-line').value = p.line;
   analyzeProp(league);
 }
 
 // ── TOP 3 MOST CONFIDENT PLAYS ────────────────────────
 const PROP_LABEL = {points:'PTS',rebounds:'REB',assists:'AST','3pm':'3PM',pra:'PRA',pr:'P+R',pa:'P+A',ra:'R+A',steals:'STL',blocks:'BLK'};
+// "confidence" is a data-reliability score (varies with how complete the
+// stat coverage is for that player) — it's NOT how likely the pick is to
+// hit. That's overProbability/underProbability, computed from the
+// projection's real distribution against the posted line. Compact pick
+// cards show both since they answer different questions.
+function pickProbability(p) {
+  const prob = p.direction === 'UNDER' ? p.underProbability : p.overProbability;
+  return prob != null ? Math.round(prob * 100) : null;
+}
+// Same bands as the server's confidence formula (35 base + weighted
+// signals, floor 25/ceiling 97) — strong/lean/thin reused everywhere
+// confidence shows up so a pick's reliability reads at a glance.
+function confTier(conf) { return conf >= 75 ? 'strong' : conf >= 55 ? 'lean' : 'thin'; }
+// Guarantees no two confidence values shown together are identical. Ranking
+// follows the true unrounded score; only when two picks collide at the one-
+// decimal display does the lower-ranked one drop by 0.1 (cascading if needed).
+// Returns Map(pick -> value to display); the pick's own .confidence stays raw.
+function uniqueConfs(picks) {
+  const out = new Map();
+  const ranked = picks.filter(p => p && p.confidence != null)
+    .sort((a, b) => (b.confidence - a.confidence) || String(a.player).localeCompare(String(b.player)));
+  let prev = Infinity;
+  for (const p of ranked) {
+    let v = Math.round(p.confidence * 10) / 10;
+    if (v >= prev) v = Math.round((prev - 0.1) * 10) / 10;
+    out.set(p, v); prev = v;
+  }
+  return out;
+}
+// Compact value chip for pick cards: expected value per $1 at the best posted
+// price + the quarter-Kelly stake (capped 5%). Large edges get a caution —
+// in practice they usually mean the model is missing news, not free money.
+// Above this, an edge is far more likely to be model overconfidence than a real
+// mispricing (the model's win probabilities are not yet calibrated against
+// graded results), so no stake is suggested — the number is shown, flagged.
+const EV_TRUST_LIMIT = 15;
+function evChip(p) {
+  const re = p?.realEdge;
+  if (!re || re.expectedValue == null) return '';
+  const ev = re.expectedValue * 100, big = ev >= EV_TRUST_LIMIT, k = big ? 0 : (re.kellyStake || 0) * 100;
+  const tip = big ? 'Unusually large edge — usually the model missing news or being overconfident, not free money. No stake suggested; check lineups and injuries first.'
+                  : 'Model-estimated expected value per $1 at the best posted price. Stake is quarter-Kelly, capped at 5% of bankroll.';
+  return `<div style="margin-top:4px;"><span class="ev-chip ${ev > 0 ? 'pos' : 'neg'}" title="${tip}">EV ${ev >= 0 ? '+' : ''}${ev.toFixed(1)}%${k > 0 ? ` · stake ${k.toFixed(1)}%` : ''}${big ? ' ⚠' : ''}</span></div>`;
+}
+// Full "Market & Value" card for the analyzer — what the backend already
+// computes against the LIVE market (best line + price, vig-free market
+// probability, expected value, Kelly stake) but the screen never showed.
+function renderMarketValue(ctx, userLine) {
+  const lm = ctx?.liveMarket, re = lm?.realEdge, pl = ctx?.propLines, mp = ctx?.mathProjection;
+  const wrap = (inner) => `<div class="mv-card"><div class="mv-head"><span class="mv-title">Market &amp; Value</span>${inner.head || ''}</div>${inner.body}</div>`;
+  if (!lm || !re) {
+    return wrap({ body: `<div class="mv-note" style="margin-top:0;">No live sportsbook line was found for this prop right now, so expected value and stake can't be calculated. (The edge above is measured against the line you entered.)</div>` });
+  }
+  const side = lm.edge > 0 ? 'OVER' : 'UNDER';
+  const ev = re.expectedValue * 100, tooBig = ev >= EV_TRUST_LIMIT, kelly = tooBig ? 0 : (re.kellyStake || 0) * 100;
+  const price = re.price > 0 ? `+${re.price}` : `${re.price}`;
+  const evColor = ev > 0 ? 'var(--green)' : 'var(--red)';
+  const row = (k, v) => `<div class="mv-row"><span>${k}</span><span>${v}</span></div>`;
+  const entered = parseFloat(userLine);
+  const blend = mp?.marketBlend;
+  const notes = [];
+  if (!isNaN(entered) && lm.line != null && Math.abs(entered - lm.line) >= 0.5)
+    notes.push(`You entered ${escapeHtml(String(userLine))}; the best posted line is ${lm.line}. Value below is measured at the posted line.`);
+  if (blend)
+    notes.push(`Projection moved ${mp.preMarketProjection} → ${mp.projection} toward the ${blend.bookCount}-book consensus (${Math.round(blend.weight * 100)}% weight — shakier projections lean on the market more).`);
+  notes.push('Model estimate, not a guarantee. Stake is quarter-Kelly, capped at 5% of bankroll.');
+  return wrap({
+    head: `<span class="mv-big" style="color:${evColor};">${ev >= 0 ? '+' : ''}${ev.toFixed(1)}%<small>EXPECTED VALUE PER $1 · ${side}</small></span>`,
+    body:
+      row('Best line', `${side} ${lm.line}${pl?.softestBook ? ' · ' + escapeHtml(pl.softestBook) : ''} · ${price}`) +
+      row('Consensus line', lm.consensusLine != null ? `${lm.consensusLine} <span style="color:var(--muted);">(${lm.bookCount} books)</span>` : '—') +
+      row('Model chance', `${re.modelProb}%`) +
+      row('Market chance', re.fairMarketProb != null ? `${re.fairMarketProb}% <span style="color:var(--muted);">(vig removed)</span>` : '—') +
+      row('Edge over market', re.probEdge != null ? `${re.probEdge > 0 ? '+' : ''}${re.probEdge} pts` : '—') +
+      row('Suggested stake', tooBig ? 'Withheld — edge too large to trust' : kelly > 0 ? `${kelly.toFixed(1)}% of bankroll` : 'None — no edge at this price') +
+      (tooBig ? `<div class="mv-warn">⚠ An edge this large is more often the model being overconfident or missing something (lineup or injury news, a role change) than free money, so no stake is suggested. Its win probabilities haven't been checked against graded results yet.</div>` : '') +
+      `<div class="mv-note">${notes.join('<br>')}</div>`,
+  });
+}
+function fmtConf(conf) { return (conf == null || isNaN(conf)) ? '—' : (Math.round(conf * 10) / 10).toFixed(1); }
+function confNumHtml(conf) { return `<span class="conf-num ${confTier(conf)}">${fmtConf(conf)}%</span>`; }
+function miniConfBar(conf) { return `<div class="mini-conf-bar"><div class="mini-conf-fill ${confTier(conf)}" style="width:${conf}%"></div></div>`; }
 async function renderTopPlays(league='nba') {
   const box = document.getElementById(league==='wnba' ? 'top-plays-wnba' : 'top-plays-nba');
   if (!box) return;
   box.innerHTML = '<div class="top-plays-empty">Scanning tonight\'s live sportsbook lines...</div>';
   try {
     const data = await apiGet(`/api/top-plays?league=${league}`);
+    if (data.fallback && data.fallbackPlays?.length) {
+      box.innerHTML = `<div class="top-plays-empty" style="text-align:left;color:var(--gold);opacity:0.85;margin-bottom:8px;">No live odds available right now — showing the model's top projected performers instead (no edge/line to call OVER or UNDER against).</div>` +
+        (() => { const sc = uniqueConfs(data.fallbackPlays); return data.fallbackPlays.map((p, i) => `
+        <div class="top-play-card">
+          <div style="display:flex;align-items:baseline;">
+            <span class="top-play-rank">#${i+1}</span>
+            <div>
+              <div class="top-play-player">${p.player}</div>
+              <div class="top-play-meta">${p.team} vs ${p.opponent} · ${PROP_LABEL[p.propType]||p.propType.toUpperCase()}</div>
+            </div>
+          </div>
+          <div class="top-play-row">
+            <div class="top-play-dir" style="color:var(--gold);border-color:rgba(212,168,68,0.3);">≈ PROJ</div>
+            <div><div class="top-play-conf">Proj ${p.projection} · ${confNumHtml(sc.get(p) ?? p.confidence)} conf</div>${miniConfBar(sc.get(p) ?? p.confidence)}</div>
+          </div>
+        </div>`).join(''); })();
+      return;
+    }
     if (!data.topPlays?.length) {
       box.innerHTML = `<div class="top-plays-empty">${data.scanned ? 'No plays cleared the edge threshold right now.' : 'No games/lines found for tonight\'s slate.'}</div>`;
       return;
     }
+    const shownTop = uniqueConfs(data.topPlays);
     box.innerHTML = data.topPlays.map((p, i) => `
       <div class="top-play-card">
         <div style="display:flex;align-items:baseline;">
@@ -2622,7 +3396,7 @@ async function renderTopPlays(league='nba') {
         </div>
         <div class="top-play-row">
           <div class="top-play-dir ${p.direction.toLowerCase()}">${p.direction==='OVER'?'▲':'▼'} ${p.direction}</div>
-          <div class="top-play-conf">Proj ${p.projection} · Edge ${p.edge>0?'+':''}${p.edge} · ${p.confidence}% conf</div>
+          <div><div class="top-play-conf">Proj ${p.projection} · Edge ${p.edge!=null?(p.edge>0?'+':'')+p.edge:'—'}${pickProbability(p) != null ? ` · ${pickProbability(p)}% chance` : ''} · ${confNumHtml(shownTop.get(p) ?? p.confidence)} conf</div>${miniConfBar(shownTop.get(p) ?? p.confidence)}${evChip(p)}</div>
         </div>
       </div>`).join('');
   } catch (err) {
@@ -2630,175 +3404,197 @@ async function renderTopPlays(league='nba') {
   }
 }
 
-// ── SHOT CHARTS — real LOC_X/LOC_Y from stats.nba.com (both leagues) ──
-// Court coordinate system: hoop at (0,0), x in [-250,250], y in [-47.5,~470].
-// Mapped to an SVG viewBox "0 0 500 470" via svgX = courtX+250, svgY = courtY+47.5,
-// so the hoop sits near the top and shots spread downward toward half court.
-function courtToSvg(x, y) { return [x + 250, y + 47.5]; }
-
-function arcPoints(cx, cy, r, a1, a2, steps = 24) {
-  const pts = [];
-  for (let i = 0; i <= steps; i++) {
-    const t = a1 + (a2 - a1) * (i / steps);
-    pts.push(courtToSvg(cx + r * Math.cos(t), cy + r * Math.sin(t)));
-  }
-  return pts;
-}
-function pointsToPath(pts) { return pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' '); }
-
-function courtLinesSVG() {
-  const restrictedArc = pointsToPath(arcPoints(0, 0, 40, Math.PI, 0));
-  const thetaLeft  = Math.atan2(92.5, -220);
-  const thetaRight = Math.atan2(92.5, 220);
-  const threePtArc = pointsToPath(arcPoints(0, 0, 237.5, thetaLeft, thetaRight));
-  const [paintX1, paintY1] = courtToSvg(-80, -47.5);
-  const [paintX2, paintY2] = courtToSvg(80, 142.5);
-  const [hoopX, hoopY] = courtToSvg(0, 0);
-  const [bbX1, bbY1] = courtToSvg(-30, -7.5);
-  const [bbX2] = courtToSvg(30, -7.5);
-  const [ftX, ftY] = courtToSvg(0, 142.5);
-  const [c3lX1, c3lY1] = courtToSvg(-220, -47.5);
-  const [c3lX2, c3lY2] = courtToSvg(-220, 92.5);
-  const [c3rX1, c3rY1] = courtToSvg(220, -47.5);
-  const [c3rX2, c3rY2] = courtToSvg(220, 92.5);
-  return `
-    <rect x="0" y="0" width="500" height="470" class="sc-court-line" />
-    <rect x="${paintX1}" y="${paintY1}" width="${paintX2-paintX1}" height="${paintY2-paintY1}" class="sc-court-line" />
-    <circle cx="${ftX}" cy="${ftY}" r="60" class="sc-court-line" />
-    <circle cx="${hoopX}" cy="${hoopY}" r="7.5" class="sc-court-line" />
-    <line x1="${bbX1}" y1="${bbY1}" x2="${bbX2}" y2="${bbY1}" class="sc-court-line" />
-    <path d="${restrictedArc}" class="sc-court-line" />
-    <line x1="${c3lX1}" y1="${c3lY1}" x2="${c3lX2}" y2="${c3lY2}" class="sc-court-line" />
-    <line x1="${c3rX1}" y1="${c3rY1}" x2="${c3rX2}" y2="${c3rY2}" class="sc-court-line" />
-    <path d="${threePtArc}" class="sc-court-line" />
-  `;
-}
-
-// Real filled zone polygons (not floating anchor circles) — same physical
-// zones for both charts, judged from opposite sides of the ball. Built as
-// point arrays in SVG space (via courtToSvg/arcPoints) then joined into
-// path strings, using evenodd fill-rule wherever a zone has a hole cut
-// out of it (mid-range around the paint, above-the-break around
-// everything inside the arc).
-function zoneRestrictedAreaPts() { return arcPoints(0, 0, 40, Math.PI, 0); }
-
-function zonePaintNonRAPts() {
-  const arc = zoneRestrictedAreaPts(); // (-40,0) -> (0,40) -> (40,0)
-  return [
-    courtToSvg(-80, 142.5), courtToSvg(-80, -47.5), courtToSvg(-40, -47.5),
-    ...arc,
-    courtToSvg(40, -47.5), courtToSvg(80, -47.5), courtToSvg(80, 142.5),
-  ];
-}
-
-const THETA_LEFT_3PT  = Math.atan2(92.5, -220);
-const THETA_RIGHT_3PT = Math.atan2(92.5, 220);
-
-// Boundary of "everything inside the 3pt line, excluding the corners" —
-// used both as the outer ring for Mid-Range and as a hole for Above-the-Break.
-function insideArcBoundaryPts() {
-  const arc = arcPoints(0, 0, 237.5, THETA_LEFT_3PT, THETA_RIGHT_3PT);
-  return [courtToSvg(-220, -47.5), ...arc, courtToSvg(220, -47.5)];
-}
-function paintRectPts() {
-  return [courtToSvg(-80, -47.5), courtToSvg(-80, 142.5), courtToSvg(80, 142.5), courtToSvg(80, -47.5)];
-}
-function leftCorner3Pts()  { return [courtToSvg(-250, -47.5), courtToSvg(-250, 92.5), courtToSvg(-220, 92.5), courtToSvg(-220, -47.5)]; }
-function rightCorner3Pts() { return [courtToSvg(250, -47.5), courtToSvg(250, 92.5), courtToSvg(220, 92.5), courtToSvg(220, -47.5)]; }
-const FULL_RECT_PTS = [[0,0],[500,0],[500,470],[0,470]];
-
-function ringPath(...ptArrays) { return ptArrays.map(pts => pointsToPath(pts) + ' Z').join(' '); }
-
-const ZONE_FILL_PATHS = {
-  'Restricted Area':       () => ringPath(zoneRestrictedAreaPts()),
-  'In The Paint (Non-RA)': () => ringPath(zonePaintNonRAPts()),
-  'Mid-Range':             () => ringPath(insideArcBoundaryPts(), paintRectPts()),
-  'Left Corner 3':         () => ringPath(leftCorner3Pts()),
-  'Right Corner 3':        () => ringPath(rightCorner3Pts()),
-  'Above the Break 3':     () => ringPath(FULL_RECT_PTS, insideArcBoundaryPts(), leftCorner3Pts(), rightCorner3Pts()),
+// ── SHOT CHART — one court, six zones, one color per zone ─────────
+// Each zone is filled by the server's rating (FG% vs league average for that
+// zone) and carries a small chip with just two things: the FG% and where the
+// OPPONENT ranks league-wide in that zone (1st = toughest to score on).
+// Zones with too few attempts are hatched instead of colored, so a handful of
+// shots can't paint a zone red. Court is drawn rim-at-bottom on a 500 x 470
+// grid (hoop-relative geometry, same zone names the server returns).
+window._sc2 = {};   // league -> chart state
+window._scRO = {};  // league -> ResizeObserver (chip scale follows court width)
+const SC_MIN_FGA = 15;
+const SC_ZONES = [
+  { k:'ra',    zone:'Restricted Area',       name:'Rim',       label:'Restricted Area',   anchor:[50, 90] },
+  { k:'paint', zone:'In The Paint (Non-RA)', name:'Paint',     label:'Paint (Non-RA)',    anchor:[50, 70.5] },
+  { k:'mid',   zone:'Mid-Range',             name:'Mid-range', label:'Mid-Range',         anchor:[50, 49.5] },
+  { k:'atb',   zone:'Above the Break 3',     name:'Three',     label:'Above the Break 3', anchor:[50, 23] },
+  { k:'lc',    zone:'Left Corner 3',         name:'L corner',  label:'Left Corner 3',     anchor:[15.5, 85], small:true },
+  { k:'rc',    zone:'Right Corner 3',        name:'R corner',  label:'Right Corner 3',    anchor:[84.5, 85], small:true },
+];
+const SC_PATHS = {
+  ra:    'M210,422.5 A40 40 0 0 1 290,422.5 Z',
+  paint: 'M170,280 H330 V470 H170 Z',
+  mid:   'M30,470 V330 A237.5 237.5 0 0 1 470,330 V470 Z M170,280 H330 V470 H170 Z',
+  atb:   'M0,0 H500 V330 H470 A237.5 237.5 0 0 0 30,330 H0 Z',
+  lc:    'M0,330 H30 V470 H0 Z',
+  rc:    'M470,330 H500 V470 H470 Z',
 };
+const SC_LINE = 'stroke="rgba(232,232,240,0.5)" stroke-width="1.5" fill="none"';
 
-// Where to center each zone's label boxes (separate from the fill shape,
-// which follows the real boundary — the label just needs a sane spot
-// inside it).
-const ZONE_LABEL_ANCHOR = {
-  'Restricted Area':        [0, 20],
-  'In The Paint (Non-RA)':  [0, 95],
-  'Mid-Range':               [140, 155],
-  'Left Corner 3':           [-235, 20],
-  'Right Corner 3':          [235, 20],
-  'Above the Break 3':       [0, 300],
-};
-const RATING_FILL = { green: 'var(--green)', gray: 'var(--muted)', red: 'var(--red)' };
-const RATING_OPACITY = { green: 0.32, gray: 0.14, red: 0.32 };
-
-// Always white-box-black-text for the numbers, regardless of the zone
-// fill color underneath — guarantees readable contrast in every case
-// instead of trying to pick a text color that works against a variable
-// background.
-// Single, larger percentage label per zone (was two stacked boxes — a
-// fraction like "91/130" above a percentage below). One clean number reads
-// faster; sample size still shown, just as a small caption instead of a
-// fraction, so that context isn't lost entirely.
-function zoneLabelBox(cx, cy, pctText, sampleText) {
-  const w = Math.max(38, pctText.length * 9 + 12), h = 20;
-  const x = Math.max(2, Math.min(500 - w - 2, cx - w / 2));
-  const midX = x + w / 2;
-  return `
-    <rect x="${x.toFixed(1)}" y="${(cy - h/2).toFixed(1)}" width="${w.toFixed(1)}" height="${h}" rx="4" fill="#ffffff" opacity="0.96" />
-    <text x="${midX.toFixed(1)}" y="${(cy + 4.5).toFixed(1)}" text-anchor="middle" font-family="'Space Grotesk',sans-serif" font-size="14" fill="#111111">${pctText}</text>
-    ${sampleText ? `<text x="${midX.toFixed(1)}" y="${(cy + h/2 + 9).toFixed(1)}" text-anchor="middle" font-family="'Space Grotesk',sans-serif" font-size="7.5" fill="rgba(255,255,255,0.55)">${sampleText}</text>` : ''}`;
+function scOrdinal(n) { const s = ['th','st','nd','rd'], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); }
+function scByKey(data) {
+  if (!data || data.error || !Array.isArray(data.zones)) return null;
+  const by = {};
+  SC_ZONES.forEach(z => { by[z.k] = data.zones.find(x => x.zone === z.zone) || { zone: z.zone, fga: 0, fgPct: null }; });
+  return by;
+}
+function scTone(z) {
+  if (!z || !(z.fga >= SC_MIN_FGA)) return 'low';
+  return z.rating === 'green' ? 'hi' : z.rating === 'red' ? 'lo' : 'avg';
+}
+// Bottom five of the league = a soft spot (green); top five = tough (red).
+function scRankTone(d) {
+  if (!d || d.rank == null || !d.rankOf) return '';
+  return d.rank > d.rankOf - 5 ? 'up' : d.rank <= 5 ? 'dn' : '';
+}
+function scOverlap(st) {
+  if (!st.player || !st.defense) return [];
+  return SC_ZONES.filter(z => scTone(st.player[z.k]) === 'hi' && scTone(st.defense[z.k]) === 'hi');
 }
 
-// Always render all 6 zones from the reference chart, in this fixed
-// order — a low-volume player with 0 corner-3 attempts should show an
-// honest "0/0" gap in that zone, not a silently-missing shape (a real
-// gap we found while testing: zones with no attempts this season were
-// dropped entirely instead of rendered as zero).
-const ZONE_ORDER = ['Restricted Area', 'In The Paint (Non-RA)', 'Mid-Range', 'Left Corner 3', 'Right Corner 3', 'Above the Break 3'];
+function scCourtSVG(league, st) {
+  const src = st.mode === 'player' ? st.player : st.defense;
+  const ov = scOverlap(st).map(z => z.k);
+  const fill = { hi:'#2bb673', avg:'#6b7390', lo:'#d8493e', low:`url(#sc-hatch-${league})` };
+  let s = `<defs><pattern id="sc-hatch-${league}" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="7" height="7" fill="#212c46"/><line x1="0" y1="0" x2="0" y2="7" stroke="#34405f" stroke-width="2.5"/></pattern></defs>`;
+  s += '<rect x="0" y="0" width="500" height="470" rx="10" fill="#101a2f"/>';
+  ['atb','lc','rc','mid','paint','ra'].forEach(k => {
+    const t = scTone(src[k]);
+    s += `<path d="${SC_PATHS[k]}" fill="${fill[t]}" fill-opacity="${t === 'low' ? 1 : 0.82}" fill-rule="evenodd" stroke="#0b1220" stroke-width="3.5" stroke-linejoin="round"/>`;
+  });
+  // gold dashed outline: player is above average AND the defense allows above average
+  ov.forEach(k => { s += `<path d="${SC_PATHS[k]}" fill="none" fill-rule="evenodd" stroke="#f0c96a" stroke-width="3" stroke-linejoin="round" stroke-dasharray="7 5"/>`; });
+  s += `<path d="M30,470 V330 A237.5 237.5 0 0 1 470,330 V470" ${SC_LINE}/>`;
+  s += `<rect x="170" y="280" width="160" height="190" ${SC_LINE}/>`;
+  s += `<path d="M190,280 A60 60 0 0 1 310,280" ${SC_LINE}/>`;
+  s += `<path d="M310,280 A60 60 0 0 1 190,280" ${SC_LINE} stroke-dasharray="4 5"/>`;
+  s += `<path d="M210,422.5 A40 40 0 0 1 290,422.5" ${SC_LINE}/>`;
+  s += `<line x1="220" y1="430" x2="280" y2="430" ${SC_LINE}/>`;
+  s += `<circle cx="250" cy="422.5" r="7.5" ${SC_LINE}/>`;
+  s += `<rect x="0.75" y="0.75" width="498.5" height="468.5" rx="10" ${SC_LINE}/>`;
+  return s;
+}
 
-function renderZonesSVG(zones) {
-  const byName = {};
-  for (const z of (zones || [])) byName[z.zone] = z;
-  let fills = '', labels = '';
-  for (const zoneName of ZONE_ORDER) {
-    const buildFill = ZONE_FILL_PATHS[zoneName];
-    if (!buildFill) continue;
-    const z = byName[zoneName];
-    const color = z?.rating ? (RATING_FILL[z.rating] || 'var(--muted)') : 'var(--muted)';
-    const opacity = z?.rating ? (RATING_OPACITY[z.rating] ?? 0.2) : 0.08;
-    fills += `<path d="${buildFill()}" fill="${color}" opacity="${opacity}" fill-rule="evenodd" />`;
-    const anchor = ZONE_LABEL_ANCHOR[zoneName];
-    if (!anchor) continue;
-    const [cx, cy] = courtToSvg(...anchor);
-    const pctText = z && z.fga > 0 ? `${z.fgPct}%` : '—';
-    const sampleText = z && z.fga > 0 ? `${z.fga} FGA` : '0 FGA';
-    labels += zoneLabelBox(cx, cy, pctText, sampleText);
+function scChips(st) {
+  const src = st.mode === 'player' ? st.player : st.defense;
+  const ov = scOverlap(st).map(z => z.k);
+  return SC_ZONES.map(zn => {
+    const z = src[zn.k], t = scTone(z), d = st.defense ? st.defense[zn.k] : null;
+    // A "100%" or "0%" off one or two shots isn't a read — show a dash instead.
+    const pct = (!z || !(z.fga >= 5) || z.fgPct == null) ? '—' : `${z.fgPct}%`;
+    const hasRank = d && d.rank != null && d.rankOf;
+    const rTone = scRankTone(d);
+    const sub = !hasRank ? ''
+      : st.mode === 'player' ? `DEF · <span class="${rTone}">${scOrdinal(d.rank)}</span>`
+      : `<span class="${rTone}">${scOrdinal(d.rank)}</span> of ${d.rankOf}`;
+    const tip = `${zn.label}: ${pct}` + (hasRank ? ` · ${st.oppName || 'Opponent'} ranks ${scOrdinal(d.rank)} of ${d.rankOf} defending it (1st = toughest)` : '');
+    return `<div class="sc2-chip${zn.small ? ' small' : ''}${t === 'low' ? ' low' : ''}${ov.indexOf(zn.k) > -1 ? ' ov' : ''}" style="left:${zn.anchor[0]}%;top:${zn.anchor[1]}%" title="${escapeHtml(tip)}">
+      <div class="sc2-cn">${zn.name}</div><div class="sc2-cp">${pct}</div>${sub ? `<div class="sc2-cs">${sub}</div>` : ''}</div>`;
+  }).join('');
+}
+
+// Below ~480px, six overlaid chips don't have room for full-size, legible
+// text without colliding (confirmed live: the Rim/Paint/Mid-Range stack
+// overlaps at phone width even after chip padding was already minimized).
+// Rather than shrink text to fit — which just recreates the original
+// unreadable-label problem — this renders the same six zones as a plain
+// list instead. Both this and the on-court chips are always in the DOM;
+// CSS (a media query) shows only one, so there's no resize-triggered
+// re-render to keep in sync.
+function scChipsList(st) {
+  const src = st.mode === 'player' ? st.player : st.defense;
+  const ov = scOverlap(st).map(z => z.k);
+  return SC_ZONES.map(zn => {
+    const z = src[zn.k], t = scTone(z), d = st.defense ? st.defense[zn.k] : null;
+    const pct = (!z || !(z.fga >= 5) || z.fgPct == null) ? '—' : `${z.fgPct}%`;
+    const hasRank = d && d.rank != null && d.rankOf;
+    const rTone = scRankTone(d);
+    const sub = !hasRank ? '<span class="sc2l-na">no data</span>'
+      : st.mode === 'player' ? `DEF <span class="${rTone}">${scOrdinal(d.rank)}</span> of ${d.rankOf}`
+      : `<span class="${rTone}">${scOrdinal(d.rank)}</span> of ${d.rankOf}`;
+    return `<div class="sc2l-row${ov.indexOf(zn.k) > -1 ? ' ov' : ''}">
+      <span class="sc2l-dot ${t}"></span>
+      <span class="sc2l-label">${zn.label}</span>
+      <span class="sc2l-pct">${pct}</span>
+      <span class="sc2l-sub">${sub}</span>
+    </div>`;
+  }).join('');
+}
+
+function scMarkup(league) {
+  const st = window._sc2[league];
+  const isPlayer = st.mode === 'player';
+  const opp = st.oppName || 'Opponent';
+  const last = (st.playerName || 'Player').split(' ').pop();
+  const err = isPlayer ? st.playerErr : st.defErr;
+  const overlapZones = scOverlap(st);
+  let overlap = '';
+  if (st.player && st.defense) {
+    overlap = overlapZones.length
+      ? overlapZones.map(z => {
+          const d = st.defense[z.k], p = st.player[z.k];
+          const tail = d.rank != null ? `${escapeHtml(opp)} ranks ${scOrdinal(d.rank)} of ${d.rankOf}` : `${escapeHtml(opp)} allows above-average shooting`;
+          return `<b>${z.label}</b> — ${escapeHtml(last)} shoots ${p.fgPct}%, ${tail}`;
+        }).join('; ')
+      : SC_ZONES.some(z => scTone(st.player[z.k]) === 'hi')
+        ? `No overlap — none of ${escapeHtml(last)}${/s$/i.test(last) ? "'" : "'s"} above-average zones are soft spots for ${escapeHtml(opp)}.`
+        : `No overlap — ${escapeHtml(last)} isn't above average in any zone with enough shots.`;
   }
-  return fills + labels;
+  const hiLabel = isPlayer ? 'Above league avg' : 'Soft spot (allows above avg)';
+  const loLabel = isPlayer ? 'Below league avg' : 'Tough (allows below avg)';
+  const rankedZone = st.defense ? SC_ZONES.find(z => st.defense[z.k] && st.defense[z.k].rank != null) : null;
+  const anyRank = !!rankedZone;
+  const body = err
+    ? `<div class="top-plays-empty" style="padding:30px 0;text-align:center;">${escapeHtml(err)}</div>`
+    : `<div class="sc2-court" id="sc2-court-${league}" style="--s:${st.s || 1}">
+         <svg viewBox="0 0 500 470" role="img" aria-label="Half-court shot chart by zone">${scCourtSVG(league, st)}</svg>
+         ${scChips(st)}
+       </div>
+       <div class="sc2l-rows">${scChipsList(st)}</div>
+       <div class="sc2-legend">
+         <span><i style="background:#2bb673"></i>${hiLabel}</span>
+         <span><i style="background:#6b7390"></i>Average</span>
+         <span><i style="background:#d8493e"></i>${loLabel}</span>
+         <span><i class="hatch"></i>Small sample (under ${SC_MIN_FGA} shots)</span>
+         ${overlapZones.length ? '<span><i class="ring"></i>Matchup overlap</span>' : ''}
+       </div>
+       ${anyRank ? `<div class="sc2-foot">Rank = ${escapeHtml(opp)} among ${rankedZone ? st.defense[rankedZone.k].rankOf : ''} teams by FG% allowed in that zone · 1st = toughest to score on, so a high number in green is a soft spot</div>` : ''}`;
+  return `
+    <div class="sc2-head">
+      <div>
+        <div class="sc2-title">Shot chart</div>
+        <div class="sc2-sub">${escapeHtml(isPlayer ? (st.playerName || 'Player') : opp)} — FG%${isPlayer ? '' : ' allowed'} by zone vs. league average</div>
+      </div>
+      <div class="sc2-seg" role="tablist" aria-label="Chart">
+        <button type="button" role="tab" aria-selected="${isPlayer}" onclick="scSetMode('${league}','player')">Player</button>
+        <button type="button" role="tab" aria-selected="${!isPlayer}" onclick="scSetMode('${league}','defense')">Defense</button>
+      </div>
+    </div>
+    ${overlap ? `<div class="sc2-overlap"><div class="sc2-tag">Matchup overlap</div><div class="sc2-txt">${overlap}</div></div>` : ''}
+    ${body}`;
 }
 
-function renderPlayerShotChartSVG(data) {
-  const zones = renderZonesSVG(data.zones);
-  return `
-    <svg viewBox="0 0 500 470" class="shotchart-svg">${zones}${courtLinesSVG()}</svg>
-    <div class="shotchart-legend">
-      <span><span class="shotchart-dot" style="background:var(--green)"></span>Above league avg for zone</span>
-      <span><span class="shotchart-dot" style="background:var(--muted)"></span>Average</span>
-      <span><span class="shotchart-dot" style="background:var(--red)"></span>Below average</span>
-      <span>${data.totalShots || 0} shots this season</span>
-    </div>`;
+function scMount(league) {
+  const el = document.getElementById(`sc2-court-${league}`);
+  const st = window._sc2[league];
+  if (!el || !st) return;
+  if (window._scRO[league]) window._scRO[league].disconnect();
+  const fit = () => {
+    const w = el.clientWidth;
+    if (!w) return; // 0 while the Shot Chart tab is hidden — refits when it opens
+    st.s = Math.max(0.7, Math.min(1.05, w / 520));
+    el.style.setProperty('--s', st.s.toFixed(3));
+  };
+  if (window.ResizeObserver) { const ro = new ResizeObserver(fit); ro.observe(el); window._scRO[league] = ro; }
+  fit();
 }
-
-function renderDefenseShotChartSVG(data) {
-  const zones = renderZonesSVG(data.zones);
-  return `
-    <svg viewBox="0 0 500 470" class="shotchart-svg">${zones}${courtLinesSVG()}</svg>
-    <div class="shotchart-legend">
-      <span><span class="shotchart-dot" style="background:var(--green)"></span>Easy to score (above avg allowed)</span>
-      <span><span class="shotchart-dot" style="background:var(--muted)"></span>Average</span>
-      <span><span class="shotchart-dot" style="background:var(--red)"></span>Hard to score (below avg allowed)</span>
-    </div>`;
+function scSetMode(league, mode) {
+  const st = window._sc2[league], box = document.getElementById(`shotchart-container-${league}`);
+  if (!st || !box) return;
+  st.mode = mode;
+  box.querySelector('.sc2').innerHTML = scMarkup(league);
+  scMount(league);
 }
 
 // Fetches once, used for BOTH the Claude prompt and the rendered charts —
@@ -2816,40 +3612,16 @@ async function fetchShotChartData(league, playerName, opponentName) {
   }
 }
 
-// Single card with a dropdown filter — switches between the selected
-// player's own shot chart and the opponent's defense-by-zone, rather than
-// showing both at once.
-window._scViews = {};
 function renderShotChartsInto(league, playerName, opponentName, playerData, defData) {
   const container = document.getElementById(`shotchart-container-${league}`);
   if (!container) return;
-  const playerBody = !playerData || playerData.error
-    ? `<div class="top-plays-empty">${escapeHtml(playerData?.error || 'No data')}</div>`
-    : renderPlayerShotChartSVG(playerData);
-  const defBody = !defData || defData.error
-    ? `<div class="top-plays-empty">${escapeHtml(defData?.error || 'No opponent specified')}</div>`
-    : renderDefenseShotChartSVG(defData);
-  window._scViews[league] = {
-    player: { label: `${playerName || 'Player'} — Shot Chart`, body: playerBody },
-    defense: { label: `${opponentName || 'Opponent'} — Defense by Zone`, body: defBody },
+  window._sc2[league] = {
+    mode: 'player', playerName, oppName: opponentName, s: 1,
+    player: scByKey(playerData), playerErr: !playerData || playerData.error ? (playerData?.error || 'No data') : null,
+    defense: scByKey(defData),   defErr:   !defData || defData.error ? (defData?.error || 'No opponent specified') : null,
   };
-  container.innerHTML = `
-    <div class="shotchart-card">
-      <div class="shotchart-title-row">
-        <span class="shotchart-title-label">Shot Chart</span>
-        <select class="shotchart-select" onchange="switchShotChartView('${league}', this.value)">
-          <option value="player">${escapeHtml(playerName || 'Player')} — Shot Chart</option>
-          <option value="defense">${escapeHtml(opponentName || 'Opponent')} — Defense by Zone</option>
-        </select>
-      </div>
-      <div id="shotchart-body-${league}">${playerBody}</div>
-    </div>`;
-}
-function switchShotChartView(league, view) {
-  const entry = window._scViews[league];
-  const body = document.getElementById(`shotchart-body-${league}`);
-  if (!entry || !body) return;
-  body.innerHTML = entry[view]?.body || '';
+  container.innerHTML = `<div class="sc2">${scMarkup(league)}</div>`;
+  scMount(league);
 }
 
 // Back-compat entry point for callers that just want to fetch+render
@@ -2859,6 +3631,58 @@ async function loadShotCharts(league, playerName, opponentName) {
   if (!container) return;
   const { playerData, defData } = await fetchShotChartData(league, playerName, opponentName);
   renderShotChartsInto(league, playerName, opponentName, playerData, defData);
+}
+
+// ── PLAY-TYPE BREAKDOWN — how a player actually gets their points
+// (isolation, transition, spot-up, pick-and-roll, post-up, etc.) sorted by
+// how much of their own offense runs through each one, next to where the
+// opponent ranks league-wide defending that specific type. NBA only — no
+// public play-type tracking source exists for the WNBA (same limit as the
+// rest of the app's Synergy-sourced sections).
+const PT_LABELS = {
+  iso: 'Isolation', transition: 'Transition', prBall: 'P&R Ball-Handler',
+  prRoll: 'P&R Roll Man', postUp: 'Post-Up', spotUp: 'Spot-Up',
+  cut: 'Cut', handoff: 'Handoff', offScreen: 'Off-Screen', putbacks: 'Putbacks',
+};
+function ptRankTone(d) {
+  if (!d || d.rank == null || !d.rankOf) return '';
+  return d.rank > d.rankOf - 5 ? 'up' : d.rank <= 5 ? 'dn' : '';
+}
+function renderPlaytypeBreakdown(ctx, playerName, oppName, league) {
+  const pt = ctx?.playerPlaytypes || {};
+  const keys = Object.keys(pt).filter(k => pt[k]?.POSS_PCT != null);
+  if (!keys.length) {
+    return league === 'wnba' || !ctx
+      ? '' // no WNBA source at all — say nothing rather than an empty box every time
+      : `<div class="section-divider">How They Score — Play Type</div><div class="top-plays-empty">No play-type data available for ${escapeHtml(playerName || 'this player')} yet.</div>`;
+  }
+  keys.sort((a, b) => pt[b].POSS_PCT - pt[a].POSS_PCT);
+  const def = ctx?.oppDefPlaytypes || {};
+  const maxPct = Math.max(...keys.map(k => pt[k].POSS_PCT));
+  const rows = keys.map(k => {
+    const p = pt[k], d = def[k];
+    const pct = (p.POSS_PCT * 100).toFixed(1);
+    const barPct = maxPct > 0 ? (p.POSS_PCT / maxPct * 100) : 0;
+    const tone = ptRankTone(d);
+    const rankHtml = d
+      ? `<span class="pt2-rank ${tone}">DEF ${scOrdinal(d.rank)} of ${d.rankOf}</span>`
+      : `<span class="pt2-rank na">no data</span>`;
+    return `<div class="pt2-row">
+      <div class="pt2-label">${PT_LABELS[k] || k}</div>
+      <div class="pt2-bar-track"><div class="pt2-bar-fill" style="width:${barPct}%"></div></div>
+      <div class="pt2-freq">${pct}%</div>
+      <div class="pt2-pts">${p.PTS ?? '—'} pts/g</div>
+      <div class="pt2-ppp">${p.PPP ?? '—'} PPP</div>
+      ${rankHtml}
+    </div>`;
+  }).join('');
+  return `
+    <div class="section-divider">How They Score — Play Type <span style="font-size:9px;color:var(--muted);font-weight:normal;">NBA only (Synergy)</span></div>
+    <div class="pt2">
+      <div class="pt2-sub">${escapeHtml(playerName || 'Player')}'s share of offense by play type, vs. where ${escapeHtml(oppName || 'the opponent')} ranks league-wide defending each one (1st = toughest).</div>
+      <div class="pt2-colheads"><span>Type</span><span></span><span>% of poss.</span><span>Pts/g</span><span>PPP</span><span>Opp. rank</span></div>
+      <div class="pt2-rows">${rows}</div>
+    </div>`;
 }
 
 // ══════════════════════════════════════════════════════
@@ -2909,14 +3733,54 @@ async function loadBetslip() {
   if (el) el.innerHTML = '<div style="color:var(--muted);font-family:\'Space Grotesk\',sans-serif;font-size:11px;padding:20px 0;text-align:center;">Loading saved props...</div>';
   try {
     const data = await apiGet('/api/clv');
+    // The server also auto-logs every real pick from the daily slate scan
+    // (source:'auto') so accuracy can be measured across the whole slate,
+    // not just what got manually saved here — keep those out of this
+    // personal list (it would otherwise flood with dozens a day) and
+    // surface them instead as the aggregate accuracy panel above.
     betslip.length = 0;
-    betslip.push(...data.entries);
+    betslip.push(...data.entries.filter(e => e.source !== 'auto'));
     updateBetslipCount();
+    renderAccuracyPanel(data.summary?.byConfidenceTier, data.summary?.confidenceTierExcluded, data.summary?.autoCLV);
     renderBetslip();
     refreshBetslip(); // best-effort grading/line-check in the background — list is already visible
   } catch (err) {
     if (el) el.innerHTML = `<div style="color:var(--red);font-family:'Space Grotesk',sans-serif;font-size:11px;padding:20px 0;text-align:center;">Could not load saved props — ${escapeHtml(err.message)}</div>`;
   }
+}
+
+// Confidence is a data-reliability score, not a probability — this is the
+// one place that actually checks whether it behaves like one anyway (a
+// STRONG-tier pick winning more often than a THIN-tier one), built from
+// every real pick the daily slate scan has logged automatically, not just
+// whatever's been saved to this personal list.
+function renderAccuracyPanel(byTier, excludedOlder, autoCLV) {
+  const box = document.getElementById('accuracy-panel');
+  if (!box) return;
+  const tiers = [['strong','STRONG (≥75%)','var(--green)'], ['lean','LEAN (55–74%)','var(--amber)'], ['thin','THIN (<55%)','var(--red)']];
+  const total = tiers.reduce((s,[k]) => s + (byTier?.[k]?.graded || 0), 0);
+  const clvBox = autoCLV?.captured ? `<div class="stat-summary-box">
+          <div class="ssb-label" style="color:var(--blue);">BEAT THE CLOSE</div>
+          <div class="ssb-val" style="color:var(--blue);">${Math.round(autoCLV.beat / autoCLV.captured * 100)}%</div>
+          <div style="font-family:'Space Grotesk',sans-serif;font-size:9px;color:var(--muted);margin-top:2px;">${autoCLV.beat} up · ${autoCLV.flat} flat · ${autoCLV.worse} down · avg ${autoCLV.avg > 0 ? '+' : ''}${autoCLV.avg}</div>
+        </div>` : '';
+  if (!total) {
+    box.innerHTML = (clvBox ? `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px;">${clvBox}</div>` : '') + `<div class="top-plays-empty">No auto-graded picks yet — the daily slate scan logs and grades picks on its own each day; check back after a few game days.${excludedOlder ? ` (${excludedOlder} graded picks from the previous confidence formula are left out so old and new scores never mix.)` : ''}</div>`;
+    return;
+  }
+  box.innerHTML = `
+    <div class="card-label" style="margin-bottom:8px;">Model Accuracy <span style="font-family:'Space Grotesk',sans-serif;font-size:10px;color:var(--muted);font-weight:normal;letter-spacing:1px;">— confidence vs. real hit rate, auto-tracked across the full slate</span></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      ${tiers.map(([k,label,color]) => {
+        const t = byTier?.[k] || { graded:0, wins:0, winRate:null };
+        return `<div class="stat-summary-box">
+          <div class="ssb-label" style="color:${color};">${label}</div>
+          <div class="ssb-val" style="color:${t.winRate!=null?color:'var(--muted)'};">${t.winRate!=null?t.winRate+'%':'—'}</div>
+          <div style="font-family:'Space Grotesk',sans-serif;font-size:9px;color:var(--muted);margin-top:2px;">${t.wins}/${t.graded} graded</div>
+        </div>`;
+      }).join('')}
+      ${clvBox}
+    </div>`;
 }
 
 async function checkOneProp(b) {
@@ -3026,7 +3890,7 @@ function renderBetslip() {
         <input type="number" step="0.5" value="${b.actualStat??''}" placeholder="stat"
           style="width:60px;background:var(--surface2);border:1px solid var(--border2);border-radius:5px;padding:3px 7px;color:var(--text);font-family:'Space Grotesk',sans-serif;font-size:11px;"
           onchange="savePropActual(${b.id},this.value)" />
-        <span style="font-family:'Space Grotesk',sans-serif;font-size:9px;color:${b.confidence>=70?'var(--green)':b.confidence>=50?'var(--amber)':'var(--red)'};">${b.confidence||'—'}% CONF</span>
+        <span style="font-family:'Space Grotesk',sans-serif;font-size:9px;color:${b.confidence>=70?'var(--green)':b.confidence>=50?'var(--amber)':'var(--red)'};">${b.confidence?fmtConf(b.confidence)+'%':'—%'} CONF</span>
       </div>
     </div>`;
   }).join('');

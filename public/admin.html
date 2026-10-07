@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>WIN AI — Scouting Notes (Admin)</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0e17; --surface: #111827; --surface2: #0d1526; --border: #1f2937; --border2: #2a3548;
+    --text: #e5e9f0; --muted: #7a8699; --gold: #d4a844; --green: #3ecf6e; --red: #e5484d;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: 'Space Grotesk', sans-serif; padding: 24px; }
+  .wrap { max-width: 820px; margin: 0 auto; }
+  h1 { font-size: 20px; letter-spacing: 1px; color: var(--gold); margin-bottom: 4px; }
+  .sub { color: var(--muted); font-size: 12px; margin-bottom: 24px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px; margin-bottom: 20px; }
+  label { display: block; font-size: 10px; letter-spacing: 1px; color: var(--muted); margin-bottom: 5px; text-transform: uppercase; }
+  input, select, textarea, button { font-family: 'Space Grotesk', sans-serif; font-size: 13px; }
+  input[type=text], input[type=password], select, textarea {
+    width: 100%; background: var(--surface2); border: 1px solid var(--border2); border-radius: 7px;
+    padding: 9px 11px; color: var(--text); outline: none; margin-bottom: 14px;
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--gold); }
+  textarea { resize: vertical; min-height: 70px; }
+  .row { display: flex; gap: 12px; }
+  .row > div { flex: 1; }
+  button { background: var(--gold); color: #0b1220; border: none; border-radius: 7px; padding: 10px 18px; font-weight: 600; letter-spacing: 0.5px; cursor: pointer; }
+  button:hover { opacity: 0.9; }
+  .err { color: var(--red); font-size: 12px; margin-top: 8px; }
+  .gate { max-width: 380px; margin: 80px auto; text-align: center; }
+  .gate input { text-align: center; }
+
+  .team-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; margin-bottom: 14px; }
+  .team-hdr { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .team-name { font-size: 15px; font-weight: 600; }
+  .tag.league { font-size: 9px; letter-spacing: 1px; padding: 2px 7px; border-radius: 4px; text-transform: uppercase; background: rgba(212,168,68,0.12); color: var(--gold); }
+  .side-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 560px) { .side-grid { grid-template-columns: 1fr; } }
+  .side-col { border: 1px solid var(--border); border-radius: 9px; padding: 10px 12px; min-width: 0; }
+  .side-title { font-size: 10px; letter-spacing: 1.5px; color: var(--muted); margin-bottom: 8px; }
+  .side-title.offense { color: #6fb8ff; }
+  .side-title.defense { color: #ff9f6f; }
+  .note-row { border-top: 1px solid var(--border); padding: 8px 0; position: relative; }
+  .note-row:first-of-type { border-top: none; padding-top: 0; }
+  .note-text { font-size: 12px; line-height: 1.5; color: var(--text); white-space: pre-wrap; padding-right: 20px; }
+  .note-date { font-size: 9px; color: var(--muted); margin-top: 4px; }
+  .del-btn { position: absolute; top: 6px; right: 0; background: none; border: none; color: var(--muted); cursor: pointer; font-size: 13px; padding: 2px 4px; }
+  .del-btn:hover { color: var(--red); }
+  .side-empty { color: var(--muted); font-size: 11px; font-style: italic; }
+  .empty { color: var(--muted); font-size: 12px; text-align: center; padding: 20px 0; }
+  #app { display: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="gate" class="gate">
+    <h1>WIN AI — SCOUTING NOTES</h1>
+    <div class="sub">Private admin panel. Enter the admin token to continue.</div>
+    <input type="password" id="token-input" placeholder="Admin token" />
+    <button onclick="unlock()" style="width:100%;">UNLOCK</button>
+    <div class="err" id="gate-err"></div>
+  </div>
+
+  <div id="app">
+    <h1>SCOUTING NOTES</h1>
+    <div class="sub">Your own offense/defense film reads per team — folded automatically into the AI breakdown for any analysis involving that team. Not visible to regular users of the app.</div>
+
+    <div class="card">
+      <div class="row">
+        <div>
+          <label>League</label>
+          <select id="f-league" onchange="populateTeamOptions()"><option value="nba">NBA</option><option value="wnba">WNBA</option></select>
+        </div>
+        <div>
+          <label>Team</label>
+          <select id="f-team"></select>
+        </div>
+      </div>
+      <label>Side</label>
+      <select id="f-category" style="margin-bottom:14px;">
+        <option value="offense">Offense</option>
+        <option value="defense">Defense</option>
+      </select>
+      <label>Note</label>
+      <textarea id="f-text" placeholder="What did you see on film that the stats wouldn't catch?"></textarea>
+      <button onclick="addNote()">+ ADD NOTE</button>
+      <div class="err" id="form-err"></div>
+    </div>
+
+    <div id="notes-list"></div>
+  </div>
+</div>
+
+<script>
+const NBA_TEAMS = ['Atlanta Hawks','Boston Celtics','Brooklyn Nets','Charlotte Hornets','Chicago Bulls','Cleveland Cavaliers','Dallas Mavericks','Denver Nuggets','Detroit Pistons','Golden State Warriors','Houston Rockets','Indiana Pacers','LA Clippers','Los Angeles Lakers','Memphis Grizzlies','Miami Heat','Milwaukee Bucks','Minnesota Timberwolves','New Orleans Pelicans','New York Knicks','Oklahoma City Thunder','Orlando Magic','Philadelphia 76ers','Phoenix Suns','Portland Trail Blazers','Sacramento Kings','San Antonio Spurs','Toronto Raptors','Utah Jazz','Washington Wizards'];
+const WNBA_TEAMS = ['Atlanta Dream','Chicago Sky','Connecticut Sun','Dallas Wings','Golden State Valkyries','Indiana Fever','Las Vegas Aces','Los Angeles Sparks','Minnesota Lynx','New York Liberty','Phoenix Mercury','Portland Fire','Seattle Storm','Toronto Tempo','Washington Mystics'];
+
+let TOKEN = localStorage.getItem('winai_admin_token') || '';
+
+function populateTeamOptions() {
+  const league = document.getElementById('f-league').value;
+  const list = league === 'wnba' ? WNBA_TEAMS : NBA_TEAMS;
+  document.getElementById('f-team').innerHTML = list.map(t => `<option value="${t}">${t}</option>`).join('');
+}
+populateTeamOptions();
+
+function unlock() {
+  const t = document.getElementById('token-input').value.trim();
+  if (!t) return;
+  TOKEN = t;
+  loadNotes();
+}
+
+async function apiCall(path, opts = {}) {
+  const res = await fetch(path, {
+    ...opts,
+    headers: { 'Content-Type': 'application/json', 'x-admin-token': TOKEN, ...(opts.headers || {}) },
+  });
+  if (res.status === 401 || res.status === 503) {
+    localStorage.removeItem('winai_admin_token');
+    TOKEN = '';
+    document.getElementById('app').style.display = 'none';
+    document.getElementById('gate').style.display = 'block';
+    const body = await res.json().catch(() => ({}));
+    document.getElementById('gate-err').textContent = body.error || 'Invalid token';
+    throw new Error(body.error || 'Unauthorized');
+  }
+  if (!res.ok) { const body = await res.json().catch(() => ({})); throw new Error(body.error || `Error ${res.status}`); }
+  return res.json();
+}
+
+async function loadNotes() {
+  try {
+    const data = await apiCall('/api/admin/notes');
+    localStorage.setItem('winai_admin_token', TOKEN);
+    document.getElementById('gate').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    renderNotes(data.notes);
+  } catch (_) { /* apiCall already handled showing the gate + error */ }
+}
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+
+// Groups the flat note list into one card per team, each split into its
+// OFFENSE and DEFENSE sections — matches how notes actually get used
+// (per-team, per-side), not a flat chronological feed.
+function renderNotes(notes) {
+  const el = document.getElementById('notes-list');
+  if (!notes.length) { el.innerHTML = '<div class="empty">No scouting notes yet — add one above.</div>'; return; }
+  const groups = {};
+  notes.forEach(n => {
+    const key = n.league + '|' + n.team;
+    if (!groups[key]) groups[key] = { league: n.league, team: n.team, offense: [], defense: [] };
+    groups[key][n.category === 'defense' ? 'defense' : 'offense'].push(n);
+  });
+  const sorted = Object.values(groups).sort((a, b) => a.team.localeCompare(b.team));
+
+  const sideHtml = (list, label, cls) => {
+    if (!list.length) return `<div class="side-col"><div class="side-title ${cls}">${label}</div><div class="side-empty">No ${label.toLowerCase()} notes yet.</div></div>`;
+    const rows = list.map(n => {
+      const date = new Date(n.createdAt).toLocaleDateString(undefined, { month:'short', day:'numeric' });
+      return `<div class="note-row">
+        <button class="del-btn" onclick="deleteNote(${n.id})" title="Delete">✕</button>
+        <div class="note-text">${escapeHtml(n.text)}</div>
+        <div class="note-date">${date}</div>
+      </div>`;
+    }).join('');
+    return `<div class="side-col"><div class="side-title ${cls}">${label}</div>${rows}</div>`;
+  };
+
+  el.innerHTML = sorted.map(g => `
+    <div class="team-card">
+      <div class="team-hdr"><span class="tag league">${escapeHtml(g.league)}</span><span class="team-name">${escapeHtml(g.team)}</span></div>
+      <div class="side-grid">
+        ${sideHtml(g.offense, 'Offense', 'offense')}
+        ${sideHtml(g.defense, 'Defense', 'defense')}
+      </div>
+    </div>`).join('');
+}
+
+async function addNote() {
+  const league   = document.getElementById('f-league').value;
+  const team     = document.getElementById('f-team').value;
+  const category = document.getElementById('f-category').value;
+  const text     = document.getElementById('f-text').value.trim();
+  const errEl    = document.getElementById('form-err');
+  errEl.textContent = '';
+  if (!text) { errEl.textContent = 'Note text is required.'; return; }
+  try {
+    await apiCall('/api/admin/notes', { method: 'POST', body: JSON.stringify({ league, category, team, text }) });
+    document.getElementById('f-text').value = '';
+    loadNotes();
+  } catch (err) { errEl.textContent = err.message; }
+}
+
+async function deleteNote(id) {
+  if (!confirm('Delete this note?')) return;
+  try { await apiCall(`/api/admin/notes/${id}`, { method: 'DELETE' }); loadNotes(); }
+  catch (err) { alert(err.message); }
+}
+
+if (TOKEN) loadNotes();
+</script>
+</body>
+</html>

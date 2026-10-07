@@ -223,9 +223,20 @@ PLAYTYPES = [
     ('Cut','cut'),('OffScreen','offscreen'),('Putbacks','putbacks'),
 ]
 
+def _rows_from_raw_resultsets(raw):
+    """nba.com's own JSON, parsed by hand — resultSets/headers/rowSet, the
+    same shape get_data_frames() is supposed to build from."""
+    rs = raw.get('resultSets') or raw.get('resultSet') or []
+    if isinstance(rs, dict):
+        rs = [rs]
+    if not rs:
+        return []
+    return [dict(zip(rs[0]['headers'], row)) for row in rs[0]['rowSet']]
+
 def fetch_synergy(label, ptype, pot, grp):
     print(f"[FETCH] Playtype {label} ({'player_off' if pot=='P' else 'team_def'})...")
     for attempt in range(3):
+        result = None
         try:
             result = synergyplaytypes.SynergyPlayTypes(
                 season=SEASON,
@@ -258,9 +269,34 @@ def fetch_synergy(label, ptype, pot, grp):
                 wait = (attempt + 1) * 10
                 print(f"  Rate limited — waiting {wait}s...")
                 time.sleep(wait)
-            else:
-                print(f"  ERROR: {e}")
-                return None
+                continue
+            # If the object itself got built, try parsing its raw JSON by
+            # hand before giving up on this attempt — get_data_frames() can
+            # raise a bare KeyError('resultSet') even when the underlying
+            # response is fine (confirmed live).
+            if result is not None:
+                try:
+                    rows = _rows_from_raw_resultsets(result.get_dict())
+                    if rows:
+                        import pandas as pd
+                        df = pd.DataFrame(rows)
+                        print(f"  OK via raw resultSets ({len(df)} rows)")
+                        return df
+                except Exception:
+                    pass
+            # A bare KeyError('resultSet') can also happen INSIDE
+            # SynergyPlayTypes's own constructor (confirmed live — nba.com
+            # itself intermittently returns a malformed response for some
+            # play-type+defensive combinations, not consistently, so a
+            # retry with backoff — same as the rate-limit path — genuinely
+            # helps here instead of being a permanent failure).
+            if "resultSet" in msg and attempt < 2:
+                wait = (attempt + 1) * 8
+                print(f"  Malformed response from nba.com — retrying in {wait}s...")
+                time.sleep(wait)
+                continue
+            print(f"  ERROR: {e}")
+            return None
     return None
 
 for label, ptype in PLAYTYPES:
