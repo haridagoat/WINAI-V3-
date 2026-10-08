@@ -1094,32 +1094,51 @@ async function getProjectedStarters(league, teamName) {
 // matchup being viewed isn't always today's actual scheduled game. Returns
 // an honest { available: false } when the two teams aren't scheduled to
 // play each other in that window — never fabricated numbers.
+// ESPN's scoreboard rejects multi-day ranges ("dates=A-B" answers 400), so the
+// look-ahead asks for one day at a time. Cached briefly: a matchup view asks
+// for up to 15 days and several people can open the same game.
+const espnScoreboardCache = {};
+async function getEspnScoreboard(base, ymd) {
+  const key = base + '|' + ymd;
+  const hit = espnScoreboardCache[key];
+  if (hit && Date.now() - hit.ts < 5 * 60 * 1000) return hit.data;
+  const res = await axios.get(`${base}/scoreboard`, { params: { dates: ymd }, timeout: 8000 });
+  const events = res.data?.events || [];
+  espnScoreboardCache[key] = { data: events, ts: Date.now() };
+  return events;
+}
+
 async function fetchGameOdds(league, team1Name, team2Name) {
   const abbr1 = league === 'wnba' ? resolveWNBATeam(team1Name) : resolveESPNTeam(team1Name);
   const abbr2 = league === 'wnba' ? resolveWNBATeam(team2Name) : resolveESPNTeam(team2Name);
   if (!abbr1 || !abbr2) return { available: false };
 
   const base = league === 'wnba' ? ESPN_BASE_WNBA : ESPN_BASE;
-  const start = getToday().replace(/-/g, '');
-  const endDate = new Date();
-  endDate.setDate(endDate.getDate() + 14);
-  const end = toLocalDateStr(endDate).replace(/-/g, '');
+  const days = [];
+  for (let i = 0; i <= 14; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() + i);
+    days.push(toLocalDateStr(d).replace(/-/g, ''));
+  }
 
   try {
-    const res = await axios.get(`${base}/scoreboard`, { params: { dates: `${start}-${end}` }, timeout: 8000 });
-    const events = res.data?.events || [];
-    const match = events.find(e => {
+    const perDay = await Promise.all(days.map(d => getEspnScoreboard(base, d).catch(() => [])));
+    const matches = perDay.flat().filter(e => {
       const abbrs = (e.competitions?.[0]?.competitors || []).map(c => (c.team?.abbreviation || '').toLowerCase());
       return abbrs.includes(abbr1) && abbrs.includes(abbr2);
     });
-    if (!match) return { available: false };
+    if (!matches.length) return { available: false };
 
+    // Earliest meeting that has a line; a finished game carries none.
+    const match = matches.find(e => e.competitions?.[0]?.odds?.[0]) || matches[0];
     const comp = match.competitions[0];
     const odds = comp.odds?.[0];
     if (!odds) return { available: false, gameDate: match.date };
 
     const home = comp.competitors.find(c => c.homeAway === 'home');
     const away = comp.competitors.find(c => c.homeAway === 'away');
+    const at = (obj, side, when) => obj?.[side]?.[when] ?? null;
+    const ou = (when, side) => odds.total?.[side]?.[when]?.odds ?? null;
     return {
       available: true,
       gameDate: match.date,
@@ -1127,16 +1146,24 @@ async function fetchGameOdds(league, team1Name, team2Name) {
       home: { name: home?.team?.displayName, abbr: home?.team?.abbreviation },
       away: { name: away?.team?.displayName, abbr: away?.team?.abbreviation },
       spread: {
-        home: odds.pointSpread?.home?.close?.line ?? null,
-        away: odds.pointSpread?.away?.close?.line ?? null,
-        homeOdds: odds.pointSpread?.home?.close?.odds ?? null,
-        awayOdds: odds.pointSpread?.away?.close?.odds ?? null,
+        home: at(odds.pointSpread, 'home', 'close')?.line ?? null,
+        away: at(odds.pointSpread, 'away', 'close')?.line ?? null,
+        homeOdds: at(odds.pointSpread, 'home', 'close')?.odds ?? null,
+        awayOdds: at(odds.pointSpread, 'away', 'close')?.odds ?? null,
       },
       moneyline: {
-        home: odds.moneyline?.home?.close?.odds ?? null,
-        away: odds.moneyline?.away?.close?.odds ?? null,
+        home: at(odds.moneyline, 'home', 'close')?.odds ?? null,
+        away: at(odds.moneyline, 'away', 'close')?.odds ?? null,
       },
       total: odds.overUnder ?? null,
+      totalOdds: { over: ou('close', 'over'), under: ou('close', 'under') },
+      // Opening numbers, so the page can say whether the line has moved.
+      open: {
+        spreadHome: at(odds.pointSpread, 'home', 'open')?.line ?? null,
+        moneylineHome: at(odds.moneyline, 'home', 'open')?.odds ?? null,
+        moneylineAway: at(odds.moneyline, 'away', 'open')?.odds ?? null,
+        total: (odds.total?.over?.open?.line || '').replace(/^[ou]/i, '') || null,
+      },
     };
   } catch (err) {
     return { available: false, error: err.message };

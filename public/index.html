@@ -913,6 +913,336 @@
   .pl-clv.pos{color:var(--pos);} .pl-clv.neg{color:var(--neg);}
   .pl-auto{font-family:var(--display);font-weight:700;font-size:11px;letter-spacing:.1em;color:var(--muted);border:1px solid var(--border2);border-radius:4px;padding:1px 6px;}
   .pl-conf{font-family:var(--display);font-weight:700;font-size:13px;letter-spacing:.06em;margin-left:auto;}
+
+  /* Daily Matchups team analysis (all classes prefixed tm-) */
+.tm{--surface3:#202024;--mid:#4a4a52;--dim:#6f6f78;--cold:#5aa9ff;--body:'Space Grotesk',system-ui,sans-serif;
+  color:var(--text);font-family:var(--body);font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
+.tm *{box-sizing:border-box}
+.tm b{font-weight:600}
+.tm [hidden]{display:none!important}
+.tm b{font-weight:600}
+.tm{display:flex;flex-direction:column;gap:26px}
+.tm section{display:flex;flex-direction:column;gap:12px;min-width:0}
+.tm .tm-two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.tm .tm-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;min-width:0}
+.tm .tm-sec-h{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.tm h2{font-family:var(--display);font-weight:800;font-size:26px;letter-spacing:.05em;text-transform:uppercase;margin:0}
+.tm h3{font-family:var(--display);font-weight:800;font-size:19px;letter-spacing:.06em;text-transform:uppercase;margin:0;flex:1;min-width:0}
+.tm .tm-hint{font-family:var(--display);font-weight:600;font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.tm .tm-hint.tm-legend{display:flex;align-items:center;gap:6px}
+.tm .tm-hint.tm-legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
+.tm .tm-hint.tm-legend i.tm-lg-soft{background:var(--pos-bg);border:1px solid var(--pos-line)}
+.tm .tm-hint.tm-legend i.tm-lg-tough{background:var(--neg-bg);border:1px solid var(--neg-line);margin-left:8px}
+.tm .tm-tk-h{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.tm .tm-hero{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:16px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:22px 24px}
+.tm .tm-th{display:flex;align-items:center;gap:16px;min-width:0}
+.tm .tm-th.tm-r{flex-direction:row-reverse;text-align:right}
+.tm .tm-logo{width:34px;height:34px;object-fit:contain;flex:none}
+.tm .tm-logo.tm-big{width:84px;height:84px}
+.tm .tm-logo.tm-sm{width:30px;height:30px}
+.tm .tm-th-name{font-family:var(--display);font-weight:800;font-size:44px;line-height:.95;letter-spacing:.03em;text-transform:uppercase}
+.tm .tm-th-full{font-family:var(--display);font-weight:600;font-size:14px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-top:2px}
+.tm .tm-th-rec{display:flex;gap:10px;align-items:baseline;margin-top:8px}
+.tm .tm-th.tm-r .tm-th-rec{justify-content:flex-end}
+.tm .tm-th-rec b{font-family:var(--display);font-weight:800;font-size:26px;letter-spacing:.04em}
+.tm .tm-th-rec span{font-size:12px;color:var(--muted)}
+.tm .tm-th-net{font-family:var(--display);font-weight:700;font-size:14px;letter-spacing:.1em;margin-top:2px}
+.tm .tm-pos{color:var(--pos)}
+.tm .tm-neg{color:var(--neg)}
+.tm .tm-hc{display:flex;flex-direction:column;align-items:center;gap:6px}
+.tm .tm-donut{width:132px;height:132px}
+.tm .tm-d-pct{font-family:var(--display);font-weight:800;font-size:38px;fill:var(--text);letter-spacing:.02em}
+.tm .tm-d-sub{font-family:var(--display);font-weight:600;font-size:11px;fill:var(--muted);letter-spacing:.16em}
+.tm .tm-fav{font-family:var(--display);font-weight:600;font-size:13px;letter-spacing:.14em;color:var(--muted);text-align:center;line-height:1.25}
+.tm .tm-fav b{font-weight:800;font-size:17px;letter-spacing:.08em;color:var(--text)}
+.tm .tm-foot-note{margin:-14px 0 0;font-size:11.5px;color:var(--dim);text-align:center}
+.tm .tm-stats{padding:6px 16px}
+.tm .tm-sr{display:grid;grid-template-columns:minmax(0,1fr) 64px minmax(0,1fr);align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)}
+.tm .tm-sr:last-child{border-bottom:0}
+.tm .tm-sl{text-align:center;font-family:var(--display);font-weight:700;font-size:14px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted2)}
+.tm .tm-sc{display:flex;align-items:center;gap:10px;min-width:0}
+.tm .tm-sv{font-family:var(--display);font-weight:800;font-size:23px;letter-spacing:.03em;min-width:48px;font-variant-numeric:tabular-nums}
+.tm .tm-sc.tm-r .tm-sv{text-align:right}
+.tm .tm-rk{font-size:11px;font-weight:600;padding:1px 6px;border-radius:5px;border:1px solid var(--border2);color:var(--muted2);min-width:34px;text-align:center}
+.tm .tm-rk.tm-pos{background:var(--pos-bg);border-color:var(--pos-line);color:var(--pos)}
+.tm .tm-rk.tm-neg{background:var(--neg-bg);border-color:var(--neg-line);color:var(--neg)}
+.tm .tm-bar{flex:1;height:8px;background:var(--surface3);border-radius:4px;display:flex;overflow:hidden;min-width:20px}
+.tm .tm-bar.tm-l{justify-content:flex-end}
+.tm .tm-bar i{display:block;height:100%;border-radius:4px;background:var(--mid)}
+.tm .tm-bar i.tm-pos{background:var(--viz)}
+.tm .tm-bar i.tm-neg{background:var(--neg)}
+.tm .tm-tk-l{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:9px}
+.tm .tm-tk-l li{display:flex;gap:10px;align-items:flex-start;font-size:13.5px;color:var(--muted2)}
+.tm .tm-tk-l li span{min-width:0}
+.tm .tm-ic{width:16px;height:16px;flex:none;margin-top:2px}
+.tm .tm-ic.tm-mid{color:var(--muted)}
+.tm .tm-pg{display:flex;flex-direction:column;gap:6px}
+.tm .tm-pr{display:grid;grid-template-columns:62px repeat(4,minmax(0,1fr));gap:6px;align-items:stretch}
+.tm .tm-pr.tm-hd{margin-bottom:-2px}
+.tm .tm-pc-h{text-align:center;font-family:var(--display);font-weight:700;font-size:13px;letter-spacing:.12em;color:var(--muted)}
+.tm .tm-pl{display:flex;align-items:center;font-family:var(--display);font-weight:700;font-size:15px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted2)}
+.tm .tm-pc{display:flex;flex-direction:column;align-items:center;justify-content:center;border:1px solid var(--border);background:var(--surface2);border-radius:8px;padding:7px 2px;gap:1px}
+.tm .tm-pc b{font-family:var(--display);font-weight:800;font-size:21px;line-height:1;letter-spacing:.02em;font-variant-numeric:tabular-nums}
+.tm .tm-pc i{font-style:normal;font-size:10.5px;color:var(--muted)}
+.tm .tm-pc.tm-soft{background:var(--pos-bg);border-color:var(--pos-line)}
+.tm .tm-pc.tm-soft b,.tm .tm-pc.tm-soft i{color:var(--pos)}
+.tm .tm-pc.tm-tough{background:var(--neg-bg);border-color:var(--neg-line)}
+.tm .tm-pc.tm-tough b,.tm .tm-pc.tm-tough i{color:var(--neg)}
+.tm .tm-pc.tm-thin{opacity:.55}
+.tm .tm-inj{display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--border)}
+.tm .tm-inj:last-child{border-bottom:0;padding-bottom:0}
+.tm .tm-inj-m{flex:1;min-width:0}
+.tm .tm-inj-n{font-weight:600}
+.tm .tm-inj-s{font-size:12px;color:var(--muted)}
+.tm .tm-none{color:var(--muted);font-size:13px}
+.tm .tm-pill{font-family:var(--display);font-weight:700;font-size:13px;letter-spacing:.12em;padding:2px 9px;border-radius:5px;border:1px solid var(--border2);color:var(--muted2);flex:none}
+.tm .tm-pill.tm-pos{background:var(--pos-bg);border-color:var(--pos-line);color:var(--pos)}
+.tm .tm-pill.tm-neg{background:var(--neg-bg);border-color:var(--neg-line);color:var(--neg)}
+.tm .tm-av{width:56px;height:56px;border-radius:50%;object-fit:cover;object-position:50% 12%;background:var(--surface3);border:1px solid var(--border2);flex:none}
+.tm .tm-av.tm-ph{display:flex;align-items:center;justify-content:center;font-family:var(--display);font-weight:800;font-size:18px;letter-spacing:.04em;color:var(--muted2)}
+.tm .tm-av.tm-sm{width:38px;height:38px;font-size:14px}
+.tm .tm-st-g{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+.tm .tm-st{display:flex;flex-direction:column;align-items:center;text-align:center;gap:5px;min-width:0}
+.tm .tm-st-n{font-size:12px;font-weight:600;line-height:1.2}
+.tm .tm-st-p{font-family:var(--display);font-weight:700;font-size:12px;letter-spacing:.12em;color:var(--muted)}
+.tm .tm-tgs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.tm .tm-tg{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.tm .tm-tg-top{display:flex;align-items:center;gap:12px}
+.tm .tm-tg-m{flex:1;min-width:0}
+.tm .tm-tg-n{font-weight:600}
+.tm .tm-tg-t{font-size:12px;color:var(--muted)}
+.tm .tm-tg-s{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;border-top:1px solid var(--border);padding-top:10px}
+.tm .tm-tg-s div{display:flex;flex-direction:column}
+.tm .tm-tg-s b{font-family:var(--display);font-weight:800;font-size:21px;letter-spacing:.03em;font-variant-numeric:tabular-nums}
+.tm .tm-tg-s i{font-style:normal;font-family:var(--display);font-weight:600;font-size:11px;letter-spacing:.12em;color:var(--muted)}
+.tm .tm-tg-l{font-size:12.5px;color:var(--muted)}
+.tm .tm-tg-l.tm-pos{color:var(--pos)}
+.tm .tm-strip{display:flex;gap:4px}
+.tm .tm-dot{font-family:var(--display);font-weight:800;font-size:12px;width:20px;height:20px;border-radius:5px;display:flex;align-items:center;justify-content:center;border:1px solid}
+.tm .tm-dot.tm-pos{background:var(--pos-bg);border-color:var(--pos-line)}
+.tm .tm-dot.tm-neg{background:var(--neg-bg);border-color:var(--neg-line)}
+.tm .tm-lg-head,.tm .tm-lg{display:grid;grid-template-columns:34px 76px 76px minmax(0,1fr);gap:10px;align-items:center}
+.tm .tm-lg-head{font-family:var(--display);font-weight:600;font-size:12px;letter-spacing:.14em;color:var(--dim);padding-bottom:6px}
+.tm .tm-lg{padding:9px 0;border-top:1px solid var(--border)}
+.tm .tm-lg .tm-pill{text-align:center;padding:2px 0}
+.tm .tm-lg-o{font-weight:600}
+.tm .tm-lg-d{font-size:11.5px;color:var(--muted)}
+.tm .tm-lg-sc{font-family:var(--display);font-weight:800;font-size:19px;letter-spacing:.03em;font-variant-numeric:tabular-nums}
+.tm .tm-lg-hn{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--muted2);margin-bottom:4px}
+.tm .tm-lg-hn span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tm .tm-lg-hn b{font-family:var(--display);font-weight:800;font-size:16px;line-height:1;color:var(--text)}
+.tm .tm-bar1{height:6px;background:var(--surface3);border-radius:3px;overflow:hidden}
+.tm .tm-bar1 i{display:block;height:100%;background:var(--viz);border-radius:3px}
+.tm .tm-meets{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+.tm .tm-mc{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.tm .tm-mc-d{font-family:var(--display);font-weight:700;font-size:13px;letter-spacing:.12em;color:var(--muted);text-transform:uppercase}
+.tm .tm-mc-s{display:flex;flex-direction:column;gap:2px;font-family:var(--display);font-weight:700;font-size:18px;letter-spacing:.04em;color:var(--muted)}
+.tm .tm-mc-s .tm-win{color:var(--text)}
+.tm .tm-mc-p{font-size:11px;color:var(--dim)}
+.tm .tm-streak{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;background:var(--pos-bg);border:1px solid var(--pos-line);border-radius:10px;padding:14px 16px;font-family:var(--display);font-weight:700;font-size:22px;letter-spacing:.06em;text-transform:uppercase}
+.tm .tm-streak span{color:var(--pos);font-weight:800}
+.tm .tm-streak em{font-style:normal;font-family:var(--body);font-weight:500;font-size:12px;letter-spacing:0;text-transform:none;color:var(--muted2);margin-left:6px}
+@media (max-width:760px){.tm .tm-hero{grid-template-columns:1fr 1fr;padding:18px 16px}
+.tm .tm-hero .tm-hc{grid-column:1/-1;grid-row:1;flex-direction:row;gap:14px;justify-content:center}
+.tm .tm-hero .tm-fav{text-align:left}
+.tm .tm-donut{width:104px;height:104px}
+.tm .tm-th,.tm .tm-th.tm-r{flex-direction:column;align-items:flex-start;text-align:left;gap:10px}
+.tm .tm-th.tm-r{align-items:flex-end;text-align:right}
+.tm .tm-th.tm-r .tm-th-rec{justify-content:flex-end}
+.tm .tm-logo.tm-big{width:60px;height:60px}
+.tm .tm-th-name{font-size:34px}
+.tm .tm-two{grid-template-columns:minmax(0,1fr)}
+.tm .tm-tgs{grid-template-columns:minmax(0,1fr)}
+.tm .tm-meets{grid-template-columns:repeat(2,minmax(0,1fr))}
+.tm .tm-sr{grid-template-columns:minmax(0,1fr) 48px minmax(0,1fr);gap:6px}
+.tm .tm-sv{font-size:19px;min-width:38px}
+.tm .tm-rk{min-width:30px;font-size:10px;padding:1px 3px}
+.tm .tm-sc{gap:6px}
+.tm .tm-bar{min-width:8px}
+.tm .tm-stats{padding:4px 12px}
+.tm .tm-lg-head,.tm .tm-lg{grid-template-columns:26px 74px 62px minmax(0,1fr);gap:8px}
+.tm .tm-foot-note{margin-top:-14px}
+.tm{gap:22px}}
+@media (prefers-reduced-motion:no-preference){.tm .tm-bar i,.tm .tm-bar1 i{transition:width .3s}}
+.tm .tm-pnote{font-size:11.5px;color:var(--dim);margin-top:8px}
+.tm .tm-th-odds{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.tm .tm-th.tm-r .tm-th-odds{justify-content:flex-end}
+.tm .tm-oc{display:flex;flex-direction:column;align-items:flex-start;gap:0;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:5px 10px;min-width:78px}
+.tm .tm-th.tm-r .tm-oc{align-items:flex-end}
+.tm .tm-oc i{font-style:normal;font-family:var(--display);font-weight:600;font-size:11px;letter-spacing:.14em;color:var(--muted)}
+.tm .tm-oc b{font-family:var(--display);font-weight:800;font-size:22px;line-height:1.1;letter-spacing:.03em;font-variant-numeric:tabular-nums}
+.tm .tm-oc em{font-style:normal;font-size:11px;color:var(--muted);margin-top:-1px}
+.tm .tm-oc.tm-tot{align-items:center;margin-top:4px}
+.tm .tm-lines{padding:6px 16px 16px}
+.tm .tm-lr{display:grid;grid-template-columns:96px minmax(0,1fr) minmax(0,1fr) 128px;gap:10px;align-items:center;padding:12px 0;border-bottom:1px solid var(--border)}
+.tm .tm-lr.tm-hd{padding:8px 0;border-bottom:1px solid var(--border2)}
+.tm .tm-lr.tm-hd .tm-lc{flex-direction:row;gap:8px;align-items:center}
+.tm .tm-lr.tm-hd .tm-lc span{font-family:var(--display);font-weight:800;font-size:17px;letter-spacing:.06em;text-transform:uppercase}
+.tm .tm-ll{font-family:var(--display);font-weight:700;font-size:14px;letter-spacing:.14em;color:var(--muted2)}
+.tm .tm-lc{display:flex;flex-direction:column;min-width:0}
+.tm .tm-lc b{font-family:var(--display);font-weight:800;font-size:26px;line-height:1.05;letter-spacing:.03em;font-variant-numeric:tabular-nums}
+.tm .tm-lc i{font-style:normal;font-size:12px;color:var(--muted)}
+.tm .tm-lo{font-size:12px;color:var(--muted);text-align:right}
+.tm .tm-lr.tm-hd .tm-lo{font-family:var(--display);font-weight:600;letter-spacing:.14em;font-size:12px;color:var(--dim)}
+.tm .tm-cmp{padding-top:14px;display:flex;flex-direction:column;gap:8px}
+.tm .tm-cmp-h{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;font-family:var(--display);font-weight:700;font-size:14px;letter-spacing:.14em;color:var(--muted2)}
+.tm .tm-cmp-r{display:grid;grid-template-columns:56px minmax(0,1fr) 44px;gap:10px;align-items:center;font-size:12.5px;color:var(--muted)}
+.tm .tm-cmp-r b{font-family:var(--display);font-weight:800;font-size:20px;color:var(--text);text-align:right}
+.tm .tm-bar1.tm-mk i{background:var(--mid)}
+.tm .tm-cmp-n{margin:2px 0 0;font-size:12px;color:var(--dim)}
+@media (max-width:760px){.tm .tm-lr{grid-template-columns:70px minmax(0,1fr) minmax(0,1fr);gap:8px}
+.tm .tm-lr .tm-lo{grid-column:2/-1;text-align:left;margin-top:-6px}
+.tm .tm-lr.tm-hd .tm-lo{display:none}
+.tm .tm-lc b{font-size:22px}
+.tm .tm-th-odds{gap:6px}
+.tm .tm-oc{min-width:70px;padding:4px 8px}
+.tm .tm-lines{padding:4px 12px 14px}}
+.tm{gap:14px}
+.tm .tm-hero{padding:14px 20px;gap:12px}
+.tm .tm-logo.tm-big{width:62px;height:62px}
+.tm .tm-th{gap:14px}
+.tm .tm-th-name{font-size:36px}
+.tm .tm-th-full{margin-top:1px}
+.tm .tm-th-full b{color:var(--muted2);font-weight:700;letter-spacing:.08em}
+.tm .tm-th-odds{margin-top:8px}
+.tm .tm-oc{padding:4px 10px;min-width:74px}
+.tm .tm-oc b{font-size:21px}
+.tm .tm-donut{width:96px;height:96px}
+.tm .tm-d-pct{font-size:40px}
+.tm .tm-hc{gap:3px}
+.tm .tm-fav{font-size:12px;letter-spacing:.14em}
+.tm .tm-mkt{font-family:var(--display);font-weight:700;font-size:15px;letter-spacing:.08em;color:var(--muted2)}
+.tm .tm-meta{display:flex;align-items:center;justify-content:center;gap:10px 18px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.tm .tm-meta .tm-oc.tm-tot{flex-direction:row;align-items:baseline;gap:8px;margin:0;min-width:0;padding:3px 12px}
+.tm .tm-meta .tm-oc.tm-tot b{font-size:19px}
+.tm .tm-meta .tm-oc.tm-tot em{margin:0}
+.tm .tm-tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-top:2px}
+.tm .tm-tab{font-family:var(--display);font-weight:800;font-size:19px;letter-spacing:.1em;text-transform:uppercase;background:none;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;padding:8px 18px;color:var(--muted);cursor:pointer}
+.tm .tm-tab:hover{color:var(--muted2)}
+.tm .tm-tab[aria-selected="true"]{color:var(--text);border-bottom-color:var(--text)}
+.tm .tm-tab:focus-visible{outline:2px solid var(--muted2);outline-offset:-2px;border-radius:4px}
+.tm .tm-panel{display:flex;flex-direction:column;gap:12px}
+.tm h2{font-size:22px}
+.tm .tm-card{padding:14px}
+.tm .tm-tk-h{margin-bottom:10px}
+.tm .tm-stats{padding:2px 16px}
+.tm .tm-sr{padding:6px 0}
+.tm .tm-sv{font-size:20px}
+.tm .tm-pc{padding:5px 2px}
+.tm .tm-pc b{font-size:19px}
+.tm .tm-pr{gap:5px}
+.tm .tm-pg{gap:5px}
+.tm .tm-st-g{display:grid;grid-template-columns:repeat(auto-fill,minmax(68px,1fr));gap:12px 6px}
+.tm .tm-st{gap:3px}
+.tm .tm-ring{box-shadow:0 0 0 2px var(--mid)}
+.tm .tm-ring.tm-pos{box-shadow:0 0 0 2px var(--pos)}
+.tm .tm-ring.tm-neg{box-shadow:0 0 0 2px var(--neg)}
+.tm .tm-st .tm-pill{font-size:11px;padding:0 7px}
+.tm .tm-st .tm-tg-s{display:block;border:0;padding:0;font-size:11px;color:var(--muted);line-height:1.3}
+.tm .tm-inj-row{display:flex;align-items:center;gap:8px 14px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid var(--border)}
+.tm .tm-ik{font-family:var(--display);font-weight:700;font-size:12px;letter-spacing:.14em;color:var(--dim)}
+.tm .tm-ij{display:inline-flex;align-items:center;gap:8px;font-size:13px}
+.tm .tm-ij b{font-weight:600}
+.tm .tm-lg{padding:7px 0}
+.tm .tm-lg-head{padding-bottom:4px}
+.tm .tm-h2h .tm-tk-h{margin-bottom:10px}
+.tm .tm-streak-t{font-family:var(--display);font-weight:700;font-size:15px;letter-spacing:.08em;text-transform:uppercase;color:var(--pos)}
+.tm .tm-meets{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
+.tm .tm-mc{flex-direction:row;align-items:baseline;gap:10px;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;display:flex;font-family:var(--display);font-weight:700;font-size:16px;letter-spacing:.04em;color:var(--muted)}
+.tm .tm-mc .tm-mc-d{font-size:12px;letter-spacing:.12em;color:var(--dim);text-transform:uppercase;margin-right:auto}
+.tm .tm-mc .tm-win{color:var(--text)}
+@media (max-width:760px){.tm .tm-hero{padding:12px 14px}
+.tm .tm-logo.tm-big{width:46px;height:46px}
+.tm .tm-th-name{font-size:28px}
+.tm .tm-donut{width:80px;height:80px}
+.tm .tm-d-pct{font-size:42px}
+.tm .tm-th-odds{gap:5px}
+.tm .tm-oc{min-width:62px;padding:3px 7px}
+.tm .tm-oc b{font-size:18px}
+.tm .tm-tab{flex:1 1 0;min-width:0;padding:8px 2px;font-size:14.5px;letter-spacing:.03em;text-align:center}
+.tm .tm-st-g{grid-template-columns:repeat(auto-fill,minmax(64px,1fr))}
+.tm .tm-meets{grid-template-columns:minmax(0,1fr)}
+.tm .tm-meta{font-size:11.5px}}
+.tm [hidden]{display:none!important}
+.tm .tm-lg-sc{white-space:nowrap}
+.tm .tm-lg-o{white-space:nowrap}
+@media (max-width:760px){.tm .tm-hero .tm-hc{display:grid;grid-template-columns:auto auto;column-gap:14px;row-gap:2px;align-items:center;justify-content:center;justify-items:start}
+.tm .tm-hero .tm-hc .tm-donut{grid-row:1/3}
+.tm .tm-hero .tm-hc .tm-fav{align-self:end}
+.tm .tm-hero .tm-hc .tm-mkt{align-self:start}
+.tm .tm-th-full{font-size:12px;letter-spacing:.06em;white-space:nowrap}
+.tm .tm-lg-sc{font-size:17px}}
+.tm .tm-wr p{margin:0 0 14px;font-size:14.5px;line-height:1.6;color:var(--muted2);max-width:68ch}
+.tm .tm-wr p:last-child{margin-bottom:0}
+.tm .tm-wr-l{font-family:var(--display);font-weight:700;font-size:14px;letter-spacing:.16em;color:var(--muted);margin-bottom:4px}
+.tm .tm-blow{display:flex;align-items:center;gap:10px 14px;flex-wrap:wrap;padding:12px 16px}
+.tm .tm-blow .tm-wr-l{margin:0}
+.tm .tm-blow-n{font-size:13.5px;color:var(--muted2);flex:1;min-width:200px}
+.tm .tm-src{margin:0;font-size:11.5px;color:var(--dim)}
+.tm .tm-blow{border-color:var(--border)}
+.tm .tm-blow.tm-pos{background:var(--pos-bg);border-color:var(--pos-line)}
+.tm .tm-blow.tm-neg{background:var(--neg-bg);border-color:var(--neg-line)}
+.tm .tm-blow.tm-pos .tm-wr-l{color:var(--pos)}
+.tm .tm-blow.tm-neg .tm-wr-l{color:var(--neg)}
+.tm .tm-meter{display:inline-flex;gap:3px}
+.tm .tm-meter i{width:22px;height:8px;border-radius:2px;background:var(--surface3);display:block}
+.tm .tm-meter i.tm-pos{background:var(--pos)}
+.tm .tm-meter i.tm-neg{background:var(--neg)}
+.tm .tm-meter i.tm-mid{background:var(--muted)}
+.tm .tm-blow.tm-pos .tm-pill{background:transparent}
+.tm .tm-blow.tm-neg .tm-pill{background:transparent}
+.tm .tm-rws{display:flex;flex-direction:column}
+.tm .tm-rw{display:grid;grid-template-columns:42px minmax(0,1fr) repeat(5,36px);gap:5px;align-items:center;padding:8px 0;border-top:1px solid var(--border)}
+.tm .tm-rw.tm-hd{border-top:0;padding:0 0 4px}
+.tm .tm-rw.tm-hd .tm-rv{font-family:var(--display);font-weight:600;font-size:12px;letter-spacing:.14em;color:var(--dim)}
+.tm .tm-rw-av .tm-av{width:40px;height:40px;font-size:14px}
+.tm .tm-rw-nm{display:flex;align-items:center;gap:6px;font-weight:600;min-width:0}
+.tm .tm-rw-nm span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tm .tm-rw-p{font-family:var(--display);font-weight:700;font-size:12px;letter-spacing:.12em;color:var(--muted)}
+.tm .tm-rv{text-align:right;font-family:var(--display);font-weight:700;font-size:18px;letter-spacing:.03em;color:var(--muted2);font-variant-numeric:tabular-nums}
+.tm .tm-rv.tm-pts{color:var(--text);font-weight:800;font-size:20px}
+.tm .tm-fi{width:18px;height:18px;flex:none}
+.tm .tm-fi.tm-hot{color:#ff5d5d}
+.tm .tm-fi.tm-cold{color:var(--cold)}
+.tm .tm-hint.tm-legend2{display:flex;align-items:center;gap:6px 14px;flex-wrap:wrap}
+.tm .tm-lgd{display:inline-flex;align-items:center;gap:5px}
+@media (max-width:760px){.tm .tm-rw{grid-template-columns:34px minmax(0,1fr) repeat(3,32px);gap:4px}
+.tm .tm-rw-av .tm-av{width:34px;height:34px;font-size:12px}
+.tm .tm-rw .tm-rv.tm-min,.tm .tm-rw .tm-rv.tm-fg3m{display:none}
+.tm .tm-rv{font-size:16px}
+.tm .tm-rv.tm-pts{font-size:19px}}
+.tm .tm-th-odds{gap:10px;margin-top:12px}
+.tm .tm-oc{position:relative;padding:8px 14px 7px;min-width:104px;background:var(--surface2);border:1px solid var(--border2);border-radius:10px;gap:1px}
+.tm .tm-oc i{font-size:12px;letter-spacing:.16em}
+.tm .tm-oc b{font-size:32px;line-height:1;letter-spacing:.02em}
+.tm .tm-oc em{font-size:12px;color:var(--muted);margin-top:2px}
+.tm .tm-oc.tm-fav{background:var(--surface3);border-color:rgba(255,255,255,.4)}
+.tm .tm-oc.tm-fav b{color:#fff}
+.tm .tm-favtag{font-family:var(--display);font-weight:800;font-size:11px;letter-spacing:.14em;color:#0a0a0b;background:#e6e6ea;border-radius:4px;padding:1px 6px;margin-left:4px;vertical-align:1px}
+.tm .tm-tot2{margin-top:8px;min-width:190px;background:var(--surface2);border:1px solid rgba(255,255,255,.4);border-radius:12px;padding:8px 14px 10px;text-align:center}
+.tm .tm-tot2-h{font-family:var(--display);font-weight:700;font-size:12px;letter-spacing:.2em;color:var(--muted)}
+.tm .tm-tot2-n{font-family:var(--display);font-weight:800;font-size:46px;line-height:1;letter-spacing:.02em;color:#fff;font-variant-numeric:tabular-nums}
+.tm .tm-tot2-ou{display:grid;grid-template-columns:1fr 1fr;margin-top:6px;border-top:1px solid var(--border2);padding-top:6px}
+.tm .tm-tot2-ou span{display:flex;flex-direction:column;align-items:center}
+.tm .tm-tot2-ou span+span{border-left:1px solid var(--border2)}
+.tm .tm-tot2-ou i{font-style:normal;font-family:var(--display);font-weight:700;font-size:11px;letter-spacing:.18em;color:var(--muted)}
+.tm .tm-tot2-ou b{font-family:var(--display);font-weight:800;font-size:20px;letter-spacing:.03em}
+.tm .tm-hc{gap:2px}
+@media (max-width:760px){.tm .tm-th-odds{gap:6px;margin-top:8px}
+.tm .tm-oc{min-width:84px;padding:6px 10px 5px}
+.tm .tm-oc b{font-size:25px}
+.tm .tm-oc em{font-size:11px}
+.tm .tm-hero .tm-hc{grid-template-columns:auto auto}
+.tm .tm-hero .tm-hc .tm-tot2{grid-column:1/-1;justify-self:stretch;margin-top:10px}
+.tm .tm-tot2-n{font-size:40px}}
+@media (max-width:760px){.tm .tm-th-odds{flex-wrap:nowrap;gap:5px;width:100%}
+.tm .tm-th-txt{min-width:0;width:100%}
+.tm .tm-oc{min-width:0;flex:1 1 0;padding:5px 7px}
+.tm .tm-oc b{font-size:21px}
+.tm .tm-oc i{font-size:10.5px;letter-spacing:.1em}
+.tm .tm-oc em{font-size:10px;white-space:nowrap}}
+@media (max-width:760px){.tm .tm-favtag{display:block;width:max-content;margin:4px 0 0}
+.tm .tm-th.tm-r .tm-favtag{margin-left:auto}}
 </style>
 </head>
 <body>
@@ -3025,185 +3355,420 @@ function prefillMatchup(t1, t2, league) {
   analyzeMatchup();
 }
 
-// ── DAILY MATCHUPS — real-data dashboard ────────────────────────────
+// Win chance from the net-rating gap. Not calibrated against graded results yet.
 function computeWinProb(s1, s2) {
   if (!s1 || !s2 || s1.netRating == null || s2.netRating == null) return null;
   const diff = s1.netRating - s2.netRating;
   return 1 / (1 + Math.pow(10, -diff / 10));
 }
 
-// Real spread/moneyline/total (ESPN, DraftKings-sourced, free — see
-// /api/game-odds) shown as a top banner so betting context is visible
-// before the projection breakdown, replacing the old radar chart + stat
-// table (removed — this is more directly useful for prop-betting context).
-function renderOddsBanner(odds, t1, t2) {
-  if (!odds?.available) {
-    return `<div class="tc-odds-unavailable">No live odds available for this matchup${odds?.gameDate ? '' : ' — teams aren\'t scheduled to play each other soon'}.</div>`;
-  }
-  const homeIsT1 = (odds.home?.name || '').toLowerCase() === (t1 || '').toLowerCase();
-  const t1Side = homeIsT1 ? odds.home : odds.away;
-  const t2Side = homeIsT1 ? odds.away : odds.home;
-  const t1Spread = homeIsT1 ? odds.spread?.home : odds.spread?.away;
-  const t2Spread = homeIsT1 ? odds.spread?.away : odds.spread?.home;
-  const t1ML = homeIsT1 ? odds.moneyline?.home : odds.moneyline?.away;
-  const t2ML = homeIsT1 ? odds.moneyline?.away : odds.moneyline?.home;
-  return `
-    <div class="tc-odds-banner">
-      <div class="tc-odds-item">
-        <div class="tc-odds-label">Spread</div>
-        <div class="tc-odds-value">${escapeHtml(shortTeam(t1))} ${t1Spread ?? '—'} | ${escapeHtml(shortTeam(t2))} ${t2Spread ?? '—'}</div>
-      </div>
-      <div class="tc-odds-item">
-        <div class="tc-odds-label">Moneyline</div>
-        <div class="tc-odds-value">${escapeHtml(shortTeam(t1))} ${t1ML ?? '—'} | ${escapeHtml(shortTeam(t2))} ${t2ML ?? '—'}</div>
-      </div>
-      <div class="tc-odds-item">
-        <div class="tc-odds-label">Total (O/U)</div>
-        <div class="tc-odds-value">${odds.total ?? '—'}</div>
-      </div>
-      ${odds.provider ? `<div class="tc-odds-provider">via ${escapeHtml(odds.provider)} (ESPN)</div>` : ''}
-    </div>`;
+// ── DAILY MATCHUPS — team analysis ──────────────────────────────────
+// One header (win chance + sportsbook lines) over four tabs. Every number is
+// real data from the endpoints analyzeMatchup() already calls; the only
+// generated text is the written Breakdown, which is built from that same data.
+function tmShort(name) {
+  const n = (name || '').trim();
+  return /trail blazers$/i.test(n) ? 'Trail Blazers' : n.split(' ').pop();
 }
-function shortTeam(name) { return (name || '').split(' ').pop(); }
-
-function renderFavorBar(s1, s2, t1, t2) {
-  const prob1 = computeWinProb(s1, s2);
-  if (prob1 == null) return '';
-  const pct = Math.round((prob1 >= 0.5 ? prob1 : 1 - prob1) * 100);
-  const name = prob1 >= 0.5 ? t1 : t2;
-  return `
-    <div class="tc-favor-wrap">
-      <div class="tc-favor-label">MODEL FAVORS<br>${escapeHtml(name)}</div>
-      <div class="tc-favor-track"><div class="tc-favor-fill" style="width:${pct}%"></div></div>
-      <div class="tc-favor-pct">${pct}%</div>
-    </div>`;
+function tmCity(name) {
+  const n = (name || '').trim(), s = tmShort(n);
+  return n.slice(0, n.length - s.length).trim();
 }
-
-function playerAvatar(p) {
+function tmOrd(n) {
+  n = parseInt(n, 10);
+  const v = n % 100;
+  return n + (v >= 11 && v <= 13 ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] || 'th'));
+}
+function tmPx(v) { return v == null || v === '' ? '—' : String(v).replace('-', '−'); }
+function tmImplied(ml) {
+  const n = parseInt(String(ml).replace('−', '-'), 10);
+  if (!isFinite(n)) return null;
+  return n < 0 ? -n / (-n + 100) : 100 / (n + 100);
+}
+function tmTone(rank, of) { return rank <= 5 ? 'pos' : rank >= of - 4 ? 'neg' : 'mid'; }
+function tmLogo(league, name, cls) {
+  const url = teamLogoUrl(league, name);
+  return url ? `<img class="tm-logo ${cls || ''}" src="${url}" alt="" onerror="this.style.visibility='hidden'">` : `<span class="tm-logo ${cls || ''}"></span>`;
+}
+function tmHeadshot(p) {
+  const fb = escapeHtml(initials(p.name));
   return p.headshot
-    ? `<img class="tc-headshot" src="${p.headshot}" alt="${escapeHtml(p.name)}" onerror="this.outerHTML='<div class=&quot;tc-avatar-fallback&quot;>${escapeHtml(initials(p.name))}</div>'">`
-    : `<div class="tc-avatar-fallback">${escapeHtml(initials(p.name))}</div>`;
+    ? `<img class="tm-av" src="${p.headshot}" alt="${escapeHtml(p.name)}" onerror="this.outerHTML='<div class=&quot;tm-av tm-ph&quot;>${fb}</div>'">`
+    : `<div class="tm-av tm-ph">${fb}</div>`;
+}
+function tmDate(iso, withTime) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d)) return '';
+  const o = withTime
+    ? { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' }
+    : { month: 'short', day: 'numeric', timeZone: 'America/New_York' };
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', o).formatToParts(d).map(x => [x.type, x.value]));
+  return withTime ? `${p.weekday} ${p.month} ${p.day} · ${p.hour}:${p.minute} ${p.dayPeriod} ET` : `${p.month} ${p.day}`;
 }
 
-// Bare content only — no title/wrapper box, since these render inside an
-// accordion body that already supplies both.
-function renderTargetBox(targets, t1, t2) {
-  if (!targets || !targets.length) {
-    return `<div class="top-plays-empty">Loading real usage + form data...</div>`;
-  }
-  const leanCls = (lean) => lean.includes('OVER') ? 'over' : lean.includes('UNDER') ? 'under' : 'neutral';
-  return targets.map(p => {
-    const opponent = p.team === t1 ? t2 : t1;
-    return `
-    <div class="tc-target-row" style="cursor:pointer;" onclick="jumpToAnalyzePlayer('${escapeJsStr(p.name)}','Points','${escapeJsStr(opponent)}','${p.league}')">
-      ${playerAvatar(p)}
-      <div class="tc-target-info">
-        <div class="tc-target-name">${escapeHtml(p.name)}</div>
-        <div class="tc-target-meta">${escapeHtml(p.team)} · ${p.usgPct}% USG · ${p.recentPpg ?? '—'} PPG L10 · ${p.form}</div>
-      </div>
-      <div class="tc-target-lean ${leanCls(p.lean)}">${escapeHtml(p.lean)}</div>
-    </div>`;
-  }).join('');
-}
-
-// Projected Starting Lineup — the real starters from each team's most
-// recent completed game, adjusted for the current live injury report (see
-// getProjectedStarters in server.js). No official pregame lineup feed
-// exists for either league, so this is the closest honest real-data proxy:
-// actual coaching decisions from the last game, not a season-usage guess.
-function renderLineupBox(t1, t2, starters1, starters2) {
-  const col = (list) => (list || []).map(p => `
-    <div class="tc-lineup-row">
-      ${playerAvatar(p)}
-      <span class="tc-lineup-pos">${escapeHtml(p.position || '')}</span>
-      <span class="tc-lineup-name">${escapeHtml(p.name)}</span>
-    </div>`).join('') || '<div class="top-plays-empty" style="padding:2px 0;">No data</div>';
-  return `
-    <div class="tc-lineup-cols">
-      <div><div class="tc-lineup-team">${escapeHtml(t1)}</div>${col(starters1)}</div>
-      <div><div class="tc-lineup-team">${escapeHtml(t2)}</div>${col(starters2)}</div>
-    </div>`;
-}
-
-function formatShortDate(iso) {
-  if (!iso) return '—';
-  try {
-    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/New_York' }).toUpperCase().replace(',', '');
-  } catch (_) { return '—'; }
-}
-
-// Last 5 Games — official table (W/L pill, date, opponent, score, high
-// scorer), replacing the old green/red bar chart with real per-game detail.
-function renderLast5Table(games, teamLabel) {
-  if (!games || !games.length) return `<div class="top-plays-empty">No recent games found for ${escapeHtml(teamLabel)}</div>`;
-  const rows = [...games].reverse().map(g => `
-    <tr>
-      <td><span class="tc-wl-pill ${g.win ? 'w' : 'l'}">${g.result}</span></td>
-      <td>${formatShortDate(g.date)}</td>
-      <td>${g.isHome ? 'vs' : '@'} ${escapeHtml(shortTeam(g.opponent))}</td>
-      <td>${g.ownScore}-${g.oppScore}</td>
-      <td>${g.highScorer ? `${escapeHtml(shortTeam(g.highScorer.name))} ${escapeHtml(g.highScorer.pts)} pts` : '—'}</td>
-    </tr>`).join('');
-  return `
-    <div class="tc-last5-scroll">
-      <table class="tc-last5-official">
-        <thead><tr><th>W/L</th><th>Date</th><th>Opponent</th><th>Score</th><th>High Scorer</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>`;
-}
-
-// Real usage-rate + defense-by-position (NBA) + defense-by-zone (both
-// leagues, reusing the same shot-chart bridge already built) profile —
-// this used to be entirely absent from Daily Matchups, which only ever
-// looked at blunt team-wide PPG/pace/DefRtg.
-function renderStatTable(s1, s2, t1, t2) {
-  const cell = (val, rank, suffix='') => val == null
-    ? '—'
-    : `${val}${suffix}${rank ? `<span class="rank">#${rank}</span>` : ''}`;
-  const rows = [
-    ['PPG',     s1?.ppg,  s1?.ppgRank,  s2?.ppg,  s2?.ppgRank],
-    ['APG',     s1?.apg,  s1?.apgRank,  s2?.apg,  s2?.apgRank],
-    ['TOPG',    s1?.topg, s1?.topgRank, s2?.topg, s2?.topgRank],
-    ['FG%',     s1?.fgPct, s1?.fgPctRank, s2?.fgPct, s2?.fgPctRank, '%'],
-    ['PACE',    s1?.pace, s1?.paceRank, s2?.pace, s2?.paceRank],
-    ['DEF RTG', s1?.defRating, s1?.defRatingRank, s2?.defRating, s2?.defRatingRank],
+// ── header: win chance + sportsbook lines ──
+function tmOddsView(odds, t1, t2) {
+  if (!odds?.available) return null;
+  const homeIsT1 = (odds.home?.name || '').toLowerCase() === t1.toLowerCase();
+  const side = (isT1) => {
+    const h = isT1 ? homeIsT1 : !homeIsT1;
+    return {
+      home: h,
+      spread: h ? odds.spread?.home : odds.spread?.away,
+      price: h ? odds.spread?.homeOdds : odds.spread?.awayOdds,
+      ml: h ? odds.moneyline?.home : odds.moneyline?.away,
+    };
+  };
+  const a = side(true), b = side(false);
+  const pa = tmImplied(a.ml), pb = tmImplied(b.ml);
+  const mk1 = pa != null && pb != null ? pa / (pa + pb) : null;     // vig removed
+  const fav1 = pa != null && pb != null ? pa >= pb : null;
+  const o = odds.open || {};
+  const moved = [
+    o.spreadHome != null && odds.spread?.home != null && String(o.spreadHome) !== String(odds.spread.home),
+    o.moneylineHome != null && odds.moneyline?.home != null && String(o.moneylineHome) !== String(odds.moneyline.home),
+    o.total != null && odds.total != null && String(o.total) !== String(odds.total),
   ];
-  return `
-    <table class="tc-stat-table">
-      <thead><tr><th>${escapeHtml(t1)}</th><th>METRIC</th><th>${escapeHtml(t2)}</th></tr></thead>
-      <tbody>
-        <tr><td>${s1?.record||'—'}</td><td class="tc-metric-name">RECORD</td><td>${s2?.record||'—'}</td></tr>
-        ${rows.map(([label, v1, r1, v2, r2, suffix]) => `<tr><td>${cell(v1,r1,suffix)}</td><td class="tc-metric-name">${label}</td><td>${cell(v2,r2,suffix)}</td></tr>`).join('')}
-      </tbody>
-    </table>
-    ${(s1?.source || s2?.source) ? `<div style="font-family:'Space Grotesk',sans-serif;font-size:8px;color:var(--muted);margin-top:8px;">${s1?.source?`⚠ ${escapeHtml(t1)}: ${escapeHtml(s1.source)}`:''}${s1?.source&&s2?.source?' · ':''}${s2?.source?`⚠ ${escapeHtml(t2)}: ${escapeHtml(s2.source)}`:''}</div>` : ''}`;
+  const known = o.spreadHome != null || o.moneylineHome != null || o.total != null;
+  return { a, b, mk1, fav1, moveText: !known ? '' : moved.some(Boolean) ? 'line moved since open' : 'no line move since open' };
 }
 
-// Real points/rebounds/assists/3PM allowed broken down by position group
-// (Guards/Wings/Bigs) — built server-side from real box scores (not a
-// stats.nba.com stat; that API only tracks FG% by position). Fetched
-// upfront alongside the rest of the matchup data (not after render) so
-// the AI prompt can reference it too, not just this visible card.
-function renderPositionCategoryTable(teamName, posDef) {
-  if (!posDef?.available) return '<div class="top-plays-empty">Not enough recent box-score data available</div>';
-  const CATS = [['pts','PTS'], ['reb','REB'], ['ast','AST'], ['fg3m','3PM']];
-  const rows = ['Guards', 'Wings', 'Bigs'].map(group => {
-    const cells = CATS.map(([key, label]) => {
-      const val = posDef.byPosition?.[group]?.[key];
-      const rankInfo = posDef.ranks?.[group]?.[key];
-      return `<td>${val ?? '—'}${rankInfo ? `<span class="rank">#${rankInfo.rank}</span>` : ''}</td>`;
-    }).join('');
-    return `<tr><td class="tc-metric-name">${group}</td>${cells}</tr>`;
-  }).join('');
+function tmTeamHead(league, t, stats, sideInfo, isFav, tag, isRight) {
+  const chips = sideInfo ? `
+    <div class="tm-th-odds">
+      <div class="tm-oc${isFav ? ' tm-fav' : ''}"><i>SPREAD</i><b>${tmPx(sideInfo.spread)}</b><em>${tmPx(sideInfo.price)}</em></div>
+      <div class="tm-oc${isFav ? ' tm-fav' : ''}"><i>MONEYLINE</i><b>${tmPx(sideInfo.ml)}</b><em>${tmImplied(sideInfo.ml) != null ? Math.round(tmImplied(sideInfo.ml) * 100) + '% implied' : ''}</em></div>
+    </div>` : '';
   return `
-    <div style="font-family:'Space Grotesk',sans-serif;font-size:10px;color:var(--gold);letter-spacing:1px;margin-bottom:6px;">${escapeHtml(teamName).toUpperCase()} — ALLOWED PER GAME BY POSITION</div>
-    <table class="tc-stat-table">
-      <thead><tr><th>GROUP</th>${CATS.map(([,label])=>`<th>${label}</th>`).join('')}</tr></thead>
-      <tbody>${rows}</tbody>
-    </table>
-    <div style="font-family:'Space Grotesk',sans-serif;font-size:8px;color:var(--muted);margin-top:6px;">Last ${posDef.gamesAnalyzed} games · rank out of ${posDef.leagueSize} teams · lower = tougher defense at that spot</div>`;
+    <div class="tm-th ${isRight ? 'tm-r' : 'tm-l'}">
+      ${tmLogo(league, t, 'tm-big')}
+      <div class="tm-th-txt">
+        <div class="tm-th-name">${escapeHtml(tmShort(t))}</div>
+        <div class="tm-th-full">${escapeHtml(tmCity(t))}${tag ? ' · ' + tag : ''} · <b>${escapeHtml(stats?.record || '—')}</b>${isFav ? ' <span class="tm-favtag">FAVORITE</span>' : ''}</div>
+        ${chips}
+      </div>
+    </div>`;
 }
+
+function tmHeader(league, t1, t2, s1, s2, odds) {
+  const ov = tmOddsView(odds, t1, t2);
+  const prob1 = computeWinProb(s1, s2);
+  let center = '';
+  if (prob1 != null) {
+    const favIsT1 = prob1 >= 0.5;
+    const favName = favIsT1 ? t1 : t2;
+    const pct = Math.round((favIsT1 ? prob1 : 1 - prob1) * 100);
+    const R = 52, C = 2 * Math.PI * R;
+    const mkFav = ov?.mk1 != null ? Math.round((favIsT1 ? ov.mk1 : 1 - ov.mk1) * 100) : null;
+    center += `
+      <svg class="tm-donut" viewBox="0 0 132 132" role="img" aria-label="Model favors ${escapeHtml(favName)} at ${pct} percent">
+        <circle cx="66" cy="66" r="${R}" fill="none" stroke="var(--surface3)" stroke-width="10"/>
+        <circle cx="66" cy="66" r="${R}" fill="none" stroke="var(--viz)" stroke-width="10" stroke-linecap="round" stroke-dasharray="${(C * pct / 100).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 66 66)"/>
+        <text x="66" y="77" text-anchor="middle" class="tm-d-pct">${pct}%</text>
+      </svg>
+      <div class="tm-fav-l">${escapeHtml(tmShort(favName).toUpperCase())} WIN CHANCE</div>
+      ${mkFav != null ? `<div class="tm-mkt">market says ${mkFav}%</div>` : ''}`;
+  }
+  if (ov && odds.total != null) {
+    center += `
+      <div class="tm-tot2"><div class="tm-tot2-h">TOTAL POINTS</div><div class="tm-tot2-n">${escapeHtml(String(odds.total))}</div>
+        <div class="tm-tot2-ou"><span><i>OVER</i><b>${tmPx(odds.totalOdds?.over)}</b></span><span><i>UNDER</i><b>${tmPx(odds.totalOdds?.under)}</b></span></div></div>`;
+  }
+  const meta = ov
+    ? `<span>${escapeHtml(tmDate(odds.gameDate, true))}</span><span>${escapeHtml(odds.provider || 'Sportsbook')} via ESPN${ov.moveText ? ' · ' + ov.moveText : ''}</span>`
+    : `<span>No sportsbook line yet${odds?.gameDate ? '' : '. These teams are not scheduled to meet in the next two weeks'}</span>`;
+  return `
+    <div class="tm-hero">
+      ${tmTeamHead(league, t1, s1, ov?.a, ov?.fav1 === true, ov ? (ov.a.home ? 'HOME' : 'AWAY') : '', false)}
+      <div class="tm-hc">${center}</div>
+      ${tmTeamHead(league, t2, s2, ov?.b, ov?.fav1 === false, ov ? (ov.b.home ? 'HOME' : 'AWAY') : '', true)}
+    </div>
+    <div class="tm-meta">${meta}</div>`;
+}
+
+// ── Matchup tab: stats (bars = league rank) and defense by position ──
+const TM_STAT_ROWS = [
+  ['PPG', 'ppg', 'ppgRank', true], ['RPG', 'rpg', 'rpgRank', true], ['APG', 'apg', 'apgRank', true],
+  ['TOPG', 'topg', 'topgRank', true], ['FG%', 'fgPct', 'fgPctRank', true], ['3P%', 'fg3Pct', 'fg3PctRank', true],
+  ['Pace', 'pace', 'paceRank', false], ['Off rtg', 'offRating', 'offRatingRank', true], ['Def rtg', 'defRating', 'defRatingRank', true],
+];
+function tmStatCell(s, key, rk, colored, side) {
+  const v = s?.[key];
+  if (v == null) return `<div class="tm-sc tm-${side}"><span class="tm-sv">—</span></div>`;
+  const rank = s[rk], of = s.totalTeams || 30;
+  const val = `<span class="tm-sv">${escapeHtml(typeof v === 'number' ? v.toFixed(1) : String(v))}</span>`;
+  if (rank == null) return `<div class="tm-sc tm-${side}">${val}</div>`;
+  const cls = colored ? tmTone(rank, of) : 'mid';
+  const chip = `<span class="tm-rk tm-${cls}">${tmOrd(rank)}</span>`;
+  const bar = `<span class="tm-bar tm-${side}"><i class="tm-${cls}" style="width:${Math.max(6, (of - rank + 1) / of * 100).toFixed(0)}%"></i></span>`;
+  return side === 'l' ? `<div class="tm-sc tm-l">${val}${chip}${bar}</div>` : `<div class="tm-sc tm-r">${bar}${chip}${val}</div>`;
+}
+function tmStatsCard(s1, s2, t1, t2) {
+  const rows = TM_STAT_ROWS.filter(([, k]) => s1?.[k] != null || s2?.[k] != null)
+    .map(([lab, k, rk, col]) => `<div class="tm-sr">${tmStatCell(s1, k, rk, col, 'l')}<div class="tm-sl">${lab}</div>${tmStatCell(s2, k, rk, col, 'r')}</div>`).join('');
+  // pace / ratings come from stats.nba.com; newer teams aren't onboarded there yet
+  const warn = (label, s) => (s?.pace == null || s?.offRating == null || s?.defRating == null)
+    ? `${escapeHtml(label)}: pace and ratings unverified${s?.source ? ' (' + escapeHtml(s.source) + ')' : ''}` : '';
+  const notes = [warn(t1, s1), warn(t2, s2)].filter(Boolean).join(' · ');
+  return `<div class="tm-card tm-stats">${rows || '<div class="tm-none">No team stats available.</div>'}</div>${notes ? `<p class="tm-src">${notes}</p>` : ''}`;
+}
+const TM_POS = ['Guards', 'Wings', 'Bigs'];
+const TM_CATS = [['pts', 'PTS'], ['reb', 'REB'], ['ast', 'AST'], ['fg3m', '3PM']];
+function tmPosDefCard(league, t, pd) {
+  const head = `<div class="tm-tk-h">${tmLogo(league, t, 'tm-sm')}<h3>${escapeHtml(tmShort(t))} defense</h3>${pd?.available ? `<span class="tm-hint">allowed per game · last ${pd.gamesAnalyzed}</span>` : ''}</div>`;
+  if (!pd?.available) return `<div class="tm-card">${head}<div class="tm-none">Not enough recent box-score data.</div></div>`;
+  let thin = false;
+  const rows = TM_POS.map(g => {
+    const sparse = (pd.ranks?.[g]?.pts?.value ?? 99) < 2;   // almost no opposing minutes classified here
+    thin = thin || sparse;
+    const cells = TM_CATS.map(([k]) => {
+      const c = pd.ranks?.[g]?.[k];
+      if (!c) return `<div class="tm-pc tm-avg"><b>—</b></div>`;
+      const cls = sparse ? 'avg' : c.rank >= c.of - 4 ? 'soft' : c.rank <= 5 ? 'tough' : 'avg';
+      return `<div class="tm-pc tm-${cls}${sparse ? ' tm-thin' : ''}" title="${g}: allows ${c.value} ${k} a game, ${tmOrd(c.rank)} fewest of ${c.of}"><b>${c.value}</b><i>${tmOrd(c.rank)}</i></div>`;
+    }).join('');
+    return `<div class="tm-pr"><div class="tm-pl">${g}</div>${cells}</div>`;
+  }).join('');
+  return `<div class="tm-card">${head}<div class="tm-pg"><div class="tm-pr tm-hd"><div class="tm-pl"></div>${TM_CATS.map(([, l]) => `<div class="tm-pc-h">${l}</div>`).join('')}</div>${rows}</div>${thin ? '<div class="tm-pnote">Greyed: too few opposing minutes at this position.</div>' : ''}</div>`;
+}
+
+// ── Players tab: projected starters with last-10 averages and hot/cold ──
+const TM_FLAME = '<svg class="tm-fi tm-hot" viewBox="0 0 24 24" role="img" aria-label="Hot"><title>Hot: last 3 games trending above the last-10 average</title><path d="M12.5 2.5c.6 3.2-1.4 4.6-2.8 6.6C8.2 11.3 8 13 9 14.6c-1.8-.4-3-2-3-4.100C4.300 12 3.500 13.600 3.500 15.500a8.500 8.500 0 0017 0c0-4.600-3.300-6.800-5.300-8.800-.9-.9-1.600-2.200-2.700-4.200z" fill="currentColor"/></svg>';
+const TM_FLAKE = '<svg class="tm-fi tm-cold" viewBox="0 0 24 24" role="img" aria-label="Cold"><title>Cold: last 3 games trending below the last-10 average</title><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2.5v19M3.8 7.25l16.4 9.5M3.8 16.75l16.4-9.5"/><path d="M9.5 4.5L12 6.8l2.5-2.3M9.5 19.5L12 17.2l2.5 2.3"/></g></svg>';
+const TM_COLS = [['min', 'MIN'], ['pts', 'PTS'], ['reb', 'REB'], ['ast', 'AST'], ['fg3m', '3PM']];
+function tmPlayersCard(league, t, starters, roster) {
+  const rws = (starters || []).map(p => `
+    <div class="tm-rw" data-player="${escapeHtml(p.name)}">
+      <div class="tm-rw-av">${tmHeadshot(p)}</div>
+      <div class="tm-rw-n"><div class="tm-rw-nm"><span>${escapeHtml(p.name)}</span><span class="tm-form"></span></div><div class="tm-rw-p">${escapeHtml(p.position || '—')}</div></div>
+      ${TM_COLS.map(([k]) => `<span class="tm-rv tm-${k}">—</span>`).join('')}
+    </div>`).join('');
+  const head = `<div class="tm-rw tm-hd"><span></span><span></span>${TM_COLS.map(([k, l]) => `<span class="tm-rv tm-${k}">${l}</span>`).join('')}</div>`;
+  const inj = (roster?.injured || []).map(p =>
+    `<span class="tm-ij"><b>${escapeHtml(p.name)}</b><span class="tm-pill${/out/i.test(p.status) ? ' tm-neg' : ''}">${escapeHtml(String(p.status || '').toUpperCase())}</span></span>`).join('');
+  return `
+    <div class="tm-card">
+      <div class="tm-tk-h">${tmLogo(league, t, 'tm-sm')}<h3>${escapeHtml(tmShort(t))}</h3></div>
+      ${rws ? `<div class="tm-rws">${head}${rws}</div>` : '<div class="tm-none">No projected lineup available.</div>'}
+      <div class="tm-inj-row"><span class="tm-ik">INJURY REPORT</span>${inj || '<span class="tm-none">No one listed</span>'}</div>
+    </div>`;
+}
+// Fills the stat cells one player at a time. On NBA these go through the slow,
+// serialized nba_api bridge, so the page renders first and rows fill in as they land.
+async function loadMatchupPlayerStats(league, token) {
+  const route = league === 'wnba' ? '/api/wnba/player-stats' : '/api/player-stats';
+  for (const row of [...document.querySelectorAll('#matchup-result .tm-rw[data-player]')]) {
+    if (window._tmToken !== token) return;                // a newer scan replaced this page
+    try {
+      const d = await apiGet(`${route}?name=${encodeURIComponent(row.dataset.player)}`);
+      if (window._tmToken !== token || !d?.averages) continue;
+      for (const [k] of TM_COLS) {
+        const v = parseFloat(d.averages[k]);
+        const cell = row.querySelector(`.tm-rv.tm-${k}`);
+        if (cell && isFinite(v)) cell.textContent = v.toFixed(1);
+      }
+      row.querySelector('.tm-form').innerHTML = d.form === 'HOT' ? TM_FLAME : d.form === 'COLD' ? TM_FLAKE : '';
+    } catch (_) { /* leave dashes for a player the feed can't find */ }
+  }
+}
+
+// ── Games tab ──
+function tmLast5Card(league, t, games) {
+  const head = `<div class="tm-tk-h">${tmLogo(league, t, 'tm-sm')}<h3>${escapeHtml(tmShort(t))}</h3><span class="tm-strip">${(games || []).map(g => `<span class="tm-dot tm-${g.win ? 'pos' : 'neg'}">${g.result}</span>`).join('')}</span></div>`;
+  if (!games?.length) return `<div class="tm-card">${head}<div class="tm-none">No recent games found.</div></div>`;
+  const top = Math.max(1, ...games.map(g => parseInt(g.highScorer?.pts, 10) || 0));
+  const rows = [...games].reverse().map(g => {
+    const pts = parseInt(g.highScorer?.pts, 10) || 0;
+    return `<div class="tm-lg"><span class="tm-pill tm-${g.win ? 'pos' : 'neg'}">${g.result}</span>
+      <div class="tm-lg-g"><div class="tm-lg-o">${g.isHome ? 'vs' : '@'} ${escapeHtml(tmShort(g.opponent))}</div><div class="tm-lg-d">${escapeHtml(tmDate(g.date))}</div></div>
+      <div class="tm-lg-sc">${g.ownScore}-${g.oppScore}</div>
+      <div class="tm-lg-hs"><div class="tm-lg-hn"><span>${escapeHtml(g.highScorer?.name || '—')}</span><b>${pts || '—'}</b></div><div class="tm-bar1"><i style="width:${(pts / top * 100).toFixed(0)}%"></i></div></div></div>`;
+  }).join('');
+  return `<div class="tm-card">${head}<div class="tm-lg-head"><span></span><span>GAME</span><span>SCORE</span><span>TOP SCORER</span></div>${rows}</div>`;
+}
+function tmH2HCard(h2h, t1, t2) {
+  if (!h2h?.length) return `<div class="tm-card tm-h2h"><div class="tm-tk-h"><h3>Head to head</h3><span class="tm-hint">this season</span></div><div class="tm-none">No meetings yet this season.</div></div>`;
+  const wins1 = h2h.filter(g => g.win).length;
+  let streak;
+  if (wins1 === 0 || wins1 === h2h.length) {
+    streak = `${tmShort(wins1 ? t1 : t2)} won ${h2h.length === 1 ? 'the meeting' : 'all ' + h2h.length}`;
+  } else {
+    const lastWin = h2h[h2h.length - 1].win;
+    let n = 0;
+    for (let i = h2h.length - 1; i >= 0 && h2h[i].win === lastWin; i--) n++;
+    streak = `${tmShort(lastWin ? t1 : t2)} won the last ${n}`;
+  }
+  const meets = h2h.map(g => `<div class="tm-mc"><span class="tm-mc-d">${escapeHtml(tmDate(g.date))}</span><span class="${g.win ? 'tm-win' : ''}">${escapeHtml(tmShort(t1))} ${g.ownScore}</span><span class="${g.win ? '' : 'tm-win'}">${escapeHtml(tmShort(t2))} ${g.oppScore}</span></div>`).join('');
+  return `<div class="tm-card tm-h2h"><div class="tm-tk-h"><h3>Head to head</h3><span class="tm-hint">this season</span><span class="tm-streak-t">${escapeHtml(streak)}</span></div><div class="tm-meets">${meets}</div></div>`;
+}
+
+// ── tabs ──
+const TM_TABS = [['matchup', 'Matchup'], ['breakdown', 'Breakdown'], ['players', 'Players'], ['games', 'Games']];
+function tmShowTab(id) {
+  document.querySelectorAll('#matchup-result .tm-tab').forEach(b => {
+    const on = b.dataset.p === id;
+    b.setAttribute('aria-selected', on);
+    b.tabIndex = on ? 0 : -1;
+  });
+  document.querySelectorAll('#matchup-result .tm-panel').forEach(p => { p.hidden = p.id !== 'tm-p-' + id; });
+}
+function tmTabKey(e) {
+  const tabs = [...document.querySelectorAll('#matchup-result .tm-tab')];
+  const i = tabs.indexOf(e.currentTarget);
+  const n = e.key === 'ArrowRight' ? i + 1 : e.key === 'ArrowLeft' ? i - 1 : null;
+  if (n === null) return;
+  const next = tabs[(n + tabs.length) % tabs.length];
+  next.focus();
+  tmShowTab(next.dataset.p);
+}
+
+function renderMatchupDashboard(compare, t1, t2, league, r1, r2, odds, posDef1, posDef2) {
+  const div = document.getElementById('matchup-result');
+  const s1 = compare.team1.stats, s2 = compare.team2.stats;
+  const st1 = compare.team1.projectedStarters?.starters, st2 = compare.team2.projectedStarters?.starters;
+  div.innerHTML = `
+    <div class="tm">
+      ${tmHeader(league, t1, t2, s1, s2, odds)}
+      <nav class="tm-tabs" role="tablist" aria-label="Matchup sections">
+        ${TM_TABS.map(([id, label], i) => `<button class="tm-tab" role="tab" id="tm-t-${id}" data-p="${id}" aria-selected="${i === 0}" aria-controls="tm-p-${id}"${i ? ' tabindex="-1"' : ''} onclick="tmShowTab('${id}')" onkeydown="tmTabKey(event)">${label}</button>`).join('')}
+      </nav>
+
+      <section class="tm-panel" id="tm-p-matchup" role="tabpanel" aria-labelledby="tm-t-matchup">
+        <div class="tm-sec-h"><h2>Team stats</h2><span class="tm-hint">bars = league rank · green top 5 · red bottom 5</span></div>
+        ${tmStatsCard(s1, s2, t1, t2)}
+        <div class="tm-sec-h"><h2>Defense by position</h2><span class="tm-hint tm-legend"><i class="tm-lg-soft"></i>soft spot <i class="tm-lg-tough"></i>tough</span></div>
+        <div class="tm-two">${tmPosDefCard(league, t1, posDef1)}${tmPosDefCard(league, t2, posDef2)}</div>
+      </section>
+
+      <section class="tm-panel" id="tm-p-breakdown" role="tabpanel" aria-labelledby="tm-t-breakdown" hidden>
+        <div id="tm-breakdown-body"><div class="tm-card tm-wait"><div class="spinner" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:8px;"></div>Writing the offense and defense breakdown from this game's live data...</div></div>
+      </section>
+
+      <section class="tm-panel" id="tm-p-players" role="tabpanel" aria-labelledby="tm-t-players" hidden>
+        <div class="tm-sec-h"><h2>Starting lineups</h2><span class="tm-hint tm-legend2">last-10 averages per game <span class="tm-lgd">${TM_FLAME} hot</span><span class="tm-lgd">${TM_FLAKE} cold</span></span></div>
+        <div class="tm-two">${tmPlayersCard(league, t1, st1, r1)}${tmPlayersCard(league, t2, st2, r2)}</div>
+        <p class="tm-src">Projected from each team's last game, adjusted for the current injury report. No official pregame lineup feed exists.</p>
+      </section>
+
+      <section class="tm-panel" id="tm-p-games" role="tabpanel" aria-labelledby="tm-t-games" hidden>
+        <div class="tm-two">${tmLast5Card(league, t1, compare.team1.last5)}${tmLast5Card(league, t2, compare.team2.last5)}</div>
+        ${tmH2HCard(compare.h2h, t1, t2)}
+      </section>
+    </div>`;
+}
+
+// ── Breakdown tab: written offense / defense read, from the same live data ──
+const TM_RISK = { LOW: [1, 'pos'], MODERATE: [2, 'mid'], HIGH: [3, 'neg'] };
+function tmBreakdownHtml(w, league, t1, t2) {
+  const card = (t, x) => `<div class="tm-card tm-wr"><div class="tm-tk-h">${tmLogo(league, t, 'tm-sm')}<h3>${escapeHtml(tmShort(t))}</h3></div>
+    <div class="tm-wr-l">OFFENSE</div><p>${escapeHtml(x.offense || 'Not enough data to say.')}</p>
+    <div class="tm-wr-l">DEFENSE</div><p>${escapeHtml(x.defense || 'Not enough data to say.')}</p></div>`;
+  const lvl = String(w.blowout?.level || '').toUpperCase();
+  const [n, k] = TM_RISK[lvl] || [2, 'mid'];
+  const meter = [0, 1, 2].map(i => `<i class="${i < n ? 'tm-' + k : ''}"></i>`).join('');
+  return `
+    <div class="tm-two">${card(t1, w.team1 || {})}${card(t2, w.team2 || {})}</div>
+    <div class="tm-card tm-blow tm-${k}"><span class="tm-wr-l">BLOWOUT RISK</span><span class="tm-meter" aria-hidden="true">${meter}</span><span class="tm-pill tm-${k}">${escapeHtml(TM_RISK[lvl] ? lvl : 'MODERATE')}</span><span class="tm-blow-n">${escapeHtml(w.blowout?.note || '')}</span></div>
+    <p class="tm-src">Written by WIN AI from this game's live stats, shot zones, position defense and availability. Season-to-date numbers, so rotations in a preseason or playoff game may differ.</p>`;
+}
+
+async function loadMatchupAIAnalysis(compare, t1, t2, league, zone1, zone2, r1, r2, posDef1, posDef2, odds, token) {
+  const body = document.getElementById('tm-breakdown-body');
+  const A = compare.team1, B = compare.team2;
+  const rk = (s, k) => (s?.[k + 'Rank'] != null ? ` (#${s[k + 'Rank']}/${s.totalTeams || '?'})` : '');
+  const statsLine = (t, s) => !s ? '' : `${t} LIVE STATS: record ${s.record}, pace ${s.pace ?? 'unavailable'}${rk(s, 'pace')}, offensive rating ${s.offRating ?? 'unavailable'}${rk(s, 'offRating')}, defensive rating ${s.defRating ?? 'unavailable'}${rk(s, 'defRating')}, PPG ${s.ppg}${rk(s, 'ppg')}, RPG ${s.rpg}${rk(s, 'rpg')}, APG ${s.apg}${rk(s, 'apg')}, turnovers ${s.topg}${rk(s, 'topg')}, FG% ${s.fgPct}${rk(s, 'fgPct')}, 3P% ${s.fg3Pct}${rk(s, 'fg3Pct')}; ranks are 1 = best`;
+  const usageLine = (t, u) => u?.length ? `${t} TOP USAGE: ` + u.map(p => `${p.name} ${p.usgPct}% USG (${p.ppg ?? '—'} PPG, ${p.minutes} MIN)`).join(', ') : '';
+  const posLine = (t, pd) => !pd?.available ? '' : `${t} DEFENSE BY POSITION (real box scores, last ${pd.gamesAnalyzed} games; rank 1 = allows the least): ` +
+    Object.entries(pd.byPosition || {}).map(([g, v]) => { const r = pd.ranks?.[g]?.pts; return `${g} allow ${v.pts} pts${r ? ` (#${r.rank}/${r.of})` : ''}, ${v.reb} reb, ${v.ast} ast, ${v.fg3m} threes per game`; }).join('; ');
+  const zoneLine = (t, z) => z?.zones?.length ? `${t} SHOT DEFENSE BY ZONE: ` + z.zones.filter(x => x.fga > 0).map(x => `${x.zone} allows ${x.fgPct}% (league ${x.leagueAvgPct ?? 'n/a'}%${x.rank ? `, rank ${x.rank}/${x.rankOf}` : ''})`).join(', ') : '';
+  const lastLine = (t, g) => g?.length ? `${t} LAST 5: ` + g.map(x => `${x.result} ${x.ownScore}-${x.oppScore} ${x.isHome ? 'vs' : '@'} ${x.opponent}`).join(', ') : '';
+  const outLine = (t, r) => `${t} AVAILABILITY: ` + ((r?.injured || []).length ? r.injured.map(p => `${p.name} (${p.status})`).join(', ') : 'no one listed');
+  const mktLine = odds?.available ? `MARKET (${odds.provider || 'sportsbook'}): spread ${odds.home?.name} ${odds.spread?.home}, total ${odds.total}` : '';
+  const sn = (t, n) => (n || []).length ? `${t} SCOUT NOTES (the user's own film study): ` + n.map(x => `[${(x.category || 'other').toUpperCase()}] ${x.text}`).join(' | ') : '';
+  const data = [statsLine(t1, A.stats), statsLine(t2, B.stats), usageLine(t1, A.topUsage), usageLine(t2, B.topUsage),
+    posLine(t1, posDef1), posLine(t2, posDef2), zoneLine(t1, zone1), zoneLine(t2, zone2),
+    lastLine(t1, A.last5), lastLine(t2, B.last5), outLine(t1, r1), outLine(t2, r2), mktLine,
+    sn(t1, compare.scoutNotes?.team1), sn(t2, compare.scoutNotes?.team2)].filter(Boolean).join('\n');
+
+  const prompt = `You are WIN AI. Write a short scouting read of ${t1} vs ${t2} (${league.toUpperCase()}) for player prop bettors.
+
+VERIFIED LIVE DATA (use only this; do not invent scheme, film, or lineup claims that the data does not support):
+${data}
+
+Rules: plain flowing prose, no bullet points, no bracketed tags, no markdown. Name real players only from the data. Reference concrete numbers sparingly (one or two per paragraph). If the data is thin on a point, say less rather than guess. Stats are season-to-date, so rotations in a preseason or playoff game may differ. If scout notes are given, work them in as real observed intel.
+
+Return ONLY valid JSON in exactly this shape:
+{
+  "team1": {"offense": "2-3 sentences on how ${t1} score: pace, who drives usage, shooting profile, weaknesses.", "defense": "2-3 sentences on how ${t1} defend: rating, which zones and positions they hold down or give up, and what that means for opposing players' props."},
+  "team2": {"offense": "same for ${t2}", "defense": "same for ${t2}"},
+  "blowout": {"level": "LOW or MODERATE or HIGH", "note": "one sentence${odds?.available ? ' using the spread and total' : ''}"}
+}`;
+  try {
+    const res = await apiPost('/api/analyze', { prompt });
+    if (window._tmToken !== token || !body) return;
+    const json = (res.response.match(/\{[\s\S]*\}/) || [])[0];
+    body.innerHTML = tmBreakdownHtml(JSON.parse(json), league, t1, t2);
+  } catch (err) {
+    if (window._tmToken === token && body) body.innerHTML = `<div class="tm-card tm-wait" style="color:var(--neg);">The written breakdown failed to load: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+async function analyzeMatchup() {
+  const league = document.getElementById('matchup-league').value;
+  const t1 = document.getElementById('matchup-team1').value;
+  const t2 = document.getElementById('matchup-team2').value;
+  if (!t1 || !t2 || t1 === t2) { alert('Pick two different teams.'); return; }
+
+  const div = document.getElementById('matchup-result');
+  div.innerHTML = `
+    <div class="sk sk-matchup-title"></div>
+    <div class="sk sk-matchup-bar"></div>
+    <div class="sk-matchup-grid">
+      <div class="sk sk-matchup-chip"></div><div class="sk sk-matchup-chip"></div><div class="sk sk-matchup-chip"></div>
+      <div class="sk sk-matchup-chip"></div><div class="sk sk-matchup-chip"></div><div class="sk sk-matchup-chip"></div>
+    </div>`;
+
+  // A later scan (or a different page) invalidates this one: the slow parts below
+  // check the token before they touch the DOM.
+  const token = window._tmToken = Date.now() + Math.random();
+  const rosterRoute = league === 'wnba' ? '/api/wnba/roster' : '/api/roster';
+  let compare, zone1, zone2, r1, r2, odds, posDef1, posDef2;
+  try {
+    [compare, zone1, zone2, r1, r2, odds, posDef1, posDef2] = await Promise.all([
+      apiGet(`/api/team-compare?league=${league}&team1=${encodeURIComponent(t1)}&team2=${encodeURIComponent(t2)}`),
+      // Real opponent-defense-by-zone, the same shot-chart bridge the single-player
+      // analyzer uses. A team the bridge can't resolve only costs the written
+      // breakdown one data line; it shouldn't sink the page.
+      apiGet(`/api/shotchart?league=${league}&mode=defense&name=${encodeURIComponent(t1)}`).catch(() => null),
+      apiGet(`/api/shotchart?league=${league}&mode=defense&name=${encodeURIComponent(t2)}`).catch(() => null),
+      apiGet(`${rosterRoute}?team=${encodeURIComponent(t1)}`).catch(() => null),
+      apiGet(`${rosterRoute}?team=${encodeURIComponent(t2)}`).catch(() => null),
+      // Real spread/moneyline/total (ESPN, DraftKings-sourced, free): an honest
+      // {available:false} when the teams aren't scheduled to meet soon.
+      apiGet(`/api/game-odds?league=${league}&team1=${encodeURIComponent(t1)}&team2=${encodeURIComponent(t2)}`).catch(() => ({ available: false })),
+      apiGet(`/api/position-category-defense?league=${league}&team=${encodeURIComponent(t1)}`).catch(() => ({ available: false })),
+      apiGet(`/api/position-category-defense?league=${league}&team=${encodeURIComponent(t2)}`).catch(() => ({ available: false })),
+    ]);
+  } catch (err) {
+    div.innerHTML = `<div style="color:var(--red);font-family:'Space Grotesk',sans-serif;font-size:12px;padding:20px;">ERROR: ${err.message}</div>`;
+    return;
+  }
+  if (window._tmToken !== token) return;
+
+  renderMatchupDashboard(compare, t1, t2, league, r1, r2, odds, posDef1, posDef2);
+  loadMatchupAIAnalysis(compare, t1, t2, league, zone1, zone2, r1, r2, posDef1, posDef2, odds, token);
+  loadMatchupPlayerStats(league, token);
+}
+
+
+
+
+
+
+
+
+
 
 // Collapsible accordion — wraps every section below the odds banner.
 // bodyHtml may be a placeholder (e.g. a loading spinner) that gets swapped
@@ -3228,60 +3793,6 @@ function toggleAccordion(id) {
   document.getElementById(id)?.classList.toggle('open');
 }
 
-function renderMatchupDashboard(compare, t1, t2, targets, r1, r2, odds, posDef1, posDef2) {
-  const div = document.getElementById('matchup-result');
-  const s1 = compare.team1.stats, s2 = compare.team2.stats;
-
-  const h2hRows = (compare.h2h || []).slice(-6).reverse().map(g => `
-    <tr><td>${formatShortDate(g.date)}</td><td>${g.isHome ? `vs ${escapeHtml(g.opponent)}` : `@ ${escapeHtml(g.opponent)}`}</td>
-    <td class="${g.win?'h2h-win':'h2h-loss'}">${g.ownScore}-${g.oppScore} ${g.win?'W':'L'}</td></tr>`).join('');
-
-  const realInjured = [
-    ...(r1?.injured||[]).map(p => ({ ...p, team: t1 })),
-    ...(r2?.injured||[]).map(p => ({ ...p, team: t2 })),
-  ];
-
-  const last5Body = `
-    <div class="tc-last5-team"><div class="tc-last5-label">${escapeHtml(t1)}</div>${renderLast5Table(compare.team1.last5, t1)}</div>
-    <div class="tc-last5-team"><div class="tc-last5-label">${escapeHtml(t2)}</div>${renderLast5Table(compare.team2.last5, t2)}</div>`;
-
-  const h2hBody = h2hRows
-    ? `<div class="tc-last5-scroll"><table class="h2h-table"><thead><tr><th>Date</th><th>Game</th><th>Result</th></tr></thead><tbody>${h2hRows}</tbody></table></div>`
-    : '<div class="top-plays-empty">No meetings yet this season</div>';
-
-  const gameflowLoadingBody = `<div class="top-plays-empty" style="padding:10px 0;"><div class="spinner" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:8px;"></div>Loading AI gameflow + defensive projection...</div>`;
-  const posDefBody = renderPositionCategoryTable(t1, posDef1) + `<div style="height:14px;"></div>` + renderPositionCategoryTable(t2, posDef2);
-
-  // Preview badges — real counts pulled from the same data the section
-  // body renders from, so a collapsed row still signals whether it's
-  // worth opening (e.g. an empty injury report vs. 3 players listed).
-  const injuryPreview = realInjured.length
-    ? `<span class="mu-accordion-preview flag">${realInjured.length} LISTED</span>`
-    : `<span class="mu-accordion-preview ok">NONE LISTED</span>`;
-  const targetsPreview = targets?.length
-    ? `<span class="mu-accordion-preview">${targets.length} TARGET${targets.length===1?'':'S'}</span>`
-    : '';
-  const h2hCount = (compare.h2h || []).length;
-  const h2hPreview = h2hCount
-    ? `<span class="mu-accordion-preview">${h2hCount} MEETING${h2hCount===1?'':'S'}</span>`
-    : '';
-
-  div.innerHTML = `
-    <div class="tc-header">
-      <div class="tc-title">${escapeHtml(t1).toUpperCase()} VS ${escapeHtml(t2).toUpperCase()}</div>
-      ${renderFavorBar(s1, s2, t1, t2)}
-    </div>
-    ${renderOddsBanner(odds, t1, t2)}
-    ${renderAccordionItem('acc-stats', 'Team Stats', renderStatTable(s1, s2, t1, t2), true)}
-    ${renderDataQualityCard(s1, s2, t1, t2)}
-    ${renderAccordionItem('acc-gameflow', 'Gameflow & Defensive Breakdown', gameflowLoadingBody, false)}
-    ${renderAccordionItem('acc-posdef', 'Defense by Position (PTS/REB/AST/3PM)', posDefBody, false)}
-    ${renderAccordionItem('acc-injury', 'Injury & Availability Report', renderInjuryReport(realInjured), false, injuryPreview)}
-    ${renderAccordionItem('acc-targets', 'Top Targets — by real usage + form', renderTargetBox(targets, t1, t2), false, targetsPreview)}
-    ${renderAccordionItem('acc-lineups', 'Projected Starting Lineup', renderLineupBox(t1, t2, compare.team1.projectedStarters?.starters, compare.team2.projectedStarters?.starters), false)}
-    ${renderAccordionItem('acc-last5', 'Last 5 Games', last5Body, false)}
-    ${renderAccordionItem('acc-h2h', 'Head-to-Head (this season)', h2hBody, false, h2hPreview)}`;
-}
 
 // ── Daily Matchups AI breakdown — structured cards, real data only ──
 const PROP_TYPE_MAP = {
@@ -3305,24 +3816,6 @@ function renderResultHeadshot(league, playerId, name) {
     : `<div class="result-avatar-fallback">${escapeHtml(initials(name))}</div>`;
 }
 
-// Matchup-breakdown sections contain "PLAYER: X | TEAM: Y" lines whose
-// leading word ("PLAYER") itself matches the generic extractSection's
-// "next ALL-CAPS header" boundary pattern — that regex would (and did)
-// stop capturing after the very first player line. Bound instead by the
-// known list of section headers this prompt actually uses — passed in
-// explicitly since the two GAMEFLOW BREAKDOWN headers are per-team names,
-// not a fixed constant.
-function matchupSectionNames(t1, t2) {
-  return [`GAMEFLOW BREAKDOWN ${(t1||'').toUpperCase()}`, `GAMEFLOW BREAKDOWN ${(t2||'').toUpperCase()}`, 'DEFENSIVE SCHEME BREAKDOWN', 'BLOWOUT RISK'];
-}
-function extractMatchupSection(text, header, allSections) {
-  const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
-  const others = (allSections || []).filter(h => h !== header).map(esc).join('|');
-  // Allow an optional markdown prefix (#, *, etc.) before section headers —
-  // the model doesn't always emit plain-text headers as instructed.
-  const re = new RegExp(esc(header)+':?\\s*(.+?)(?=\\n+[#*\\s]*(?:'+others+'):|$)','is');
-  return (text.match(re)||[])[1]?.trim()||'';
-}
 
 function jumpToAnalyzePlayer(name, propText, opponent, league) {
   const tabIdx = league === 'wnba' ? 2 : 1;
@@ -3335,200 +3828,11 @@ function jumpToAnalyzePlayer(name, propText, opponent, league) {
   if (propSel) propSel.value = mapPropType(propText);
 }
 
-function renderDataQualityCard(s1, s2, t1, t2) {
-  const bothLive = s1?.pace != null && s2?.pace != null;
-  if (bothLive) return `<div class="ai-disclaimer" style="margin-bottom:14px;">✓ Live nba.com pace/ratings and ESPN rosters injected into this analysis.</div>`;
-  const row = (label, s) => {
-    const live = s?.pace != null && s?.offRating != null && s?.defRating != null;
-    return `<div class="mu-dq-row"><span class="mu-dq-team">${escapeHtml(label)}</span><span class="mu-dq-tag ${live?'live':'warn'}">${live ? '✓ Pace/Ratings LIVE (nba.com)' : '⚠ Pace/Ratings UNVERIFIED' + (s?.source ? ' — ' + escapeHtml(s.source) : '')}</span></div>`;
-  };
-  return `
-    <div class="mu-data-quality">
-      <div class="mu-dq-flag">⚠ DATA QUALITY FLAG</div>
-      ${row(t1, s1)}${row(t2, s2)}
-      <div class="mu-dq-note">Teams flagged unverified are missing pace/rating data from stats.nba.com (newer expansion teams aren't onboarded there yet) — those projections lean more on PPG/roster estimates and carry lower confidence.</div>
-    </div>`;
-}
 
-// Real injury/availability data only (ESPN roster feed) — no AI-suggested
-// fade commentary mixed in; healthy players don't belong on an injury report.
-function renderInjuryReport(realInjured) {
-  if (!realInjured.length) return '<div class="top-plays-empty">No players currently listed as injured or questionable.</div>';
-  const rows = realInjured.map(p => {
-    const cls = /out/i.test(p.status) ? 'out' : 'gtd';
-    return `<div class="mu-avoid-row"><span class="mu-avoid-x">✕</span><span class="mu-avoid-name">${escapeHtml(p.name)}</span><span class="mu-avoid-reason">${escapeHtml(p.team)} — injury report</span><span class="mu-avoid-status ${cls}">${escapeHtml(p.status)} · LIVE</span></div>`;
-  });
-  return `<div class="mu-avoid-list">${rows.join('')}</div>`;
-}
 
-function riskLevel(text) {
-  const t = (text||'').toUpperCase();
-  if (t.includes('HIGH')) return 'high';
-  if (t.includes('LOW')) return 'low';
-  return 'moderate';
-}
 
-// Combined Gameflow + Defensive Scheme Breakdown + Blowout Risk — one
-// accordion section instead of three, per-team gameflow prose on top and
-// the shared defensive read + risk badge below it.
-function renderGameflowDefenseCard(gameflow1, gameflow2, t1, t2, defenseText, blowoutText) {
-  const lvl = riskLevel(blowoutText);
-  return `
-    <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">[AI] projected, not real play-by-play data</div>
-    <div class="tc-gameflow-cols">
-      <div><div class="tc-gameflow-team">${escapeHtml(t1)}</div><div class="tc-gameflow-body">${escapeHtml(gameflow1 || 'Not flagged.')}</div></div>
-      <div><div class="tc-gameflow-team">${escapeHtml(t2)}</div><div class="tc-gameflow-body">${escapeHtml(gameflow2 || 'Not flagged.')}</div></div>
-    </div>
-    <div class="mu-two-col" style="margin-top:14px;">
-      <div class="mu-info-card">
-        <div class="mu-section-title" style="margin-top:0;">Defensive Scheme Breakdown</div>
-        <div style="font-size:12px;line-height:1.7;color:var(--text);white-space:pre-wrap;">${escapeHtml(defenseText || 'Not flagged.')}</div>
-      </div>
-      <div class="mu-info-card risk">
-        <div class="mu-section-title" style="margin-top:0;">Blowout Risk</div>
-        <div class="mu-risk-badge ${lvl}">${lvl.toUpperCase()}</div>
-        <div style="font-size:12px;line-height:1.7;color:var(--text);white-space:pre-wrap;">${escapeHtml(blowoutText || 'Not flagged.')}</div>
-      </div>
-    </div>`;
-}
 
-async function loadMatchupAIAnalysis(compare, t1, t2, league, zone1, zone2, r1, r2, posDef1, posDef2) {
-  const s1 = compare.team1.stats, s2 = compare.team2.stats;
-  let liveData = '';
-  if (s1) liveData += `\n${t1} LIVE STATS: Record=${s1.record}, Pace=${s1.pace ?? 'unavailable'}, OffRtg=${s1.offRating ?? 'unavailable'}, DefRtg=${s1.defRating ?? 'unavailable'}, PPG=${s1.ppg}`;
-  if (s2) liveData += `\n${t2} LIVE STATS: Record=${s2.record}, Pace=${s2.pace ?? 'unavailable'}, OffRtg=${s2.offRating ?? 'unavailable'}, DefRtg=${s2.defRating ?? 'unavailable'}, PPG=${s2.ppg}`;
 
-  // Real per-player usage rate.
-  const u1 = compare.team1.topUsage, u2 = compare.team2.topUsage;
-  if (u1?.length) liveData += `\n${t1} TOP USAGE (stats.nba.com, real season data): ` + u1.map(p => `${p.name} ${p.usgPct}% USG (${p.ppg ?? '—'} PPG, ${p.minutes} MIN)`).join(', ');
-  if (u2?.length) liveData += `\n${t2} TOP USAGE (stats.nba.com, real season data): ` + u2.map(p => `${p.name} ${p.usgPct}% USG (${p.ppg ?? '—'} PPG, ${p.minutes} MIN)`).join(', ');
-
-  // Real defense-by-position (NBA tracking data — null for WNBA, no
-  // fabricated numbers when the source doesn't exist).
-  const pd1 = compare.team1.positionDefense, pd2 = compare.team2.positionDefense;
-  if (pd1) liveData += `\n${t1} DEFENSE BY POSITION (stats.nba.com tracking data): ` + Object.entries(pd1).filter(([,v])=>v).map(([g,v]) => `vs ${g} allows ${v.defFgPct}% FG (league-normal ${v.normalFgPct}%)`).join(', ');
-  if (pd2) liveData += `\n${t2} DEFENSE BY POSITION (stats.nba.com tracking data): ` + Object.entries(pd2).filter(([,v])=>v).map(([g,v]) => `vs ${g} allows ${v.defFgPct}% FG (league-normal ${v.normalFgPct}%)`).join(', ');
-
-  // Real PTS/REB/AST/3PM allowed by position group, built from actual box
-  // scores (not a stats.nba.com stat — that API only tracks FG% by
-  // position, the block above). Complements it with raw production
-  // allowed rather than just shooting efficiency.
-  const posLine = (teamLabel, posDef) => {
-    if (!posDef?.available) return '';
-    const parts = Object.entries(posDef.byPosition || {}).map(([group, v]) => {
-      const r = posDef.ranks?.[group];
-      const rankTxt = (cat) => r?.[cat] ? ` (#${r[cat].rank}/${r[cat].of})` : '';
-      return `${group} allow ${v.pts}pts${rankTxt('pts')}, ${v.reb}reb${rankTxt('reb')}, ${v.ast}ast${rankTxt('ast')}, ${v.fg3m} threes made${rankTxt('fg3m')} per game`;
-    });
-    return `\n${teamLabel} DEFENSE BY POSITION — REAL PRODUCTION ALLOWED (from actual box scores, last ${posDef.gamesAnalyzed} games): ` + parts.join('; ');
-  };
-  liveData += posLine(t1, posDef1);
-  liveData += posLine(t2, posDef2);
-
-  // Real opponent-defense-by-zone — "where teams allow/don't allow points".
-  if (zone1?.zones?.length) liveData += `\n${t1} SHOT DEFENSE BY ZONE (real, verified): ` + zone1.zones.filter(z=>z.fga>0).map(z => `${z.zone} allows ${z.fgPct}% (league avg ${z.leagueAvgPct ?? '—'}%)`).join(', ');
-  if (zone2?.zones?.length) liveData += `\n${t2} SHOT DEFENSE BY ZONE (real, verified): ` + zone2.zones.filter(z=>z.fga>0).map(z => `${z.zone} allows ${z.fgPct}% (league avg ${z.leagueAvgPct ?? '—'}%)`).join(', ');
-
-  let rosterData = '';
-  if (r1?.players?.length) {
-    rosterData += `\n${t1} ROSTER (ESPN, live): ${r1.players.map(p=>p.name).slice(0,10).join(', ')}`;
-  }
-  if (r2?.players?.length) {
-    rosterData += `\n${t2} ROSTER (ESPN, live): ${r2.players.map(p=>p.name).slice(0,10).join(', ')}`;
-  }
-
-  // Your own film reads on each team, if any — not derived from stats.
-  const sn1 = compare.scoutNotes?.team1 || [], sn2 = compare.scoutNotes?.team2 || [];
-  let scoutData = '';
-  if (sn1.length) scoutData += `\n${t1} SCOUT NOTES (your own film study, not a stats feed): ` + sn1.map(n => `[${(n.category||'other').toUpperCase()}] ${n.text}`).join(' | ');
-  if (sn2.length) scoutData += `\n${t2} SCOUT NOTES (your own film study, not a stats feed): ` + sn2.map(n => `[${(n.category||'other').toUpperCase()}] ${n.text}`).join(' | ');
-
-  const gameflowBody = document.querySelector('#acc-gameflow .mu-accordion-body');
-
-  try {
-    const prompt = `You are WIN AI. Analyze ${t1} vs ${t2} (${league.toUpperCase()}) for player prop betting.
-${liveData ? `\nVERIFIED LIVE DATA:\n${liveData}` : ''}
-${rosterData ? `\nESPN ROSTERS (live):\n${rosterData}` : ''}
-${scoutData ? `\nSCOUT NOTES — real film study from the user, not a stat feed. Weigh as directly relevant intel, not a guess:${scoutData}` : ''}
-${(liveData || rosterData) ? `\nUse verified data above and tag all stats as [LIVE] or [AI], EXCEPT in the GAMEFLOW BREAKDOWN sections — those must read as clean flowing prose with no bracketed citations at all (scout notes can still shape that prose, just without a [SCOUT] tag cluttering it).` : ''}
-${scoutData ? `\nIn DEFENSIVE SCHEME BREAKDOWN specifically, if a team has SCOUT NOTES above, work them in directly and tag that content [SCOUT] — this is real observed intel the stats can't capture (a scheme tendency, a rotation habit, anything from actually watching them play).` : ''}
-
-Respond with exactly these sections, in this order:
-
-GAMEFLOW BREAKDOWN ${t1.toUpperCase()}:
-ONE tight paragraph (3-4 sentences, no quarter-by-quarter breakdown, no [LIVE]/[AI] tags) covering exactly three things for ${t1}: their primary offensive strategy, the key matchup mismatch to watch against ${t2}, and expected bench impact. Write in natural flowing prose, using the stats as supporting facts rather than citations. End with a brief note that this is a projection, not a certainty.
-
-GAMEFLOW BREAKDOWN ${t2.toUpperCase()}:
-Same structure, for ${t2}.
-
-DEFENSIVE SCHEME BREAKDOWN:
-Prose, tag numbers as [LIVE] or [AI] (and [SCOUT] where applicable, per the instruction above).
-
-BLOWOUT RISK:
-Start the line with LOW, MODERATE, or HIGH, then 1-2 sentences.`;
-
-    const res = await apiPost('/api/analyze', { prompt });
-    const raw = res.response;
-    const sections  = matchupSectionNames(t1, t2);
-    const gameflow1 = extractMatchupSection(raw, `GAMEFLOW BREAKDOWN ${t1.toUpperCase()}`, sections);
-    const gameflow2 = extractMatchupSection(raw, `GAMEFLOW BREAKDOWN ${t2.toUpperCase()}`, sections);
-    const defense   = extractMatchupSection(raw, 'DEFENSIVE SCHEME BREAKDOWN', sections);
-    const blowout   = extractMatchupSection(raw, 'BLOWOUT RISK', sections);
-
-    if (gameflowBody) gameflowBody.innerHTML = renderGameflowDefenseCard(gameflow1, gameflow2, t1, t2, defense, blowout);
-  } catch (err) {
-    if (gameflowBody) gameflowBody.innerHTML = `<div style="color:var(--red);font-family:'Space Grotesk',sans-serif;font-size:11px;">AI analysis failed: ${escapeHtml(err.message)}</div>`;
-  }
-}
-
-async function analyzeMatchup() {
-  const league = document.getElementById('matchup-league').value;
-  const t1 = document.getElementById('matchup-team1').value;
-  const t2 = document.getElementById('matchup-team2').value;
-  if (!t1 || !t2 || t1 === t2) { alert('Pick two different teams.'); return; }
-
-  const div = document.getElementById('matchup-result');
-  div.innerHTML = `
-    <div class="sk sk-matchup-title"></div>
-    <div class="sk sk-matchup-bar"></div>
-    <div class="sk-matchup-grid">
-      <div class="sk sk-matchup-chip"></div><div class="sk sk-matchup-chip"></div><div class="sk sk-matchup-chip"></div>
-      <div class="sk sk-matchup-chip"></div><div class="sk sk-matchup-chip"></div><div class="sk sk-matchup-chip"></div>
-    </div>`;
-
-  const rosterRoute = league === 'wnba' ? '/api/wnba/roster' : '/api/roster';
-  let compare, zone1, zone2, targetsRes, r1, r2, odds, posDef1, posDef2;
-  try {
-    [compare, zone1, zone2, targetsRes, r1, r2, odds, posDef1, posDef2] = await Promise.all([
-      apiGet(`/api/team-compare?league=${league}&team1=${encodeURIComponent(t1)}&team2=${encodeURIComponent(t2)}`),
-      // Real opponent-defense-by-zone — same shot-chart bridge already used
-      // by the single-player analyzer. Failure here shouldn't sink the
-      // whole matchup (a team the bridge can't resolve just shows "not
-      // available" in that one card instead of erroring the page).
-      apiGet(`/api/shotchart?league=${league}&mode=defense&name=${encodeURIComponent(t1)}`).catch(() => null),
-      apiGet(`/api/shotchart?league=${league}&mode=defense&name=${encodeURIComponent(t2)}`).catch(() => null),
-      // Real, data-driven top-3 targets (usage + recent form) — see
-      // /api/matchup-targets. On NBA this fans out through the slow,
-      // serialized nba_api bridge, so it can take longer than the rest.
-      apiGet(`/api/matchup-targets?league=${league}&team1=${encodeURIComponent(t1)}&team2=${encodeURIComponent(t2)}`).catch(() => ({ targets: [] })),
-      apiGet(`${rosterRoute}?team=${encodeURIComponent(t1)}`).catch(() => null),
-      apiGet(`${rosterRoute}?team=${encodeURIComponent(t2)}`).catch(() => null),
-      // Real spread/moneyline/total (ESPN, free) — honest {available:false}
-      // when the teams aren't scheduled to play each other soon.
-      apiGet(`/api/game-odds?league=${league}&team1=${encodeURIComponent(t1)}&team2=${encodeURIComponent(t2)}`).catch(() => ({ available: false })),
-      // Fetched upfront (not after render) so the AI prompt below can
-      // actually reference it, not just the visible card.
-      apiGet(`/api/position-category-defense?league=${league}&team=${encodeURIComponent(t1)}`).catch(() => ({ available: false })),
-      apiGet(`/api/position-category-defense?league=${league}&team=${encodeURIComponent(t2)}`).catch(() => ({ available: false })),
-    ]);
-  } catch (err) {
-    div.innerHTML = `<div style="color:var(--red);font-family:'Space Grotesk',sans-serif;font-size:12px;padding:20px;">ERROR: ${err.message}</div>`;
-    return;
-  }
-
-  renderMatchupDashboard(compare, t1, t2, targetsRes?.targets, r1, r2, odds, posDef1, posDef2);
-  loadMatchupAIAnalysis(compare, t1, t2, league, zone1, zone2, r1, r2, posDef1, posDef2);
-}
 
 // ── HISTORY ───────────────────────────────────────────
 function renderHistory() {
