@@ -36,18 +36,9 @@
   .ticker-item{flex-shrink:0;white-space:nowrap;color:var(--text);padding:3px 9px;border-radius:12px;background:var(--surface2);border:1px solid var(--border);}
   .ticker-item .t-time{color:var(--gold);margin-left:5px;}
   .ticker-empty{flex-shrink:0;white-space:nowrap;color:var(--muted);font-style:italic;}
-  .tabs{display:flex;gap:2px;padding:14px 28px 0;border-bottom:1px solid var(--border);overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;}
   /* Nothing hinted the tab bar scrolls — PROP LIST/HISTORY were only
      discoverable by accident. Fade overlays at either edge, shown only
      when there's actually more to scroll to in that direction. */
-  .tabs-wrap{position:relative;}
-  .tabs-fade{position:absolute;top:0;bottom:1px;width:32px;pointer-events:none;opacity:0;transition:opacity 0.15s;z-index:2;}
-  .tabs-fade.visible{opacity:1;}
-  .tabs-fade-left{left:0;background:linear-gradient(to right, var(--bg), transparent);}
-  .tabs-fade-right{right:0;background:linear-gradient(to left, var(--bg), transparent);}
-  .tab{font-family:'Space Grotesk',sans-serif;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;padding:9px 18px;border:1px solid transparent;border-bottom:none;border-radius:6px 6px 0 0;cursor:pointer;color:var(--muted);background:transparent;transition:all 0.15s;flex-shrink:0;white-space:nowrap;}
-  .tab.active{color:var(--gold);border-color:var(--border2);background:var(--surface);border-bottom:1px solid var(--surface);margin-bottom:-1px;box-shadow:inset 0 2px 0 0 var(--gold),0 -3px 10px -2px rgba(236,236,238,0.4);}
-  .tab:hover:not(.active){color:var(--text);}
   .panel{display:none;padding:24px 28px;}
   .panel.active{display:block;}
   .analyzer-grid{display:grid;grid-template-columns:340px 1fr;gap:20px;max-width:1360px;margin:0 auto;}
@@ -845,7 +836,6 @@
      red = risk / under; everything else is neutral gray. */
   .logo{font-family:var(--display);font-weight:800;font-size:30px;font-style:italic;letter-spacing:.02em;color:var(--text);}
   .logo span{font-style:normal;font-family:var(--display);font-weight:600;font-size:11px;letter-spacing:.2em;}
-  .tab{font-family:var(--display);font-weight:700;font-size:15px;letter-spacing:.1em;}
   .card-label,.top-plays-title,.section-divider,.mu-section-title,.rs-label,.tc-lineup-team{font-family:var(--display);font-weight:700;font-size:14px;letter-spacing:.12em;color:var(--muted);}
   .top-plays-title{color:var(--pos);}
   .ssb-label,.stat-chip .sl,.gl2-title,.gl2-tl,.gl2-rl,.gl2-hitlabel,.key-stats-title{font-family:var(--display);font-weight:700;letter-spacing:.1em;}
@@ -1243,6 +1233,33 @@
 .tm .tm-oc em{font-size:10px;white-space:nowrap}}
 @media (max-width:760px){.tm .tm-favtag{display:block;width:max-content;margin:4px 0 0}
 .tm .tm-th.tm-r .tm-favtag{margin-left:auto}}
+
+  /* Page navigation: one dropdown (sports + tools) instead of a scrolling tab strip */
+  .nav-bar{padding:12px 28px;border-bottom:1px solid var(--border);}
+  .nav-dd{position:relative;display:inline-block;}
+  .nav-btn{display:inline-flex;align-items:center;gap:12px;min-width:230px;justify-content:space-between;padding:9px 14px 9px 18px;background:var(--surface2);border:1px solid var(--border2);border-radius:10px;color:var(--text);font-family:var(--display);font-weight:800;font-size:21px;letter-spacing:.08em;cursor:pointer;}
+  .nav-btn:hover,.nav-btn[aria-expanded="true"]{background:var(--surface3);}
+  .nav-btn:focus-visible,.nav-item:focus-visible{outline:2px solid var(--muted2);outline-offset:2px;}
+  .nav-cur{flex:1;text-align:left;}
+  .nav-chev{width:18px;height:18px;flex:none;color:var(--muted2);transition:transform .15s;}
+  .nav-btn[aria-expanded="true"] .nav-chev{transform:rotate(180deg);}
+  .nav-count{background:var(--text);color:var(--bg);border-radius:10px;padding:1px 8px;font-family:var(--display);font-weight:800;font-size:13px;letter-spacing:.04em;vertical-align:2px;}
+  .nav-menu{position:absolute;top:calc(100% + 6px);left:0;min-width:100%;width:max-content;max-width:calc(100vw - 32px);background:var(--surface);border:1px solid var(--border2);border-radius:12px;padding:6px;box-shadow:0 16px 44px rgba(0,0,0,.6);z-index:300;display:flex;flex-direction:column;}
+  .nav-menu[hidden]{display:none;}
+  .nav-grp{font-family:var(--display);font-weight:700;font-size:12px;letter-spacing:.18em;color:var(--dim);padding:10px 12px 4px;}
+  .nav-grp:first-child{padding-top:6px;}
+  .nav-item{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:none;border:0;border-radius:8px;padding:10px 12px;color:var(--muted2);font-family:var(--display);font-weight:700;font-size:19px;letter-spacing:.08em;cursor:pointer;}
+  .nav-item:hover{background:var(--surface2);color:var(--text);}
+  .nav-item.active{background:var(--surface3);color:var(--text);}
+  .nav-item.active::after{content:"\2713";margin-left:auto;font-size:15px;color:var(--text);}
+  .nav-item .nav-count{margin-left:auto;}
+  .nav-item.active .nav-count{margin-left:auto;}
+  @media (max-width:760px){
+    .nav-bar{padding:10px 16px;}
+    .nav-dd{display:block;}
+    .nav-btn{width:100%;}
+    .nav-menu{width:100%;max-width:none;}
+  }
 </style>
 </head>
 <body>
@@ -1256,18 +1273,25 @@
   </div>
 </header>
 
-<div class="tabs-wrap">
-  <div class="tabs" id="tabs-scroll">
-    <button class="tab active" onclick="switchTab('today',this)">TODAY</button>
-    <button class="tab" onclick="switchTab('analyzer',this)">NBA</button>
-    <button class="tab" onclick="switchTab('wnba',this)">WNBA</button>
-    <button class="tab" onclick="switchTab('matchups',this)">DAILY MATCHUPS</button>
-    <button class="tab" onclick="switchTab('history',this)">HISTORY / CLV</button>
-    <button class="tab" onclick="switchTab('betslip',this)">PROP LIST <span id="betslip-count" style="display:none;background:var(--gold);color:#000;border-radius:10px;padding:1px 6px;font-size:9px;margin-left:4px;">0</span></button>
+<nav class="nav-bar" aria-label="Pages">
+  <div class="nav-dd" id="nav-dd">
+    <button type="button" class="nav-btn" id="nav-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="nav-menu" onclick="toggleNavMenu()">
+      <span class="nav-cur" id="nav-cur">TODAY</span>
+      <span class="nav-count" id="nav-count" style="display:none;">0</span>
+      <svg class="nav-chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6l4.5 4.5L12.5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <div class="nav-menu" id="nav-menu" role="menu" aria-label="Pages" hidden>
+      <div class="nav-grp">SPORTS</div>
+      <button type="button" role="menuitem" class="nav-item" data-page="analyzer" onclick="switchTab('analyzer')">NBA</button>
+      <button type="button" role="menuitem" class="nav-item" data-page="wnba" onclick="switchTab('wnba')">WNBA</button>
+      <div class="nav-grp">TOOLS</div>
+      <button type="button" role="menuitem" class="nav-item active" data-page="today" aria-current="page" onclick="switchTab('today')">TODAY</button>
+      <button type="button" role="menuitem" class="nav-item" data-page="matchups" onclick="switchTab('matchups')">DAILY MATCHUPS</button>
+      <button type="button" role="menuitem" class="nav-item" data-page="history" onclick="switchTab('history')">HISTORY / CLV</button>
+      <button type="button" role="menuitem" class="nav-item" data-page="betslip" onclick="switchTab('betslip')">PROP LIST <span class="nav-count" id="betslip-count" style="display:none;">0</span></button>
+    </div>
   </div>
-  <div class="tabs-fade tabs-fade-left" id="tabs-fade-left"></div>
-  <div class="tabs-fade tabs-fade-right" id="tabs-fade-right"></div>
-</div>
+</nav>
 
 <div id="panel-today" class="panel active">
   <div class="today-layout">
@@ -1549,8 +1573,6 @@ window.addEventListener('DOMContentLoaded', () => {
   initMatchupDayPicker();
   setDefaultMatchupLeague();
   checkDataFeedStatus();
-  document.getElementById('tabs-scroll')?.addEventListener('scroll', updateTabsFade);
-  updateTabsFade();
   document.addEventListener('click', e => {
     if (e.target.closest('.field-wrap') || e.target.closest('.field-lookup')) return;
     closeSuggestions('nba'); closeSuggestions('wnba');
@@ -3281,16 +3303,6 @@ async function loadScheduleForDate(dateStr) {
 function escapeJsStr(s) { return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
 
 // ── DAILY MATCHUPS — team select dropdowns ─────────────────────────
-function updateTabsFade() {
-  const el = document.getElementById('tabs-scroll');
-  const left = document.getElementById('tabs-fade-left');
-  const right = document.getElementById('tabs-fade-right');
-  if (!el || !left || !right) return;
-  left.classList.toggle('visible', el.scrollLeft > 4);
-  right.classList.toggle('visible', el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
-}
-window.addEventListener('resize', updateTabsFade);
-
 // The "DATA SYNCED" badge used to be hardcoded green regardless of real
 // backend health — it kept saying everything was fine through the whole
 // odds-quota-exhaustion episode. This reads real status from the server
@@ -3344,7 +3356,7 @@ function populateMatchupTeamSelects() {
 }
 
 function prefillMatchup(t1, t2, league) {
-  switchTab('matchups', document.querySelectorAll('.tab')[3]);
+  switchTab('matchups');
   const leagueSel = document.getElementById('matchup-league');
   leagueSel.value = league || 'nba';
   populateMatchupTeamSelects();
@@ -3818,8 +3830,7 @@ function renderResultHeadshot(league, playerId, name) {
 
 
 function jumpToAnalyzePlayer(name, propText, opponent, league) {
-  const tabIdx = league === 'wnba' ? 2 : 1;
-  switchTab(league === 'wnba' ? 'wnba' : 'analyzer', document.querySelectorAll('.tab')[tabIdx]);
+  switchTab(league === 'wnba' ? 'wnba' : 'analyzer');
   elFor(league, 'player-name').value = name;
   const oppInput = elFor(league, 'opp-team');
   oppInput.value = opponent;
@@ -3848,8 +3859,7 @@ function renderHistory() {
 function loadHistory(i) {
   const h = analysisHistory[i];
   const league = h.league || 'nba';
-  const tabIdx = league === 'wnba' ? 2 : 1;
-  switchTab(league === 'wnba' ? 'wnba' : 'analyzer', document.querySelectorAll('.tab')[tabIdx]);
+  switchTab(league === 'wnba' ? 'wnba' : 'analyzer');
   elFor(league,'player-name').value = h.player;
   elFor(league,'opp-team').value = h.opp;
   elFor(league,'prop-line').value = h.line;
@@ -3929,11 +3939,39 @@ function extractSection(text, header) {
   const re = new RegExp(header.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+':?\\s*(.+?)(?=\\n[A-Z][A-Z &]+:|$)','is');
   return (text.match(re)||[])[1]?.trim()||'';
 }
-function switchTab(name, btn) {
-  document.querySelectorAll('.tab').forEach((t,i) => {
-    const names=['today','analyzer','wnba','matchups','history','betslip'];
-    t.classList.toggle('active', names[i]===name);
+// One dropdown holds every page. The button shows where you are; the menu is
+// grouped into sports and tools.
+const NAV_PAGES = { today: 'TODAY', analyzer: 'NBA', wnba: 'WNBA', matchups: 'DAILY MATCHUPS', history: 'HISTORY / CLV', betslip: 'PROP LIST' };
+function toggleNavMenu(force) {
+  const menu = document.getElementById('nav-menu'), btn = document.getElementById('nav-btn');
+  if (!menu || !btn) return;
+  const open = force === undefined ? menu.hidden : force;
+  menu.hidden = !open;
+  btn.setAttribute('aria-expanded', open);
+  if (open) (menu.querySelector('.nav-item.active') || menu.querySelector('.nav-item'))?.focus();
+}
+function closeNavMenu() { toggleNavMenu(false); }
+document.addEventListener('click', e => { if (!e.target.closest('#nav-dd')) closeNavMenu(); });
+document.addEventListener('keydown', e => {
+  const menu = document.getElementById('nav-menu');
+  if (!menu || menu.hidden) return;
+  if (e.key === 'Escape') { closeNavMenu(); document.getElementById('nav-btn')?.focus(); return; }
+  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+  e.preventDefault();
+  const items = [...menu.querySelectorAll('.nav-item')];
+  const i = items.indexOf(document.activeElement);
+  items[(i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length].focus();
+});
+
+function switchTab(name) {
+  document.querySelectorAll('.nav-item').forEach(b => {
+    const on = b.dataset.page === name;
+    b.classList.toggle('active', on);
+    if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
   });
+  const cur = document.getElementById('nav-cur');
+  if (cur) cur.textContent = NAV_PAGES[name] || name.toUpperCase();
+  closeNavMenu();
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.getElementById('panel-'+name)?.classList.add('active');
   if (name==='betslip') loadBetslip();
@@ -4044,8 +4082,7 @@ function goToTodayPick(idx) {
   const p = _todayPicks[idx];
   if (!p) return;
   const league = p.league;
-  const tabIdx = league === 'wnba' ? 2 : 1;
-  switchTab(league === 'wnba' ? 'wnba' : 'analyzer', document.querySelectorAll('.tab')[tabIdx]);
+  switchTab(league === 'wnba' ? 'wnba' : 'analyzer');
   elFor(league,'player-name').value = p.player;
   elFor(league,'opp-team').value = p.opponent;
   elFor(league,'prop-type').value = p.propType;
@@ -4514,10 +4551,12 @@ async function addToBetslip() {
 }
 
 function updateBetslipCount() {
-  const el = document.getElementById('betslip-count');
-  if (!el) return;
-  el.style.display = betslip.length ? 'inline' : 'none';
-  el.textContent = betslip.length;
+  for (const id of ['betslip-count', 'nav-count']) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.style.display = betslip.length ? 'inline-block' : 'none';
+    el.textContent = betslip.length;
+  }
 }
 
 async function loadBetslip() {
