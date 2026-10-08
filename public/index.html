@@ -1234,11 +1234,12 @@
 @media (max-width:760px){.tm .tm-favtag{display:block;width:max-content;margin:4px 0 0}
 .tm .tm-th.tm-r .tm-favtag{margin-left:auto}}
 
-  /* Page navigation: one dropdown (sports + tools) instead of a scrolling tab strip */
-  .nav-bar{padding:12px 28px;border-bottom:1px solid var(--border);}
-  .nav-dd{position:relative;display:inline-block;}
-  .nav-btn{display:inline-flex;align-items:center;gap:12px;min-width:230px;justify-content:space-between;padding:9px 14px 9px 18px;background:var(--surface2);border:1px solid var(--border2);border-radius:10px;color:var(--text);font-family:var(--display);font-weight:800;font-size:21px;letter-spacing:.08em;cursor:pointer;}
-  .nav-btn:hover,.nav-btn[aria-expanded="true"]{background:var(--surface3);}
+  /* Page navigation: two dropdowns (sport, tools) instead of a scrolling tab strip */
+  .nav-bar{display:flex;gap:10px;padding:12px 28px;border-bottom:1px solid var(--border);}
+  .nav-dd{position:relative;}
+  .nav-btn{display:inline-flex;align-items:center;gap:12px;min-width:176px;justify-content:space-between;padding:9px 14px 9px 18px;background:var(--surface);border:1px solid var(--border);border-radius:10px;color:var(--muted);font-family:var(--display);font-weight:800;font-size:21px;letter-spacing:.08em;cursor:pointer;}
+  .nav-btn.on{background:var(--surface2);border-color:var(--border2);color:var(--text);}
+  .nav-btn:hover,.nav-btn[aria-expanded="true"]{background:var(--surface3);color:var(--text);}
   .nav-btn:focus-visible,.nav-item:focus-visible{outline:2px solid var(--muted2);outline-offset:2px;}
   .nav-cur{flex:1;text-align:left;}
   .nav-chev{width:18px;height:18px;flex:none;color:var(--muted2);transition:transform .15s;}
@@ -1246,19 +1247,17 @@
   .nav-count{background:var(--text);color:var(--bg);border-radius:10px;padding:1px 8px;font-family:var(--display);font-weight:800;font-size:13px;letter-spacing:.04em;vertical-align:2px;}
   .nav-menu{position:absolute;top:calc(100% + 6px);left:0;min-width:100%;width:max-content;max-width:calc(100vw - 32px);background:var(--surface);border:1px solid var(--border2);border-radius:12px;padding:6px;box-shadow:0 16px 44px rgba(0,0,0,.6);z-index:300;display:flex;flex-direction:column;}
   .nav-menu[hidden]{display:none;}
-  .nav-grp{font-family:var(--display);font-weight:700;font-size:12px;letter-spacing:.18em;color:var(--dim);padding:10px 12px 4px;}
-  .nav-grp:first-child{padding-top:6px;}
   .nav-item{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:none;border:0;border-radius:8px;padding:10px 12px;color:var(--muted2);font-family:var(--display);font-weight:700;font-size:19px;letter-spacing:.08em;cursor:pointer;}
   .nav-item:hover{background:var(--surface2);color:var(--text);}
   .nav-item.active{background:var(--surface3);color:var(--text);}
   .nav-item.active::after{content:"\2713";margin-left:auto;font-size:15px;color:var(--text);}
   .nav-item .nav-count{margin-left:auto;}
-  .nav-item.active .nav-count{margin-left:auto;}
   @media (max-width:760px){
-    .nav-bar{padding:10px 16px;}
-    .nav-dd{display:block;}
-    .nav-btn{width:100%;}
-    .nav-menu{width:100%;max-width:none;}
+    .nav-bar{padding:10px 16px;gap:8px;}
+    .nav-dd{flex:1 1 0;min-width:0;}
+    .nav-btn{width:100%;min-width:0;padding:9px 10px 9px 12px;gap:6px;font-size:17px;letter-spacing:.05em;}
+    .nav-cur{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    .nav-dd + .nav-dd .nav-menu{left:auto;right:0;}
   }
 </style>
 </head>
@@ -1274,17 +1273,23 @@
 </header>
 
 <nav class="nav-bar" aria-label="Pages">
-  <div class="nav-dd" id="nav-dd">
-    <button type="button" class="nav-btn" id="nav-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="nav-menu" onclick="toggleNavMenu()">
-      <span class="nav-cur" id="nav-cur">TODAY</span>
+  <div class="nav-dd" id="nav-dd-sport">
+    <button type="button" class="nav-btn" id="nav-btn-sport" aria-haspopup="menu" aria-expanded="false" aria-controls="nav-menu-sport" onclick="toggleNavMenu('sport')">
+      <span class="nav-cur" id="nav-cur-sport">SPORT</span>
+      <svg class="nav-chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6l4.5 4.5L12.5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <div class="nav-menu" id="nav-menu-sport" role="menu" aria-label="Sport" hidden>
+      <button type="button" role="menuitem" class="nav-item" data-page="analyzer" onclick="switchTab('analyzer')">NBA</button>
+      <button type="button" role="menuitem" class="nav-item" data-page="wnba" onclick="switchTab('wnba')">WNBA</button>
+    </div>
+  </div>
+  <div class="nav-dd" id="nav-dd-tools">
+    <button type="button" class="nav-btn on" id="nav-btn-tools" aria-haspopup="menu" aria-expanded="false" aria-controls="nav-menu-tools" onclick="toggleNavMenu('tools')">
+      <span class="nav-cur" id="nav-cur-tools">TODAY</span>
       <span class="nav-count" id="nav-count" style="display:none;">0</span>
       <svg class="nav-chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6l4.5 4.5L12.5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
-    <div class="nav-menu" id="nav-menu" role="menu" aria-label="Pages" hidden>
-      <div class="nav-grp">SPORTS</div>
-      <button type="button" role="menuitem" class="nav-item" data-page="analyzer" onclick="switchTab('analyzer')">NBA</button>
-      <button type="button" role="menuitem" class="nav-item" data-page="wnba" onclick="switchTab('wnba')">WNBA</button>
-      <div class="nav-grp">TOOLS</div>
+    <div class="nav-menu" id="nav-menu-tools" role="menu" aria-label="Tools" hidden>
       <button type="button" role="menuitem" class="nav-item active" data-page="today" aria-current="page" onclick="switchTab('today')">TODAY</button>
       <button type="button" role="menuitem" class="nav-item" data-page="matchups" onclick="switchTab('matchups')">DAILY MATCHUPS</button>
       <button type="button" role="menuitem" class="nav-item" data-page="history" onclick="switchTab('history')">HISTORY / CLV</button>
@@ -3939,23 +3944,31 @@ function extractSection(text, header) {
   const re = new RegExp(header.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+':?\\s*(.+?)(?=\\n[A-Z][A-Z &]+:|$)','is');
   return (text.match(re)||[])[1]?.trim()||'';
 }
-// One dropdown holds every page. The button shows where you are; the menu is
-// grouped into sports and tools.
-const NAV_PAGES = { today: 'TODAY', analyzer: 'NBA', wnba: 'WNBA', matchups: 'DAILY MATCHUPS', history: 'HISTORY / CLV', betslip: 'PROP LIST' };
-function toggleNavMenu(force) {
-  const menu = document.getElementById('nav-menu'), btn = document.getElementById('nav-btn');
-  if (!menu || !btn) return;
-  const open = force === undefined ? menu.hidden : force;
-  menu.hidden = !open;
-  btn.setAttribute('aria-expanded', open);
-  if (open) (menu.querySelector('.nav-item.active') || menu.querySelector('.nav-item'))?.focus();
+// Two dropdowns: SPORT (NBA, WNBA) and TOOLS (everything else). Each button shows
+// where you are when the current page belongs to it, and its own name otherwise.
+const NAV_SPORT = { analyzer: 'NBA', wnba: 'WNBA' };
+const NAV_TOOLS = { today: 'TODAY', matchups: 'DAILY MATCHUPS', history: 'HISTORY / CLV', betslip: 'PROP LIST' };
+function toggleNavMenu(which, force) {
+  for (const w of ['sport', 'tools']) {
+    const menu = document.getElementById('nav-menu-' + w), btn = document.getElementById('nav-btn-' + w);
+    if (!menu || !btn) continue;
+    const open = w === which && (force === undefined ? menu.hidden : force);
+    menu.hidden = !open;
+    btn.setAttribute('aria-expanded', open);
+    if (open) (menu.querySelector('.nav-item.active') || menu.querySelector('.nav-item'))?.focus();
+  }
 }
-function closeNavMenu() { toggleNavMenu(false); }
-document.addEventListener('click', e => { if (!e.target.closest('#nav-dd')) closeNavMenu(); });
+function closeNavMenu() { toggleNavMenu(null); }
+document.addEventListener('click', e => { if (!e.target.closest('.nav-dd')) closeNavMenu(); });
 document.addEventListener('keydown', e => {
-  const menu = document.getElementById('nav-menu');
-  if (!menu || menu.hidden) return;
-  if (e.key === 'Escape') { closeNavMenu(); document.getElementById('nav-btn')?.focus(); return; }
+  const menu = [...document.querySelectorAll('.nav-menu')].find(m => !m.hidden);
+  if (!menu) return;
+  if (e.key === 'Escape') {
+    const btn = document.getElementById(menu.id.replace('menu', 'btn'));
+    closeNavMenu();
+    btn?.focus();
+    return;
+  }
   if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
   e.preventDefault();
   const items = [...menu.querySelectorAll('.nav-item')];
@@ -3969,8 +3982,11 @@ function switchTab(name) {
     b.classList.toggle('active', on);
     if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
   });
-  const cur = document.getElementById('nav-cur');
-  if (cur) cur.textContent = NAV_PAGES[name] || name.toUpperCase();
+  const sp = document.getElementById('nav-cur-sport'), tl = document.getElementById('nav-cur-tools');
+  if (sp) sp.textContent = NAV_SPORT[name] || 'SPORT';
+  if (tl) tl.textContent = NAV_TOOLS[name] || 'TOOLS';
+  document.getElementById('nav-btn-sport')?.classList.toggle('on', name in NAV_SPORT);
+  document.getElementById('nav-btn-tools')?.classList.toggle('on', name in NAV_TOOLS);
   closeNavMenu();
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.getElementById('panel-'+name)?.classList.add('active');
