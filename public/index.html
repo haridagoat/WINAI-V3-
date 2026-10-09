@@ -3621,7 +3621,7 @@ function tmH2HCard(h2h, t1, t2) {
 }
 
 // ── tabs ──
-const TM_TABS = [['matchup', 'Matchup'], ['breakdown', 'Breakdown'], ['players', 'Players'], ['games', 'Games']];
+const TM_TABS = [['matchup', 'Matchup'], ['players', 'Players'], ['breakdown', 'Breakdown'], ['games', 'Games']];
 function tmShowTab(id) {
   document.querySelectorAll('#matchup-result .tm-tab').forEach(b => {
     const on = b.dataset.p === id;
@@ -3658,14 +3658,14 @@ function renderMatchupDashboard(compare, t1, t2, league, r1, r2, odds, posDef1, 
         <div class="tm-two">${tmPosDefCard(league, t1, posDef1)}${tmPosDefCard(league, t2, posDef2)}</div>
       </section>
 
-      <section class="tm-panel" id="tm-p-breakdown" role="tabpanel" aria-labelledby="tm-t-breakdown" hidden>
-        <div id="tm-breakdown-body"><div class="tm-card tm-wait"><div class="spinner" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:8px;"></div>Writing the offense and defense breakdown from this game's live data...</div></div>
-      </section>
-
       <section class="tm-panel" id="tm-p-players" role="tabpanel" aria-labelledby="tm-t-players" hidden>
         <div class="tm-sec-h"><h2>Starting lineups</h2><span class="tm-hint tm-legend2">last-10 averages per game <span class="tm-lgd">${TM_FLAME} hot</span><span class="tm-lgd">${TM_FLAKE} cold</span></span></div>
         <div class="tm-two">${tmPlayersCard(league, t1, st1, r1)}${tmPlayersCard(league, t2, st2, r2)}</div>
         <p class="tm-src">Projected from each team's last game, adjusted for the current injury report. No official pregame lineup feed exists.</p>
+      </section>
+
+      <section class="tm-panel" id="tm-p-breakdown" role="tabpanel" aria-labelledby="tm-t-breakdown" hidden>
+        <div id="tm-breakdown-body"><div class="tm-card tm-wait"><div class="spinner" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:8px;"></div>Writing the offense and defense breakdown from this game's live data...</div></div>
       </section>
 
       <section class="tm-panel" id="tm-p-games" role="tabpanel" aria-labelledby="tm-t-games" hidden>
