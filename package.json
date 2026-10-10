@@ -4,8 +4,9 @@
   "description": "WIN AI NBA Props Engine Backend",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js"
+    "start": "node --disable-warning=ExperimentalWarning server.js",
+    "dev": "nodemon --exec \"node --disable-warning=ExperimentalWarning\" server.js",
+    "test": "node --disable-warning=ExperimentalWarning test/run.js"
   },
   "dependencies": {
     "axios": "^1.6.0",
@@ -16,5 +17,8 @@
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=22.13.0"
   }
 }

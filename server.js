@@ -7,6 +7,50 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const crypto = require('crypto');
 
+// ── STORAGE, CALIBRATION, JOB TRACKING, ALERTS (see lib/) ───────────
+// Picks live in SQLite (winai.db). On the first start the old clv_tracker.json is
+// imported once and left in place. Set WINAI_DB to a path on a persistent volume if
+// the host's disk is wiped on every deploy.
+const { createStore } = require('./lib/db');
+const calibration = require('./lib/calibration');
+const { buildReport } = require('./lib/backtest');
+const { createAlerts } = require('./lib/alerts');
+const { evaluateHealth, creditBudget, envNum } = require('./lib/health');
+
+const CLV_FILE = 'clv_tracker.json';   // legacy file, imported into SQLite on first start
+const store = createStore({
+  dbPath: process.env.WINAI_DB || path.join(__dirname, 'winai.db'),
+  jsonPath: path.join(__dirname, CLV_FILE),
+  log: m => console.log(m),
+});
+const alerts = createAlerts({
+  store, webhookUrl: process.env.ADMIN_ALERT_WEBHOOK,
+  post: (url, body) => axios.post(url, body, { timeout: 8000 }),
+  log: m => console.log(m),
+});
+// The calibrator turns the model's raw win chance into one that matches graded
+// results. It stays null/off until it has proven itself (lib/calibration.js).
+let calibrationModel = (store.latestCalibration() || {}).model || null;
+const calibrate = p => calibration.apply(calibrationModel, p);
+
+// Last run of every scheduled job, for the admin Health page. A failure is only
+// announced when a job goes from working to failing, not on every retry.
+const jobRuns = {};
+function trackJob(name, fn) {
+  return async (...args) => {
+    const started = Date.now(), wasOk = jobRuns[name]?.ok !== false;
+    try {
+      const out = await fn(...args);
+      jobRuns[name] = { lastRun: new Date().toISOString(), ok: true, ms: Date.now() - started, detail: typeof out === 'string' ? out : null };
+      return out;
+    } catch (err) {
+      jobRuns[name] = { lastRun: new Date().toISOString(), ok: false, ms: Date.now() - started, error: err.message };
+      if (wasOk) alerts.notify({ key: 'job:' + name, level: 'warn', kind: 'job', message: `Job "${name}" failed: ${err.message}` }).catch(() => {});
+      throw err;
+    }
+  };
+}
+
 const app = express();
 // No CORS middleware — the frontend is served same-origin from this same
 // Express app (express.static below), so it never needs cross-origin
@@ -111,7 +155,11 @@ const ESPN_BASE     = 'https://site.api.espn.com/apis/site/v2/sports/basketball/
 // always said healthy). Tracked passively off real traffic via an axios
 // interceptor rather than a dedicated probe call, since a probe would
 // itself burn the same scarce quota it's trying to report on.
-let oddsApiHealth = { remaining: null, exhausted: false, lastError: null, checkedAt: null };
+// Seeded from the last value saved, so the credit meter and its alerts still work right after a restart.
+let oddsApiHealth = (() => {
+  const r = store.getMeta('odds_remaining'), n = r == null ? NaN : Number(r);
+  return { remaining: isFinite(n) ? n : null, exhausted: isFinite(n) && n <= 0, lastError: null, checkedAt: store.getMeta('odds_checked_at') };
+})();
 // Real credits spent, by kind of call, since server start — read from the
 // API's own x-requests-last header (the true cost of that exact call), so
 // "where is the quota going" is measured instead of guessed.
@@ -131,6 +179,7 @@ axios.interceptors.response.use(
       if (remaining != null) {
         const n = parseInt(remaining, 10);
         oddsApiHealth = { remaining: n, exhausted: n <= 0, lastError: null, checkedAt: new Date().toISOString() };
+        try { store.setMeta('odds_remaining', n); store.setMeta('odds_checked_at', oddsApiHealth.checkedAt); } catch (_) {}
       }
     }
     return response;
@@ -3604,13 +3653,19 @@ function calcRealEdge(direction, overProb, underProb, overPrice, underPrice) {
   const price = isOver ? overPrice : underPrice;
   if (modelProb == null || price == null) return null;
   const fairProb = devigTwoWay(overPrice, underPrice)[isOver ? 'over' : 'under'];
+  // modelProb stays the raw number (it's what gets logged and scored). When the
+  // calibrator is on, EV, edge and stake use the corrected chance instead.
+  const calOn = !!(calibrationModel && calibrationModel.active);
+  const usedProb = calOn ? calibrate(modelProb) : modelProb;
   return {
     price,
     modelProb: parseFloat((modelProb * 100).toFixed(1)),
+    calibrated: calOn,
+    calibratedProb: calOn ? parseFloat((usedProb * 100).toFixed(1)) : null,
     fairMarketProb: fairProb != null ? parseFloat((fairProb * 100).toFixed(1)) : null,
-    probEdge: fairProb != null ? parseFloat(((modelProb - fairProb) * 100).toFixed(1)) : null,
-    expectedValue: calcExpectedValue(modelProb, price),
-    kellyStake: calcKellyStake(modelProb, price),
+    probEdge: fairProb != null ? parseFloat(((usedProb - fairProb) * 100).toFixed(1)) : null,
+    expectedValue: calcExpectedValue(usedProb, price),
+    kellyStake: calcKellyStake(usedProb, price),
   };
 }
 
@@ -4840,6 +4895,9 @@ function autoLogSlatePicks(league, results) {
       closingLine: null, result: null, actualStat: null, clv: null, notes: '',
       source: 'auto', confVersion: CONFIDENCE_FORMULA_VERSION,
       book: r.book ?? null, openConsensus: r.consensusLine ?? null,
+      // What calibration and the backtest score later: the model's RAW chance for
+      // the logged side, the price it was compared to, and the EV that implied.
+      modelProb: r.realEdge?.modelProb ?? null, price: r.realEdge?.price ?? null, ev: r.realEdge?.expectedValue ?? null,
     });
     added++;
   }
@@ -4854,15 +4912,21 @@ function autoLogSlatePicks(league, results) {
 async function autoGradePendingPicks() {
   const today = getToday();
   const entries = loadCLV();
-  const pending = entries.filter(e => e.source === 'auto' && e.result == null && gradeDateOf(e) < today);
-  if (!pending.length) return;
-  let graded = 0;
+  const pending = entries.filter(e => e.source === 'auto' && e.result == null && (!e.gradeNote || e.gradeNoteV !== GRADE_LOGIC_VERSION) && gradeDateOf(e) < today);
+  if (!pending.length) return 'nothing waiting to grade';
+  let graded = 0, unmatched = 0;
+  const threeDaysAgo = toLocalDateStr(new Date(Date.now() - 3 * 86400000));
   for (const e of pending) {
     try {
       const stats = e.league === 'wnba' ? await fetchWNBAPlayerStats(e.player) : await fetchPlayerStats(e.player);
       if (!stats || stats.error) continue;
-      const game = findGameOnDate(stats, gradeDateOf(e));
-      if (!game) continue;
+      const game = findGameForPick(stats, e);
+      if (!game) {
+        // Still no game in the log three days on (offseason stats feed, preseason game, player moved):
+        // stop retrying and stop counting it as "waiting".
+        if (gradeDateOf(e) <= threeDaysAgo) { e.gradeNote = 'no matching game in the stats log after 3 days'; e.gradeNoteV = GRADE_LOGIC_VERSION; unmatched++; }
+        continue;
+      }
       const actual = gradeStatValue(game, e.propType);
       const isOver  = e.verdict === 'OVER'  || e.verdict === 'LEAN_OVER';
       const isUnder = e.verdict === 'UNDER' || e.verdict === 'LEAN_UNDER';
@@ -4871,7 +4935,8 @@ async function autoGradePendingPicks() {
       graded++;
     } catch (_) { /* leave ungraded — retried on tomorrow's run */ }
   }
-  if (graded) { saveCLV(entries); console.log(`[AutoGrade] Graded ${graded} pending picks`); }
+  if (graded || unmatched) { saveCLV(entries); console.log(`[AutoGrade] Graded ${graded} pending picks, gave up on ${unmatched}`); }
+  return `graded ${graded} of ${pending.length} waiting${unmatched ? `, ${unmatched} had no matching game` : ''}`;
 }
 
 async function computeTopPlays(league) {
@@ -5375,6 +5440,7 @@ cron.schedule('0 7 * * *', () => {
   py.stdout.on('data', d => console.log('[fetch_stats]', d.toString().trim()));
   py.stderr.on('data', d => console.error('[fetch_stats ERR]', d.toString().trim()));
   py.on('close', code => {
+    jobRuns['stats-nba'] = { lastRun: new Date().toISOString(), ok: code === 0, error: code === 0 ? undefined : `exit code ${code}` };
     console.log(`[CRON] fetch_stats.py finished (exit ${code})`);
     // Clear stats cache so new files are loaded
     nbaStatsCache = null;
@@ -5389,6 +5455,7 @@ cron.schedule('15 7 * * *', () => {
   py.stdout.on('data', d => console.log('[fetch_wnba_stats]', d.toString().trim()));
   py.stderr.on('data', d => console.error('[fetch_wnba_stats ERR]', d.toString().trim()));
   py.on('close', code => {
+    jobRuns['stats-wnba'] = { lastRun: new Date().toISOString(), ok: code === 0, error: code === 0 ? undefined : `exit code ${code}` };
     console.log(`[CRON] fetch_wnba_stats.py finished (exit ${code})`);
     wnbaStatsCache = null;
     lastWnbaStatsDiskRead = 0;
@@ -5402,17 +5469,31 @@ cron.schedule('0 12,17 * * *', () => { lastLineupFetch = null; fetchLineups(); }
 cron.schedule('0 8,12,16 * * *', () => { rosterCache = {}; lastRosterFetch = {}; });         // roster refresh every morning
 // Proactively runs (and thereby auto-logs) each day's slate scan even if
 // nobody opens the app — accuracy tracking shouldn't depend on a visit.
-cron.schedule('0 10 * * *', () => {
-  collectSlateResults('nba').catch(err => console.error('[AutoLog] nba scan failed:', err.message));
-  collectSlateResults('wnba').catch(err => console.error('[AutoLog] wnba scan failed:', err.message));
+// A full scan costs ~50-130 Odds API credits. If the budget can't cover one, skip it
+// (and say so on the admin page) instead of starting a scan that dies half way.
+cron.schedule('0 10 * * *', async () => {
+  const b = currentCreditBudget();
+  if (b.known && !b.canScan) {
+    jobRuns['slate-scan'] = { lastRun: new Date().toISOString(), ok: true, detail: `skipped: ${b.remaining} credits left, a scan needs about ${b.scanCost}` };
+    alerts.notify({ key: 'scan-skipped', level: 'warn', kind: 'budget', message: `Today's slate scan was skipped: ${b.remaining} Odds credits left, a scan needs about ${b.scanCost}.` }).catch(() => {});
+    return;
+  }
+  await Promise.allSettled(['nba', 'wnba'].map(lg => trackJob('slate-scan-' + lg, () => collectSlateResults(lg).then(() => 'scanned'))()
+    .catch(err => console.error(`[AutoLog] ${lg} scan failed:`, err.message))));
 });
 // Closing-line capture — cheap tick (the events list is free); only spends
 // odds requests within CLOSING_WINDOW_MIN of a tip-off with pending picks.
-cron.schedule('*/5 * * * *', () => captureClosingLines().catch(err => console.error('[Closing] failed:', err.message)));
-setTimeout(() => captureClosingLines().catch(err => console.error('[Closing] failed:', err.message)), 20000);
+const trackedClosing = trackJob('closing-lines', captureClosingLines);
+cron.schedule('*/5 * * * *', () => trackedClosing().catch(err => console.error('[Closing] failed:', err.message)));
+setTimeout(() => trackedClosing().catch(err => console.error('[Closing] failed:', err.message)), 20000);
 // Well after any real-world game could still be in progress — grades
 // everything auto-logged for days that have already fully passed.
-cron.schedule('0 6 * * *', () => autoGradePendingPicks().catch(err => console.error('[AutoGrade] failed:', err.message)));
+// The daily pipeline: grade finished games, refit the calibrator on the graded history,
+// then score everything for the backtest report.
+cron.schedule('0 6 * * *', () => runDailyPipeline().catch(err => console.error('[Pipeline] failed:', err.message)));
+cron.schedule('0 3 * * *', () => trackJob('backup', async () => `wrote ${path.basename(store.backup(path.join(__dirname, 'backups')) || 'nothing (no file database)')}`)().catch(err => console.error('[Backup] failed:', err.message)));
+cron.schedule('*/15 * * * *', () => runHealthCheck().catch(err => console.error('[Health] failed:', err.message)));
+setTimeout(() => initAdminJobs().catch(err => console.error('[Init] failed:', err.message)), 4000);
 
 // ─────────────────────────────────────────────────────
 // START
@@ -5569,22 +5650,9 @@ function getWNBARanksFromFields(oppAdvanced, oppShooting, oppFourFact, oppMiscNo
 // CLV TRACKING — Closing Line Value
 // Stores analyses and closing lines for long-term edge measurement
 // ═══════════════════════════════════════════════════════════════════
-// fs already required at top
-const CLV_FILE = 'clv_tracker.json';
-
-function loadCLV() {
-  try {
-    if (!fs.existsSync(CLV_FILE)) return [];
-    return JSON.parse(fs.readFileSync(CLV_FILE, 'utf8'));
-  } catch (_) { return []; }
-}
-
-function saveCLV(data) {
-  try {
-    fs.writeFileSync(CLV_FILE, JSON.stringify(data, null, 2));
-    return true;
-  } catch (_) { return false; }
-}
+// Same load/save interface as before; the storage underneath is SQLite (lib/db.js).
+function loadCLV() { return store.loadPicks(); }
+function saveCLV(data) { return store.savePicks(data); }
 
 // Direction-adjusted closing-line value (positive = the market moved toward
 // our side). Auto picks are logged at the SOFTEST book's line, so comparing
@@ -5874,6 +5942,28 @@ function findGameOnDate(stats, dateISO) {
 // always the day it was logged (a scan can list games days away) — the
 // closing-line capture records the real start time as gameStart.
 function gradeDateOf(e) { return e.gameStart ? toLocalDateStr(new Date(e.gameStart)) : e.date; }
+// ESPN's WNBA game log stamps games with their UTC start (a 9:37 PM ET tip-off is dated the
+// NEXT day), while nba_api dates are local. Looking only for the local date left every late
+// WNBA game ungraded. Try the league's own convention first, then the other.
+//
+// A pick logged days before its game (the scan lists upcoming games) has no gameStart yet.
+// Then the date can't be trusted, so fall back to the first game against that opponent in the
+// five days after the pick was logged, the same rule the closing-line capture uses.
+function findGameForPick(stats, e) {
+  const local = gradeDateOf(e);
+  const utc = e.gameStart ? new Date(e.gameStart).toISOString().slice(0, 10) : local;
+  const order = e.league === 'wnba' ? [utc, local] : [local, utc];
+  for (const d of new Set(order)) { const g = findGameOnDate(stats, d); if (g) return g; }
+  const opp = (e.opp || '').toLowerCase().trim();
+  if (e.gameStart || !opp || !e.savedAt) return null;
+  const from = new Date(e.savedAt).toISOString().slice(0, 10);
+  const to = new Date(new Date(e.savedAt).getTime() + 5 * 86400000).toISOString().slice(0, 10);
+  const last = opp.split(' ').pop();
+  return (stats.gameLog20 || [])
+    .filter(g => { const d = gameDateISO(g), o = (g.opponent || '').toLowerCase(); return d >= from && d <= to && (o === opp || (last.length >= 4 && o.endsWith(last))); })
+    .sort((a, b) => gameDateISO(a).localeCompare(gameDateISO(b)))[0] || null;
+}
+const GRADE_LOGIC_VERSION = 2;   // bump when grading learns to match more games; picks set aside before get retried once
 function gradeStatValue(g, propType) {
   const combo = GRADE_COMBO_KEYS[propType];
   if (combo) return combo.reduce((s, k) => s + (parseFloat(g[k]) || 0), 0);
@@ -5983,5 +6073,152 @@ app.delete('/api/admin/notes/:id', requireAdmin, (req, res) => {
   const notes = loadNotes().filter(n => n.id !== parseInt(req.params.id));
   saveNotes(notes);
   res.json({ ok: true });
+});
+
+// ═════════════════════════════════════════════════════════════════
+// ADMIN: HEALTH, CREDIT BUDGET, BACKTEST, CALIBRATION
+// Everything below is behind ADMIN_TOKEN. None of it is visible to visitors.
+// ═════════════════════════════════════════════════════════════════
+const oddsKeyConfigured = () => !!(process.env.ODDS_API_KEY && !process.env.ODDS_API_KEY.includes('XXXXX'));
+function currentCreditBudget() {
+  return creditBudget({
+    remaining: oddsApiHealth.remaining, usage: oddsUsage,
+    warnAt: envNum(process.env.ODDS_CREDIT_WARN, 100), critAt: envNum(process.env.ODDS_CREDIT_CRIT, 40), scanCost: envNum(process.env.ODDS_SCAN_COST, 60),
+  });
+}
+
+function healthSnapshot() {
+  const mtime = f => { try { return fs.statSync(path.join(__dirname, f)).mtimeMs; } catch (_) { return null; } };
+  const picks = loadCLV();
+  let tests = null;
+  try { tests = JSON.parse(fs.readFileSync(path.join(__dirname, 'test_results.json'), 'utf8')); } catch (_) {}
+  return {
+    odds: { configured: oddsKeyConfigured(), ...oddsApiHealth, usage: oddsUsage },
+    anthropicConfigured: !!(process.env.ANTHROPIC_KEY && !process.env.ANTHROPIC_KEY.includes('your_')),
+    balldontlieConfigured: !!process.env.BALLDONTLIE_KEY,
+    statFiles: { NBA: { mtime: mtime('player_stats.json') }, WNBA: { mtime: mtime('wnba_player_stats.json') } },
+    jobs: jobRuns,
+    storage: store.info(),
+    grading: { waiting: picks.filter(e => e.source === 'auto' && !e.result && !e.gradeNote).length, unmatched: picks.filter(e => e.source === 'auto' && !e.result && e.gradeNote).length, graded: picks.filter(e => e.result === 'WIN' || e.result === 'LOSS' || e.result === 'PUSH').length },
+    calibration: calibrationModel ? { active: calibrationModel.active, reason: calibrationModel.reason } : { active: false, reason: 'Not fitted yet.' },
+    tests,
+  };
+}
+
+// The Odds API's events list costs 0 credits but its response still reports how many credits
+// are left, so this keeps the credit meter current without spending anything.
+async function refreshOddsCredits() {
+  if (!oddsKeyConfigured()) return 'no ODDS_API_KEY set';
+  await axios.get(`${ODDS_BASE}/sports/basketball_wnba/events`, { params: { apiKey: process.env.ODDS_API_KEY }, timeout: 10000 });
+  return oddsApiHealth.remaining != null ? `${oddsApiHealth.remaining} credits left` : 'no credit count returned';
+}
+
+// Alert only when a check gets worse, and note when it clears; never on every tick.
+const activeIssues = new Map();
+async function runHealthCheck() {
+  const stale = !oddsApiHealth.checkedAt || Date.now() - new Date(oddsApiHealth.checkedAt).getTime() > 3 * 3600 * 1000;
+  if (stale) { try { await trackJob('credits', refreshOddsCredits)(); } catch (_) { /* the health check below reports the odds feed state */ } }
+  const h = evaluateHealth(healthSnapshot(), { budget: { warnAt: envNum(process.env.ODDS_CREDIT_WARN, 100), critAt: envNum(process.env.ODDS_CREDIT_CRIT, 40), scanCost: envNum(process.env.ODDS_SCAN_COST, 60) } });
+  const rank = { ok: 0, warn: 1, critical: 2 };
+  for (const c of h.checks) {
+    const before = activeIssues.get(c.id) || 'ok';
+    if (rank[c.level] > rank[before]) await alerts.notify({ key: 'health:' + c.id, level: c.level, kind: 'health', message: `${c.label}: ${c.detail}` });
+    else if (c.level === 'ok' && before !== 'ok') { store.addEvent('health', 'info', `${c.label} is back to normal.`); alerts.resolve('health:' + c.id); }
+    if (c.level === 'ok') activeIssues.delete(c.id); else activeIssues.set(c.id, c.level);
+  }
+  jobRuns.health = { lastRun: new Date().toISOString(), ok: true, detail: h.status };
+  return h;
+}
+
+// Picks logged before the chance was being stored can be filled in from the saved slate scan
+// (the same numbers the pick was logged with). Only matches by day, league, player, prop and line.
+function backfillModelChances() {
+  const picks = loadCLV();
+  let filled = 0;
+  for (const lg of ['nba', 'wnba']) {
+    const c = slateScanCache[lg];
+    if (!c?.data?.results?.length) continue;
+    const byKey = new Map(c.data.results.map(r => [`${r.player}|${r.propType}|${r.line}`, r]));
+    for (const e of picks) {
+      if (e.league !== lg || e.date !== c.dateKey || e.modelProb != null) continue;
+      const r = byKey.get(`${e.player}|${e.propType}|${e.line}`);
+      if (!r?.realEdge) continue;
+      e.modelProb = r.realEdge.modelProb; e.price = r.realEdge.price; e.ev = r.realEdge.expectedValue;
+      filled++;
+    }
+  }
+  if (filled) saveCLV(picks);
+  return filled;
+}
+
+async function runBacktest() {
+  const report = buildReport(loadCLV(), { confVersion: CONFIDENCE_FORMULA_VERSION });
+  store.saveBacktest(report);
+  return report;
+}
+async function refitCalibration() {
+  const model = calibration.fit(loadCLV());
+  const was = !!(calibrationModel && calibrationModel.active);
+  store.saveCalibration(model);
+  calibrationModel = model;
+  if (model.active !== was) store.addEvent('calibration', 'info', `Calibration turned ${model.active ? 'on' : 'off'}. ${model.reason}`);
+  return model;
+}
+async function runDailyPipeline() {
+  await trackJob('grade', autoGradePendingPicks)();
+  await trackJob('backfill', async () => `filled ${backfillModelChances()} picks with their stored model chance`)();
+  await trackJob('calibration', async () => (await refitCalibration()).reason)();
+  await trackJob('backtest', async () => { const r = await runBacktest(); return `${r.totals.graded} graded picks scored`; })();
+}
+async function initAdminJobs() {
+  backfillModelChances();
+  if (!store.latestCalibration()) await refitCalibration();
+  if (!store.latestBacktest()) await runBacktest();
+  setTimeout(() => runHealthCheck().catch(() => {}), 25000);
+}
+
+app.get('/api/admin/health', requireAdmin, async (req, res) => {
+  const h = evaluateHealth(healthSnapshot(), { budget: { warnAt: envNum(process.env.ODDS_CREDIT_WARN, 100), critAt: envNum(process.env.ODDS_CREDIT_CRIT, 40), scanCost: envNum(process.env.ODDS_SCAN_COST, 60) } });
+  res.json({ generatedAt: new Date().toISOString(), ...h, jobs: jobRuns, alertWebhookConfigured: alerts.configured, events: store.recentEvents(25) });
+});
+app.get('/api/admin/events', requireAdmin, (req, res) => res.json({ events: store.recentEvents(Math.min(200, parseInt(req.query.limit, 10) || 50)) }));
+app.get('/api/admin/backtest', requireAdmin, (req, res) => {
+  const latest = store.latestBacktest();
+  res.json({
+    latest,
+    history: store.backtestHistory(30).map(h => ({ ts: h.ts, graded: h.report.totals.graded, winRate: h.report.overall.winRate, brier: h.report.probability.brier })),
+  });
+});
+app.post('/api/admin/backtest/run', requireAdmin, async (req, res) => res.json({ ts: new Date().toISOString(), report: await runBacktest() }));
+app.get('/api/admin/calibration', requireAdmin, (req, res) => {
+  const picks = loadCLV();
+  res.json({
+    model: calibrationModel,
+    thresholds: { minGraded: calibration.MIN_GRADED, shrinkK: calibration.SHRINK_K, minCvGain: calibration.MIN_CV_GAIN },
+    usableSamples: calibration.samplesFrom(picks).length,
+    loggedWithChance: picks.filter(e => e.modelProb != null).length,
+  });
+});
+app.post('/api/admin/calibration/refit', requireAdmin, async (req, res) => res.json({ model: await refitCalibration() }));
+// Run a job now. The slate scan is left out on purpose: it spends Odds API credits.
+const ADMIN_JOBS = {
+  grade: () => trackJob('grade', autoGradePendingPicks)(),
+  pipeline: () => runDailyPipeline(),
+  backtest: () => trackJob('backtest', async () => { const r = await runBacktest(); return `${r.totals.graded} graded picks scored`; })(),
+  calibration: () => trackJob('calibration', async () => (await refitCalibration()).reason)(),
+  backup: () => trackJob('backup', async () => `wrote ${path.basename(store.backup(path.join(__dirname, 'backups')) || 'nothing (no file database)')}`)(),
+  health: () => runHealthCheck(),
+  'closing-lines': () => trackedClosing(),
+  credits: () => trackJob('credits', refreshOddsCredits)(),
+};
+app.post('/api/admin/jobs/:name/run', requireAdmin, async (req, res) => {
+  const job = ADMIN_JOBS[req.params.name];
+  if (!job) return res.status(404).json({ error: 'Unknown job', jobs: Object.keys(ADMIN_JOBS) });
+  try { await job(); res.json({ ok: true, jobs: jobRuns }); }
+  catch (err) { res.status(500).json({ ok: false, error: err.message }); }
+});
+app.post('/api/admin/alerts/test', requireAdmin, async (req, res) => {
+  const out = await alerts.notify({ key: 'test:' + Date.now(), level: 'info', kind: 'test', message: 'Test alert from the admin page.' });
+  res.json({ webhookConfigured: alerts.configured, ...out });
 });
 

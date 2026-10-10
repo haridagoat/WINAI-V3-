@@ -10,3 +10,10 @@ __pycache__/
 !package.json
 !package-lock.json
 !railway.json
+
+# SQLite database, its backups, and the one-time import copy
+*.db
+*.db-wal
+*.db-shm
+backups/
+*.pre-sqlite.bak
