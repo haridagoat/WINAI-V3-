@@ -4838,6 +4838,10 @@ const SLATE_LOGIC_VERSION = 2; // 2 = continuous confidence score (calcConfidenc
 // is still trusted for the full day, since it's expensive to produce and
 // clearly means everything's working.
 const EMPTY_SCAN_RETRY_MS = 20 * 60 * 1000;
+// A cold cache used to start one full scan PER CALLER: the Today page asks for top picks, team
+// picks and the prop board at once, and each would spend its own Odds credits on the same scan.
+// Callers that arrive while a scan is running now share its result.
+const slateScanInflight = {};
 async function collectSlateResults(league) {
   const today = getToday();
   const cached = slateScanCache[league];
@@ -4845,7 +4849,13 @@ async function collectSlateResults(league) {
     const isEmpty = !cached.data?.candidates?.length;
     if (!isEmpty || (Date.now() - (cached.ts || 0)) < EMPTY_SCAN_RETRY_MS) return cached.data;
   }
+  if (!slateScanInflight[league]) {
+    slateScanInflight[league] = scanSlate(league, today).finally(() => { delete slateScanInflight[league]; });
+  }
+  return slateScanInflight[league];
+}
 
+async function scanSlate(league, today) {
   const sportKey = league === 'wnba' ? 'basketball_wnba' : 'basketball_nba';
   const candidates = await fetchSlateCandidates(sportKey);
   const evaluate = league === 'wnba' ? evaluateWNBACandidate : evaluateNBACandidate;
@@ -5098,6 +5108,29 @@ app.get('/api/top-plays', async (req, res) => {
   }
   topPlaysCache[league] = { data, dateKey: today };
   res.json({ ...data, cached: false });
+});
+
+// Every scanned prop for the Today page's prop board: the same day-locked slate scan the top picks
+// and team picks read (so it costs nothing extra), with the real-edge rule left to the page's filters.
+app.get('/api/prop-board', async (req, res) => {
+  const league = (req.query.league || 'nba').toLowerCase() === 'wnba' ? 'wnba' : 'nba';
+  try {
+    const { candidates, results } = await collectSlateResults(league);
+    res.json({
+      league, date: getToday(), scanned: (candidates || []).length,
+      props: (results || []).filter(r => r.realEdge || r.line != null).map(r => ({
+        player: r.player, playerId: lookupPlayerId(league, r.player), team: r.team, opponent: r.opponent,
+        homeTeam: r.homeTeam, awayTeam: r.awayTeam,
+        propType: r.propType, line: r.line, book: r.book,
+        direction: r.edge > 0 ? 'OVER' : r.edge < 0 ? 'UNDER' : 'PASS',
+        projection: r.projection, edge: r.edge, confidence: r.confidence,
+        overProbability: r.overProbability ?? null, underProbability: r.underProbability ?? null,
+        consensusLine: r.consensusLine ?? null, bookCount: r.bookCount ?? null, realEdge: r.realEdge ?? null,
+      })),
+    });
+  } catch (err) {
+    res.json({ league, date: getToday(), scanned: 0, props: [], error: err.message });
+  }
 });
 
 const teamPicksCache = {}; // league -> { data, dateKey, ts } — same freshness rule as topPlaysCache
