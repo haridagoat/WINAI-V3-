@@ -62,4 +62,9 @@ Open that from any phone, laptop, or device — WIN AI is live 24/7.
 - **Odds credit budget (optional).** `ODDS_CREDIT_WARN` (default 100), `ODDS_CREDIT_CRIT` (default 40) and
   `ODDS_SCAN_COST` (default 60). When fewer credits are left than a scan costs, the 10 AM scan is skipped
   and an alert is raised instead of the scan dying half way.
+- **Set `TRUST_PROXY=1` on Railway.** The app sits behind Railway's proxy. Without this, every visitor
+  looks like the same address, so one person hitting a rate limit locks everyone out.
+- **Spend protection.** Public AI analysis is capped at `ANALYZE_DAILY_CAP` requests a day (default 400;
+  the admin isn't counted). Saves, searches and admin logins are also rate limited, and 10 wrong admin
+  tokens lock that address out for 15 minutes.
 - **Tests:** `npm test`. They also run on every push through `.github/workflows/test.yml`.

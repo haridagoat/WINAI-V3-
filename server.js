@@ -52,13 +52,35 @@ function trackJob(name, fn) {
 }
 
 const app = express();
+app.disable('x-powered-by');
+// Behind a proxy (Railway) every visitor looks like the proxy's address unless this is set, which
+// puts them all in ONE rate-limit bucket. Set TRUST_PROXY=1 in the host's variables when deployed.
+if (process.env.TRUST_PROXY) app.set('trust proxy', /^\d+$/.test(process.env.TRUST_PROXY) ? Number(process.env.TRUST_PROXY) : process.env.TRUST_PROXY);
 // No CORS middleware — the frontend is served same-origin from this same
 // Express app (express.static below), so it never needs cross-origin
 // permission. Wide-open cors() previously let any third-party site's JS
 // call every route here, including the paid-API-backed and state-changing
 // ones, from a visitor's browser with no server-side signal it wasn't the
 // app's own frontend.
-app.use(express.json());
+const security = require('./lib/security');
+app.use(security.securityHeaders);
+app.use(express.json({ limit: '100kb' }));
+// One bad character in a name used to reach a Python launch call and crash the whole server.
+// Reject control characters and oversized values before any route sees them.
+app.use('/api', (req, res, next) => {
+  const problem = security.queryProblem(req.query, 200) || (req.body && security.bodyProblem(req.body));
+  if (problem) return res.status(400).json({ error: `Invalid input: ${problem}` });
+  next();
+});
+// A generous ceiling for the whole API, and a tighter one for routes that spend money or CPU
+// (Odds credits, Python processes, outbound calls). Per source address.
+const apiLimiter = security.createRateLimiter({ windowMs: 60 * 1000, max: 300 });
+const costlyLimiter = security.createRateLimiter({ windowMs: 60 * 1000, max: 80, message: 'Too many lookups. Slow down and try again shortly.' });
+const writeLimiter = security.createRateLimiter({ windowMs: 60 * 1000, max: 30, message: 'Too many saves. Slow down and try again shortly.' });
+app.use('/api', apiLimiter);
+app.use(['/api/prop-context', '/api/wnba/prop-context', '/api/current-line', '/api/shotchart', '/api/player-matchup',
+  '/api/wnba/player-matchup', '/api/team-compare', '/api/matchup-targets', '/api/game-odds', '/api/top-plays', '/api/team-picks', '/api/prop-board',
+  '/api/debug', '/api/grade-prop'], costlyLimiter);
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Lightweight per-IP rate limiter — no user-account system exists to gate
@@ -1616,6 +1638,7 @@ async function fetchPlayerStats(playerName) {
 // Returns every individual game as a box score — not just averages
 // ════════════════════════════════════════════════════════════════
 async function fetchH2HViaBridge(playerName, opponent, season = '2025-26') {
+  if (security.badString(playerName) || security.badString(opponent) || security.badString(season)) return { error: 'Invalid name' };
   const cacheKey = `h2h:${playerName}:${opponent}`;
   const cached = nbaApiBridgeCache[cacheKey];
   if (cached && (Date.now() - cached.ts) < NBA_BRIDGE_TTL) {
@@ -3690,7 +3713,12 @@ let bridgeChain = Promise.resolve();
 let lastBridgeCallTs = 0;
 const BRIDGE_MIN_GAP_MS = 600;
 
+const BRIDGE_MAX_QUEUE = 30;
+let bridgePending = 0;
 function enqueueBridge(taskFn) {
+  // Beyond this many waiting jobs a visitor would just be stuck behind minutes of queue; refuse instead.
+  if (bridgePending >= BRIDGE_MAX_QUEUE) return Promise.resolve({ error: 'Busy: too many lookups waiting. Try again in a minute.' });
+  bridgePending++;
   const scheduled = bridgeChain.then(async () => {
     const wait = BRIDGE_MIN_GAP_MS - (Date.now() - lastBridgeCallTs);
     if (wait > 0) await new Promise(r => setTimeout(r, wait));
@@ -3698,6 +3726,7 @@ function enqueueBridge(taskFn) {
       return await taskFn();
     } finally {
       lastBridgeCallTs = Date.now();
+      bridgePending--;
     }
   });
   // Keep the queue alive regardless of whether this task succeeds or fails
@@ -3706,6 +3735,7 @@ function enqueueBridge(taskFn) {
 }
 
 async function fetchViaBridge(playerName, season = '2025-26') {
+  if (security.badString(playerName) || security.badString(season)) return { error: 'Invalid name' };
   const cacheKey = `${playerName}:${season}`;
   const cached = nbaApiBridgeCache[cacheKey];
   if (cached && (Date.now() - cached.ts) < NBA_BRIDGE_TTL) {
@@ -3755,6 +3785,7 @@ const shotChartCache = {};
 const SHOT_CHART_TTL = 30 * 60 * 1000;
 
 async function fetchShotChart(league, mode, name, season = '2025-26') {
+  if (security.badString(name) || security.badString(season)) return { error: 'Invalid name' };
   const cacheKey = `${league}:${mode}:${name}:${season}`;
   const cached = shotChartCache[cacheKey];
   if (cached && (Date.now() - cached.ts) < SHOT_CHART_TTL) {
@@ -3805,7 +3836,7 @@ app.get('/api/shotchart', async (req, res) => {
 });
 
 // GET /api/nba-bridge?player=Shai+Gilgeous-Alexander&season=2025-26
-app.get('/api/nba-bridge', async (req, res) => {
+app.get('/api/nba-bridge', requireAdmin, async (req, res) => {
   const { player, season } = req.query;
   if (!player) return res.status(400).json({ error: 'player required' });
 
@@ -3815,7 +3846,7 @@ app.get('/api/nba-bridge', async (req, res) => {
 });
 
 // POST /api/nba-bridge/batch — fetch multiple players at once
-app.post('/api/nba-bridge/batch', async (req, res) => {
+app.post('/api/nba-bridge/batch', requireAdmin, async (req, res) => {
   const { players: playerList, season } = req.body;
   if (!playerList?.length) return res.status(400).json({ error: 'players array required' });
 
@@ -3844,6 +3875,15 @@ app.get('/api/health', (req, res) => {
 // this server made actually returned (also free — no probe call).
 app.get('/api/data-status', (req, res) => {
   const oddsConfigured = !!(process.env.ODDS_API_KEY && !process.env.ODDS_API_KEY.includes('XXXXX'));
+  // Visitors only need to know whether the odds feed is up. Credit counts, usage and error text
+  // are for the admin.
+  if (!isAdmin(req)) {
+    return res.json({
+      odds: { configured: oddsConfigured, exhausted: !!oddsApiHealth.exhausted },
+      balldontlie: { configured: !!process.env.BALLDONTLIE_KEY },
+      anthropic: { configured: !!(process.env.ANTHROPIC_KEY && !process.env.ANTHROPIC_KEY.includes('your_')) },
+    });
+  }
   res.json({
     odds: { configured: oddsConfigured, ...oddsApiHealth, usage: oddsUsage },
     balldontlie: { configured: !!process.env.BALLDONTLIE_KEY },
@@ -4921,11 +4961,13 @@ function autoLogSlatePicks(league, results) {
 // graded by opening the Prop List always agree.
 async function autoGradePendingPicks() {
   const today = getToday();
-  const entries = loadCLV();
-  const pending = entries.filter(e => e.source === 'auto' && e.result == null && (!e.gradeNote || e.gradeNoteV !== GRADE_LOGIC_VERSION) && gradeDateOf(e) < today);
+  const pending = loadCLV().filter(e => e.source === 'auto' && e.result == null && (!e.gradeNote || e.gradeNoteV !== GRADE_LOGIC_VERSION) && gradeDateOf(e) < today);
   if (!pending.length) return 'nothing waiting to grade';
   let graded = 0, unmatched = 0;
   const threeDaysAgo = toLocalDateStr(new Date(Date.now() - 3 * 86400000));
+  // The network calls below take a while. The results are collected and applied to a fresh read at the
+  // end: saving the list we started with would erase any pick saved or deleted in the meantime.
+  const patches = new Map();
   for (const e of pending) {
     try {
       const stats = e.league === 'wnba' ? await fetchWNBAPlayerStats(e.player) : await fetchPlayerStats(e.player);
@@ -4934,18 +4976,26 @@ async function autoGradePendingPicks() {
       if (!game) {
         // Still no game in the log three days on (offseason stats feed, preseason game, player moved):
         // stop retrying and stop counting it as "waiting".
-        if (gradeDateOf(e) <= threeDaysAgo) { e.gradeNote = 'no matching game in the stats log after 3 days'; e.gradeNoteV = GRADE_LOGIC_VERSION; unmatched++; }
+        if (gradeDateOf(e) <= threeDaysAgo) { patches.set(e.id, { gradeNote: 'no matching game in the stats log after 3 days', gradeNoteV: GRADE_LOGIC_VERSION }); unmatched++; }
         continue;
       }
       const actual = gradeStatValue(game, e.propType);
       const isOver  = e.verdict === 'OVER'  || e.verdict === 'LEAN_OVER';
       const isUnder = e.verdict === 'UNDER' || e.verdict === 'LEAN_UNDER';
-      e.actualStat = actual;
-      e.result = actual === e.line ? 'PUSH' : isOver ? (actual > e.line ? 'WIN' : 'LOSS') : isUnder ? (actual < e.line ? 'WIN' : 'LOSS') : 'NO_BET';
+      const result = actual === e.line ? 'PUSH' : isOver ? (actual > e.line ? 'WIN' : 'LOSS') : isUnder ? (actual < e.line ? 'WIN' : 'LOSS') : 'NO_BET';
+      patches.set(e.id, { actualStat: actual, result });
       graded++;
     } catch (_) { /* leave ungraded — retried on tomorrow's run */ }
   }
-  if (graded || unmatched) { saveCLV(entries); console.log(`[AutoGrade] Graded ${graded} pending picks, gave up on ${unmatched}`); }
+  if (patches.size) {
+    const fresh = loadCLV();
+    for (const e of fresh) {
+      const p = patches.get(e.id);
+      if (p && e.result == null) Object.assign(e, p);   // skip anything that was graded by someone else meanwhile
+    }
+    saveCLV(fresh);
+    console.log(`[AutoGrade] Graded ${graded} pending picks, gave up on ${unmatched}`);
+  }
   return `graded ${graded} of ${pending.length} waiting${unmatched ? `, ${unmatched} had no matching game` : ''}`;
 }
 
@@ -5169,9 +5219,19 @@ app.get('/api/team-picks', async (req, res) => {
 // ─────────────────────────────────────────────────────
 // CLAUDE PROXY
 // ─────────────────────────────────────────────────────
+// /api/analyze forwards whatever prompt it is sent to the paid Anthropic key, so anyone who can reach
+// it can use that key. The app's own prompts are well under 30,000 characters; a daily ceiling
+// (ANALYZE_DAILY_CAP, default 400) bounds the worst case. The admin is not capped.
+let analyzeDay = '', analyzeCount = 0;
 app.post('/api/analyze', analyzeRateLimiter, async (req, res) => {
   const { prompt } = req.body;
-  if (!prompt) return res.status(400).json({ error: 'prompt required' });
+  if (!prompt || typeof prompt !== 'string') return res.status(400).json({ error: 'prompt required' });
+  if (prompt.length > 30000) return res.status(413).json({ error: 'Prompt too long.' });
+  if (!isAdmin(req)) {
+    const today = getToday();
+    if (analyzeDay !== today) { analyzeDay = today; analyzeCount = 0; }
+    if (++analyzeCount > envNum(process.env.ANALYZE_DAILY_CAP, 400)) return res.status(429).json({ error: 'Daily AI analysis limit reached. It resets at midnight.' });
+  }
   if (!process.env.ANTHROPIC_KEY || process.env.ANTHROPIC_KEY.includes('your_')) {
     return res.status(500).json({ error: 'Anthropic API key not configured in .env' });
   }
@@ -5306,7 +5366,7 @@ app.get('/api/player-matchup', async (req, res) => {
 
 
 // ── MATCHUP DEBUG ─────────────────────────────────────────────────
-app.get('/api/debug-matchup', async (req, res) => {
+app.get('/api/debug-matchup', requireAdmin, async (req, res) => {
   if (!todaysGames.length) await fetchTodaysGames();
   res.json({
     gamesLoaded: todaysGames.length,
@@ -5367,7 +5427,8 @@ function clearAllCaches() {
   saveSlateScanCacheToDisk(slateScanCache);
 }
 
-app.post('/api/cache-clear', (req, res) => {
+// Wiping the slate scan cache makes the next visitor trigger a paid re-scan, so this is admin only.
+app.post('/api/cache-clear', requireAdmin, (req, res) => {
   const { target } = req.body || {};
 
   if (!target || target === 'all') {
@@ -5404,7 +5465,7 @@ app.post('/api/cache-clear', (req, res) => {
 
 // ── ROSTER REFRESH ────────────────────────────────────────────────
 // Force-clear all cached rosters so next request gets fresh data
-app.post('/api/roster-refresh', (req, res) => {
+app.post('/api/roster-refresh', requireAdmin, (req, res) => {
   rosterCache    = {};
   lastRosterFetch = {};
   console.log('[API] Roster cache force-cleared');
@@ -5440,6 +5501,9 @@ app.get('/api/debug', async (req, res) => {
   } catch (e) {
     results.espn = { ok: false, error: e.message };
   }
+  // The page only reads the BallDontLie result. Which keys exist, which files are present and
+  // cache sizes are for the admin.
+  if (!isAdmin(req)) return res.json({ time: results.time, balldontlie: results.balldontlie });
   results.env = {
     balldontlie: !!process.env.BALLDONTLIE_KEY,
     anthropic: !!(process.env.ANTHROPIC_KEY && !process.env.ANTHROPIC_KEY.includes('your_')),
@@ -5814,21 +5878,24 @@ async function captureClosingLines() {
 }
 
 // Save a new analysis entry
-app.post('/api/clv/save', (req, res) => {
-  const { player, opp, propType, line, projection, verdict, edge, confidence, gameDate, league } = req.body;
-  if (!player || !line) return res.status(400).json({ error: 'player and line required' });
+const CLV_MAX_ENTRIES = 5000;
+app.post('/api/clv/save', writeLimiter, (req, res) => {
+  const { value, error } = security.cleanEntryInput(req.body);
+  if (error) return res.status(400).json({ error });
+  const { player, opp, propType, line, projection, verdict, edge, confidence, gameDate, league } = value;
 
   const entries = loadCLV();
+  if (entries.length >= CLV_MAX_ENTRIES) return res.status(507).json({ error: 'The saved-props store is full.' });
   const entry = {
     id:          nextId(),
     date:        gameDate || getToday(),
     savedAt:     new Date().toISOString(),
-    league:      league === 'wnba' ? 'wnba' : 'nba',
-    player, opp, propType, line: parseFloat(line),
-    projection:  parseFloat(projection) || null,
+    league,
+    player, opp, propType, line,
+    projection,
     verdict,
-    edge:        parseFloat(edge) || null,
-    confidence:  parseFloat(confidence) || null,
+    edge,
+    confidence,
     confVersion: CONFIDENCE_FORMULA_VERSION,
     // These get filled in after the game
     closingLine: null,
@@ -5842,24 +5909,25 @@ app.post('/api/clv/save', (req, res) => {
   res.json({ ok: true, id: entry.id, entry });
 });
 
-// Update with closing line and result after game
-app.post('/api/clv/update', (req, res) => {
-  const { id, closingLine, result, actualStat, notes } = req.body;
-  if (!id) return res.status(400).json({ error: 'id required' });
+// Update with closing line and result after game. Picks the system logged itself (source:'auto')
+// are graded by the server; only the admin may edit those, because the backtest and calibration
+// are built from them.
+app.post('/api/clv/update', writeLimiter, (req, res) => {
+  const id = parseInt(req.body?.id, 10);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: 'id required' });
+  const { value, error } = security.cleanUpdateInput(req.body);
+  if (error) return res.status(400).json({ error });
 
   const entries = loadCLV();
-  const idx = entries.findIndex(e => e.id === parseInt(id));
+  const idx = entries.findIndex(e => e.id === id);
   if (idx < 0) return res.status(404).json({ error: 'Entry not found' });
+  if (entries[idx].source === 'auto' && !isAdmin(req)) return res.status(403).json({ error: 'System-logged picks are graded automatically.' });
 
-  // != null (not truthy) — a real actualStat/closingLine of 0 (e.g. 0
-  // rebounds, 0 threes made) is a valid value and must not be dropped.
-  entries[idx].closingLine = closingLine != null && closingLine !== '' ? parseFloat(closingLine) : entries[idx].closingLine;
-  // result uses "key present" rather than truthiness — the UI toggles a
-  // result off by explicitly sending null, which `result || existing` would
-  // silently ignore (null is falsy, so it'd just keep the old value).
-  if (result !== undefined) entries[idx].result = result;
-  entries[idx].actualStat  = actualStat != null && actualStat !== '' ? parseFloat(actualStat) : entries[idx].actualStat;
-  entries[idx].notes       = notes || entries[idx].notes;
+  if (value.closingLine !== undefined) entries[idx].closingLine = value.closingLine;
+  // result uses "key present" rather than truthiness: the UI toggles a result off by sending null
+  if (value.result !== undefined) entries[idx].result = value.result;
+  if (value.actualStat !== undefined) entries[idx].actualStat = value.actualStat;
+  if (value.notes !== undefined) entries[idx].notes = value.notes;
 
   applyCLV(entries[idx]);
 
@@ -5929,9 +5997,11 @@ app.get('/api/clv', (req, res) => {
 });
 
 // Delete entry
-app.delete('/api/clv/:id', (req, res) => {
-  const entries = loadCLV().filter(e => e.id !== parseInt(req.params.id));
-  saveCLV(entries);
+app.delete('/api/clv/:id', writeLimiter, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const all = loadCLV(), target = all.find(e => e.id === id);
+  if (target && target.source === 'auto' && !isAdmin(req)) return res.status(403).json({ error: 'System-logged picks cannot be deleted.' });
+  saveCLV(all.filter(e => e.id !== id));
   res.json({ ok: true });
 });
 
@@ -6048,9 +6118,20 @@ function saveNotes(data) {
 // Fails closed: if ADMIN_TOKEN was never configured, nobody can write —
 // not "anyone can write" (the opposite of a missing-config default would
 // silently expose this to every visitor).
+const adminFails = security.createFailLimiter({ max: 10, windowMs: 15 * 60 * 1000 });
+// True only for a request that carries the right token. No side effects (used to decide how much a
+// public route may reveal), so it never counts toward the brute-force lockout.
+function isAdmin(req) {
+  const configured = process.env.ADMIN_TOKEN && !process.env.ADMIN_TOKEN.includes('XXXXX');
+  if (!configured) return false;
+  const a = Buffer.from(String(req.headers['x-admin-token'] || '')), b = Buffer.from(process.env.ADMIN_TOKEN);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
 function requireAdmin(req, res, next) {
   const configured = process.env.ADMIN_TOKEN && !process.env.ADMIN_TOKEN.includes('XXXXX');
   if (!configured) return res.status(503).json({ error: 'ADMIN_TOKEN not configured on the server — set it in .env' });
+  // Ten wrong guesses lock that address out for 15 minutes.
+  if (adminFails.blocked(req.ip)) return res.status(429).json({ error: 'Too many wrong tokens. Try again in 15 minutes.' });
   const supplied = req.headers['x-admin-token'] || '';
   const expected = process.env.ADMIN_TOKEN;
   // Constant-time compare — a plain !== leaks how many leading bytes
@@ -6060,7 +6141,8 @@ function requireAdmin(req, res, next) {
   const suppliedBuf = Buffer.from(supplied);
   const expectedBuf = Buffer.from(expected);
   const valid = suppliedBuf.length === expectedBuf.length && crypto.timingSafeEqual(suppliedBuf, expectedBuf);
-  if (!valid) return res.status(401).json({ error: 'Invalid admin token' });
+  if (!valid) { adminFails.fail(req.ip); return res.status(401).json({ error: 'Invalid admin token' }); }
+  adminFails.ok(req.ip);
   next();
 }
 
@@ -6185,12 +6267,12 @@ function backfillModelChances() {
 }
 
 async function runBacktest() {
-  const report = buildReport(loadCLV(), { confVersion: CONFIDENCE_FORMULA_VERSION });
+  const report = buildReport(loadCLV().filter(e => e.source === 'auto'), { confVersion: CONFIDENCE_FORMULA_VERSION });
   store.saveBacktest(report);
   return report;
 }
 async function refitCalibration() {
-  const model = calibration.fit(loadCLV());
+  const model = calibration.fit(loadCLV().filter(e => e.source === 'auto'));
   const was = !!(calibrationModel && calibrationModel.active);
   store.saveCalibration(model);
   calibrationModel = model;
@@ -6255,3 +6337,26 @@ app.post('/api/admin/alerts/test', requireAdmin, async (req, res) => {
   res.json({ webhookConfigured: alerts.configured, ...out });
 });
 
+// ═════════════════════════════════════════════════════════════════
+// SAFETY NET
+// One bad request or one failed background call must not take the whole server down. Errors are
+// logged and answered with a plain JSON message (never a stack trace). If errors pile up (more than
+// 20 in a minute) the process exits so the host restarts it clean instead of limping on.
+// ═════════════════════════════════════════════════════════════════
+let recentFaults = [];
+function noteFault(kind, err) {
+  const now = Date.now();
+  recentFaults = recentFaults.filter(t => now - t < 60000);
+  recentFaults.push(now);
+  console.error(`[${kind}]`, err && err.stack ? err.stack.split('\n').slice(0, 4).join('\n') : err);
+  try { store.addEvent('fault', 'warn', `${kind}: ${err && err.message ? err.message : err}`); } catch (_) {}
+  if (recentFaults.length > 20) { console.error('[Fatal] too many faults in a minute, exiting for a clean restart'); process.exit(1); }
+}
+process.on('uncaughtException', err => noteFault('uncaughtException', err));
+process.on('unhandledRejection', err => noteFault('unhandledRejection', err));
+app.use((err, req, res, next) => {   // eslint-disable-line no-unused-vars
+  if (res.headersSent) return;
+  const status = err.status || err.statusCode || 500;
+  if (status >= 500) noteFault('route', err);
+  res.status(status >= 400 && status < 600 ? status : 500).json({ error: status === 413 ? 'Request too large.' : status === 400 ? 'Bad request.' : 'Something went wrong on the server.' });
+});

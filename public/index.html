@@ -3158,11 +3158,11 @@ function renderResult(raw, player, opp, propType, line, ctx, precomputedVerdict,
     <div style="overflow-x:auto;">
     <table class="mini-table">
       <thead><tr><th>DATE</th><th>OPP</th><th>PTS</th><th>REB</th><th>AST</th><th>MIN</th><th>FG%</th></tr></thead>
-      <tbody>${stats.last5Games.map(g => `<tr><td>${g.date}</td><td>${(g.opponent||'N/A').split(' ').pop()}</td><td>${g.pts}</td><td>${g.reb}</td><td>${g.ast}</td><td>${g.min}</td><td>${g.fg_pct}</td></tr>`).join('')}</tbody>
+      <tbody>${stats.last5Games.map(g => `<tr><td>${escapeHtml(g.date)}</td><td>${escapeHtml((g.opponent||'N/A').split(' ').pop())}</td><td>${escapeHtml(g.pts)}</td><td>${g.reb}</td><td>${g.ast}</td><td>${g.min}</td><td>${g.fg_pct}</td></tr>`).join('')}</tbody>
     </table>
     </div>` : '';
 
-  const factorHTML = factors.map(f => `<div class="factor-pill"><div class="fi ${f.type}">${f.type==='pos'?'▲':'▼'}</div><div class="factor-txt">${f.text}</div></div>`).join('');
+  const factorHTML = factors.map(f => `<div class="factor-pill"><div class="fi ${f.type}">${f.type==='pos'?'▲':'▼'}</div><div class="factor-txt">${escapeHtml(f.text)}</div></div>`).join('');
 
   const mathBreakdownBox = ctx?.mathProjection ? `
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin:8px 0;font-family:var(--body);font-size:11px;">
@@ -3327,7 +3327,7 @@ function renderResult(raw, player, opp, propType, line, ctx, precomputedVerdict,
     <div class="section-divider">Key Factors</div>
     <div class="factor-grid" style="grid-template-columns:1fr;">${factorHTML || '<div class="top-plays-empty">No factors listed</div>'}</div>
     ${blowout?`<div class="section-divider">Blowout Scenario</div><div class="analysis-box">${blowout}</div>`:''}
-    ${fullAnalysis?`<div class="analysis-text">${fullAnalysis}</div>`:''}`;
+    ${fullAnalysis?`<div class="analysis-text">${escapeHtml(fullAnalysis).replace(/\n/g,'<br>')}</div>`:''}`;
 
   const sidebar = v2Sidebar(ctx, v2f, edge, projection, line, propType, verdict, vc, confidence);
 
@@ -3872,7 +3872,7 @@ async function analyzeMatchup() {
       apiGet(`/api/position-category-defense?league=${league}&team=${encodeURIComponent(t2)}`).catch(() => ({ available: false })),
     ]);
   } catch (err) {
-    div.innerHTML = `<div style="color:var(--red);font-family:var(--body);font-size:12px;padding:20px;">ERROR: ${err.message}</div>`;
+    div.innerHTML = `<div style="color:var(--red);font-family:var(--body);font-size:12px;padding:20px;">ERROR: ${escapeHtml(err.message)}</div>`;
     return;
   }
   if (window._tmToken !== token) return;
@@ -4997,18 +4997,18 @@ function renderBetslip() {
 
   const propLabel = {'points':'PTS','rebounds':'REB','assists':'AST','3pm':'3PM','pra':'PRA','pr':'P+R','pa':'P+A','ra':'R+A','steals':'STL','blocks':'BLK'};
   el.innerHTML = betslip.map(b=>{
-    const vc=(b.verdict||'pass').toLowerCase().replace('_','-');
-    const vt=(b.verdict||'PASS').replace('_',' ');
-    const edgeStr=b.edge!=null?(b.edge>0?'+':'')+b.edge:'—';
+    const vc=String(b.verdict||'pass').toLowerCase().replace('_','-').replace(/[^a-z-]/g,'');
+    const vt=escapeHtml(String(b.verdict||'PASS').replace('_',' '));
+    const edgeStr=b.edge!=null?escapeHtml((b.edge>0?'+':'')+b.edge):'—';
     const lineMoved = !b.result && b.closingLine!=null && b.closingLine!==b.line;
-    const clvBadge = b.clv!=null ? `<span class="pl-clv ${b.clv>=0?'pos':'neg'}" title="Closing line value">CLV ${b.clv>0?'+':''}${b.clv}</span>` : '';
+    const clvBadge = b.clv!=null ? `<span class="pl-clv ${b.clv>=0?'pos':'neg'}" title="Closing line value">CLV ${b.clv>0?'+':''}${escapeHtml(b.clv)}</span>` : '';
     const autoBadge = b.autoGraded ? `<span class="pl-auto" title="Auto-graded from the real box score">AUTO</span>` : '';
     return `<div class="pl-card">
       <div class="pl-top">
         <div>
           <div class="h-player">${escapeHtml(b.player)} <span class="pl-lg">${(b.league||'nba').toUpperCase()}</span></div>
-          <div class="h-meta">${propLabel[b.propType]||b.propType?.toUpperCase()} ${b.line} · vs ${escapeHtml(b.opp)||'?'} · Proj: ${b.projection||'—'} · Edge: ${edgeStr} · ${b.date||''}</div>
-          ${lineMoved ? `<div class="pl-warn">⚠ LINE MOVED ${b.line} → ${b.closingLine}</div>` : ''}
+          <div class="h-meta">${propLabel[b.propType]||escapeHtml(String(b.propType||'').toUpperCase())} ${escapeHtml(b.line)} · vs ${escapeHtml(b.opp)||'?'} · Proj: ${escapeHtml(b.projection||'—')} · Edge: ${edgeStr} · ${escapeHtml(b.date||'')}</div>
+          ${lineMoved ? `<div class="pl-warn">⚠ LINE MOVED ${escapeHtml(b.line)} → ${escapeHtml(b.closingLine)}</div>` : ''}
         </div>
         <div class="pl-side">
           <div class="h-verdict ${vc}">${vt}</div>
