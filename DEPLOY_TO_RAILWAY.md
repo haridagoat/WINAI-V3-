@@ -68,3 +68,34 @@ Open that from any phone, laptop, or device — WIN AI is live 24/7.
   the admin isn't counted). Saves, searches and admin logins are also rate limited, and 10 wrong admin
   tokens lock that address out for 15 minutes.
 - **Tests:** `npm test`. They also run on every push through `.github/workflows/test.yml`.
+
+## Accounts and data checks
+
+Visitors can browse everything as guests. An account is only asked for when someone saves a prop, and every
+saved prop belongs to the account that saved it. Sign-in is by emailed link, so there are no passwords.
+
+Set these in the host's variables:
+
+| Variable | What it does |
+|---|---|
+| `RESEND_API_KEY` | Key from resend.com, used to send the sign-in email. |
+| `MAIL_FROM` | The sender, on a domain you verified at Resend, for example `WIN AI <login@yourdomain.com>`. |
+| `PUBLIC_URL` | Your site address, for example `https://yourapp.up.railway.app`. Sign-in links are built from this, never from the request. |
+| `ADMIN_EMAIL` | Your own email. Props saved before accounts existed move to this account the first time it signs in. |
+| `USER_MAX_PROPS` | Optional. Props one account can save (default 300). |
+| `BLOCKED_EMAIL_DOMAINS` | Optional. Extra throwaway email domains to refuse, comma separated. |
+
+Until `RESEND_API_KEY`, `MAIL_FROM` and `PUBLIC_URL` are all set, sign-in is switched off and visitors see
+"Sign-in is not ready" when they try to save.
+
+**On your own computer** you can skip email: set `AUTH_DEV_LINKS=1` in `.env`. The sign-in link is then shown on
+screen and printed in the server log instead of being emailed. It only works for requests from the same machine and
+is ignored when `NODE_ENV=production`. Never set it on a public site.
+
+**Admin only:** the Users and Data checks tabs on `/admin.html` need the admin token. No public page shows user counts
+or check results.
+
+**Data checks** run at startup and every night at 3:10 AM. They fix what is safe (a stale slate cache, a missing
+backup, a stat file the server can re-fetch, picks overdue for grading) and alert you about the rest. They never edit a
+pick or a stat. The WNBA/NBA stat refresh needs Python on the server, so on Railway it will usually report
+"needs you" and you refresh those files on your own computer.

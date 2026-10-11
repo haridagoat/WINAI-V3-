@@ -93,3 +93,20 @@ test('security headers are set on every response', () => {
   assert.equal(r.headers['X-Frame-Options'], 'DENY');
   assert.equal(r.headers['Referrer-Policy'], 'no-referrer');
 });
+
+test('a state-changing request from another site is refused', () => {
+  const run = headers => { let out = 'next'; s.sameOrigin({ get: h => headers[h.toLowerCase()] }, { status: c => ({ json: () => { out = c; } }) }, () => { out = 'next'; }); return out; };
+  assert.equal(run({ origin: 'https://evil.test', host: 'winai.test' }), 403);
+  assert.equal(run({ origin: 'null', host: 'winai.test' }), 403);
+  assert.equal(run({ origin: 'https://winai.test', host: 'winai.test' }), 'next');
+  assert.equal(run({ 'sec-fetch-site': 'cross-site', host: 'winai.test' }), 403);
+  assert.equal(run({ host: 'winai.test' }), 'next');            // curl and server-to-server calls carry no Origin
+});
+
+test('the rate limiter reports each block', () => {
+  let blocks = 0;
+  const lim = s.createRateLimiter({ windowMs: 1000, max: 2, onBlock: () => blocks++, now: () => 5 });
+  const res = { set() {}, status: () => ({ json() {} }) };
+  for (let i = 0; i < 5; i++) lim({ ip: '1.1.1.1' }, res, () => {});
+  assert.equal(blocks, 3);
+});

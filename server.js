@@ -16,6 +16,9 @@ const calibration = require('./lib/calibration');
 const { buildReport } = require('./lib/backtest');
 const { createAlerts } = require('./lib/alerts');
 const { evaluateHealth, creditBudget, envNum } = require('./lib/health');
+const { createAuth, sessionCookie, clearCookie, maskEmail } = require('./lib/auth');
+const { createMailer } = require('./lib/mailer');
+const datachecks = require('./lib/datachecks');
 
 const CLV_FILE = 'clv_tracker.json';   // legacy file, imported into SQLite on first start
 const store = createStore({
@@ -5744,6 +5747,91 @@ function getWNBARanksFromFields(oppAdvanced, oppShooting, oppFourFact, oppMiscNo
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// ACCOUNTS — sign in by emailed link (lib/auth.js). Visitors browse as guests; an account is only
+// needed to save props, and every saved prop belongs to the account that saved it. Picks the system
+// logs itself (source 'auto') have no owner: everyone can read them, only the admin can change them.
+// ═══════════════════════════════════════════════════════════════════
+const PUBLIC_URL = String(process.env.PUBLIC_URL || '').replace(/\/+$/, '');
+const USER_MAX_PROPS = envNum(process.env.USER_MAX_PROPS, 300);
+const isLoopback = ip => /^(::1|127\.0\.0\.1|::ffff:127\.0\.0\.1)$/.test(String(ip || ''));
+const mailer = createMailer({
+  apiKey: process.env.RESEND_API_KEY, from: process.env.MAIL_FROM,
+  post: (url, body, cfg) => axios.post(url, body, { timeout: 10000, ...cfg }),
+  log: m => console.log(m), devLinks: process.env.AUTH_DEV_LINKS === '1' && process.env.NODE_ENV !== 'production',
+});
+const auth = createAuth({
+  store, send: m => mailer.send(m), adminEmail: process.env.ADMIN_EMAIL, devLinks: mailer.devLinks, log: m => console.log(m),
+  extraBlocked: String(process.env.BLOCKED_EMAIL_DOMAINS || '').toLowerCase().split(',').map(x => x.trim()).filter(Boolean),
+});
+function authStatus() {
+  if (!store.supportsAccounts) return { enabled: false, detail: 'Accounts need the SQLite database. This server is on the JSON fallback (use Node 22.13 or newer).' };
+  if (mailer.configured && !PUBLIC_URL) return { enabled: false, detail: 'Set PUBLIC_URL to your site address (for example https://yourapp.up.railway.app) so sign-in emails link to the right place.' };
+  if (mailer.configured) return { enabled: true, detail: 'Sign-in email is set up.' };
+  if (mailer.devLinks) return { enabled: true, dev: true, detail: 'Development mode: sign-in links are printed in the server log and are not emailed. Never use AUTH_DEV_LINKS on a public site.' };
+  return { enabled: false, detail: 'Sign-in email is not set up. Add RESEND_API_KEY, MAIL_FROM and PUBLIC_URL in the host\'s variables.' };
+}
+// The address in a sign-in email must never come from the request, or a forged Host header could point a
+// victim's link at another site. In development (links printed, not emailed) only loopback requests may use it.
+function authBaseUrl(req) {
+  if (PUBLIC_URL) return PUBLIC_URL;
+  return mailer.devLinks && isLoopback(req.ip) ? `${req.protocol}://${req.get('host')}` : null;
+}
+const isSecureReq = req => !!req.secure || PUBLIC_URL.startsWith('https://');
+const authBlocks = [];   // when a sign-in limit blocked someone, for the admin Users tab
+const noteBlock = () => { authBlocks.push(Date.now()); if (authBlocks.length > 2000) authBlocks.splice(0, 1000); };
+const authRequestLimiter = security.createRateLimiter({ windowMs: 15 * 60 * 1000, max: 10, onBlock: noteBlock, message: 'Too many sign-in attempts. Try again in a few minutes.' });
+const authVerifyLimiter = security.createRateLimiter({ windowMs: 15 * 60 * 1000, max: 30, onBlock: noteBlock, message: 'Too many attempts. Try again in a few minutes.' });
+
+app.use('/api', (req, res, next) => { req.user = store.supportsAccounts ? auth.userFromCookieHeader(req.headers.cookie) : null; next(); });
+app.use(['/api/auth', '/api/account', '/api/clv'], (req, res, next) => (req.method === 'GET' || req.method === 'HEAD') ? next() : security.sameOrigin(req, res, next));
+function requireUser(req, res, next) {
+  if (!authStatus().enabled) return res.status(503).json({ error: 'Sign-in is not set up on this server yet.', code: 'auth_disabled' });
+  if (!req.user) return res.status(401).json({ error: 'Sign in to continue.', code: 'auth_required' });
+  next();
+}
+
+app.get('/api/auth/me', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ enabled: authStatus().enabled, user: req.user ? { email: req.user.email } : null, maxProps: USER_MAX_PROPS });
+});
+app.post('/api/auth/request', authRequestLimiter, async (req, res) => {
+  const base = authStatus().enabled ? authBaseUrl(req) : null;
+  if (!base) return res.status(503).json({ error: 'Sign-in is not set up on this server yet.' });
+  const r = await auth.requestLink({ email: req.body?.email, ageConfirmed: req.body?.ageConfirmed === true, ip: req.ip, baseUrl: base });
+  const out = r.error ? { error: r.error } : { ok: true };
+  if (r.devLink && isLoopback(req.ip)) out.devLink = r.devLink;
+  res.status(r.status).json(out);
+});
+// The link in the email opens this page, which asks for one tap before signing in. Mail scanners that
+// pre-open links would otherwise use up the one-time link before the person ever saw it.
+app.get('/auth/verify', (req, res) => { res.set('Cache-Control', 'no-store'); res.sendFile(path.join(__dirname, 'public', 'signin.html')); });
+app.post('/api/auth/verify', authVerifyLimiter, (req, res) => {
+  const r = auth.verifyLink(req.body?.token);
+  if (r.error) return res.status(r.status).json({ error: r.error });
+  res.set('Set-Cookie', sessionCookie(r.sessionToken, { secure: isSecureReq(req) }));
+  res.json({ ok: true, email: r.user.email, created: r.created, claimed: r.claimed });
+});
+app.post('/api/auth/logout', (req, res) => {
+  auth.logout(req.headers.cookie);
+  res.set('Set-Cookie', clearCookie({ secure: isSecureReq(req) }));
+  res.json({ ok: true });
+});
+// Everything the account holds, as a file.
+app.get('/api/account/export', requireUser, (req, res) => {
+  res.set({ 'Content-Disposition': 'attachment; filename="winai-my-data.json"', 'Cache-Control': 'no-store' });
+  res.json({ email: req.user.email, createdAt: req.user.created_at, exportedAt: new Date().toISOString(), props: store.picksForUser(req.user.id) });
+});
+// Deletes the account and every prop it saved. There is no undo and nothing is kept.
+app.post('/api/account/delete', requireUser, (req, res) => {
+  if (req.body?.confirm !== true) return res.status(400).json({ error: 'Confirm the deletion first.' });
+  const r = store.deleteUser(req.user.id);
+  res.set('Set-Cookie', clearCookie({ secure: isSecureReq(req) }));
+  res.json({ ok: true, propsDeleted: r.props });
+});
+const userPicks = id => (store.supportsAccounts ? store.picksForUser(id) : []);
+const systemPicks = () => (store.supportsAccounts ? store.systemPicks() : loadCLV().filter(e => e.source === 'auto'));
+
+// ═══════════════════════════════════════════════════════════════════
 // CLV TRACKING — Closing Line Value
 // Stores analyses and closing lines for long-term edge measurement
 // ═══════════════════════════════════════════════════════════════════
@@ -5877,17 +5965,18 @@ async function captureClosingLines() {
   } finally { closingRunning = false; }
 }
 
-// Save a new analysis entry
-const CLV_MAX_ENTRIES = 5000;
-app.post('/api/clv/save', writeLimiter, (req, res) => {
+// Save a prop to the signed-in user's own list
+const CLV_MAX_ENTRIES = 200000;
+app.post('/api/clv/save', requireUser, writeLimiter, (req, res) => {
   const { value, error } = security.cleanEntryInput(req.body);
   if (error) return res.status(400).json({ error });
   const { player, opp, propType, line, projection, verdict, edge, confidence, gameDate, league } = value;
 
-  const entries = loadCLV();
-  if (entries.length >= CLV_MAX_ENTRIES) return res.status(507).json({ error: 'The saved-props store is full.' });
+  if (store.countPicks() >= CLV_MAX_ENTRIES) return res.status(507).json({ error: 'The saved-props store is full.' });
+  if (store.countUserPicks(req.user.id) >= USER_MAX_PROPS) return res.status(409).json({ error: `Your Prop List is full (${USER_MAX_PROPS}). Remove some props to add more.`, code: 'list_full' });
   const entry = {
     id:          nextId(),
+    userId:      req.user.id,
     date:        gameDate || getToday(),
     savedAt:     new Date().toISOString(),
     league,
@@ -5904,35 +5993,39 @@ app.post('/api/clv/save', writeLimiter, (req, res) => {
     clv:         null,   // closingLine - openLine (positive = beat closing)
     notes:       ''
   };
-  entries.unshift(entry);
-  saveCLV(entries);
+  store.writePick(entry);
   res.json({ ok: true, id: entry.id, entry });
 });
 
-// Update with closing line and result after game. Picks the system logged itself (source:'auto')
-// are graded by the server; only the admin may edit those, because the backtest and calibration
-// are built from them.
+// Update with closing line and result after game. A user can only change props they saved. Picks the
+// system logged itself (source:'auto') are graded by the server; only the admin may edit those, because
+// the backtest and calibration are built from them. Someone else's prop answers "not found", the same as
+// a prop that does not exist.
 app.post('/api/clv/update', writeLimiter, (req, res) => {
   const id = parseInt(req.body?.id, 10);
   if (!Number.isFinite(id)) return res.status(400).json({ error: 'id required' });
   const { value, error } = security.cleanUpdateInput(req.body);
   if (error) return res.status(400).json({ error });
 
-  const entries = loadCLV();
-  const idx = entries.findIndex(e => e.id === id);
-  if (idx < 0) return res.status(404).json({ error: 'Entry not found' });
-  if (entries[idx].source === 'auto' && !isAdmin(req)) return res.status(403).json({ error: 'System-logged picks are graded automatically.' });
+  const entry = store.supportsAccounts ? store.getPick(id) : null;
+  if (!entry) return res.status(404).json({ error: 'Entry not found' });
+  if (entry.source === 'auto') {
+    if (!isAdmin(req)) return res.status(403).json({ error: 'System-logged picks are graded automatically.' });
+  } else {
+    if (!req.user) return res.status(401).json({ error: 'Sign in to continue.', code: 'auth_required' });
+    if (entry.userId !== req.user.id) return res.status(404).json({ error: 'Entry not found' });
+  }
 
-  if (value.closingLine !== undefined) entries[idx].closingLine = value.closingLine;
+  if (value.closingLine !== undefined) entry.closingLine = value.closingLine;
   // result uses "key present" rather than truthiness: the UI toggles a result off by sending null
-  if (value.result !== undefined) entries[idx].result = value.result;
-  if (value.actualStat !== undefined) entries[idx].actualStat = value.actualStat;
-  if (value.notes !== undefined) entries[idx].notes = value.notes;
+  if (value.result !== undefined) entry.result = value.result;
+  if (value.actualStat !== undefined) entry.actualStat = value.actualStat;
+  if (value.notes !== undefined) entry.notes = value.notes;
 
-  applyCLV(entries[idx]);
+  applyCLV(entry);
 
-  saveCLV(entries);
-  res.json({ ok: true, entry: entries[idx] });
+  store.writePick(entry);
+  res.json({ ok: true, entry });
 });
 
 // Get all CLV entries with summary stats
@@ -5940,8 +6033,11 @@ app.post('/api/clv/update', writeLimiter, (req, res) => {
 // number — kept in sync so "70% confidence" means the same tier everywhere.
 function clvConfTier(c) { return c >= 75 ? 'strong' : c >= 55 ? 'lean' : 'thin'; }
 
+// `summary` is the system's own record (the picks it logged and graded itself), the same for everyone.
+// `entries` is only the signed-in user's own saved props.
 app.get('/api/clv', (req, res) => {
-  const entries = loadCLV();
+  res.set('Cache-Control', 'no-store');
+  const entries = systemPicks();
   const withResult = entries.filter(e => e.result && e.result !== 'NO_BET');
   const wins   = withResult.filter(e => e.result === 'WIN').length;
   const losses = withResult.filter(e => e.result === 'LOSS').length;
@@ -5967,7 +6063,8 @@ app.get('/api/clv', (req, res) => {
   }
 
   res.json({
-    entries,
+    entries: req.user ? userPicks(req.user.id) : [],
+    signedIn: !!req.user,
     summary: {
       total: entries.length,
       graded: withResult.length,
@@ -5996,12 +6093,18 @@ app.get('/api/clv', (req, res) => {
   });
 });
 
-// Delete entry
+// Delete a prop. Only its owner can (the admin can remove system-logged picks).
 app.delete('/api/clv/:id', writeLimiter, (req, res) => {
   const id = parseInt(req.params.id, 10);
-  const all = loadCLV(), target = all.find(e => e.id === id);
-  if (target && target.source === 'auto' && !isAdmin(req)) return res.status(403).json({ error: 'System-logged picks cannot be deleted.' });
-  saveCLV(all.filter(e => e.id !== id));
+  const target = Number.isFinite(id) && store.supportsAccounts ? store.getPick(id) : null;
+  if (!target) return res.status(404).json({ error: 'Entry not found' });
+  if (target.source === 'auto') {
+    if (!isAdmin(req)) return res.status(403).json({ error: 'System-logged picks cannot be deleted.' });
+  } else {
+    if (!req.user) return res.status(401).json({ error: 'Sign in to continue.', code: 'auth_required' });
+    if (target.userId !== req.user.id) return res.status(404).json({ error: 'Entry not found' });
+  }
+  store.deletePick(id);
   res.json({ ok: true });
 });
 
@@ -6325,6 +6428,7 @@ const ADMIN_JOBS = {
   health: () => runHealthCheck(),
   'closing-lines': () => trackedClosing(),
   credits: () => trackJob('credits', refreshOddsCredits)(),
+  datachecks: () => runDataChecks(),
 };
 app.post('/api/admin/jobs/:name/run', requireAdmin, async (req, res) => {
   const job = ADMIN_JOBS[req.params.name];
@@ -6332,6 +6436,88 @@ app.post('/api/admin/jobs/:name/run', requireAdmin, async (req, res) => {
   try { await job(); res.json({ ok: true, jobs: jobRuns }); }
   catch (err) { res.status(500).json({ ok: false, error: err.message }); }
 });
+// ── Users (admin only: nothing here is public) ──
+app.get('/api/admin/users', requireAdmin, (req, res) => {
+  const users = store.supportsAccounts ? store.listUsers() : [];
+  const t = Date.now(), week = t - 7 * 24 * 3600 * 1000, day = t - 24 * 3600 * 1000;
+  res.json({
+    auth: authStatus(),
+    totals: {
+      accounts: users.length,
+      active: users.filter(u => !u.disabled).length,
+      newThisWeek: users.filter(u => new Date(u.created_at).getTime() > week).length,
+      propsSaved: users.reduce((n, u) => n + u.props, 0),
+      unclaimedProps: store.supportsAccounts ? store.countUnclaimedPicks() : 0,
+      signInsBlocked24h: authBlocks.filter(x => x > day).length,
+    },
+    users: users.map(u => ({ id: u.id, email: maskEmail(u.email), joined: u.created_at, lastSeen: u.last_seen, props: u.props, disabled: !!u.disabled })),
+  });
+});
+app.post('/api/admin/users/:id/:action(disable|enable)', requireAdmin, (req, res) => {
+  const u = store.supportsAccounts ? store.userById(req.params.id) : null;
+  if (!u) return res.status(404).json({ error: 'No such account' });
+  store.setUserDisabled(u.id, req.params.action === 'disable');
+  store.addEvent('account', 'info', `Account #${u.id} ${req.params.action}d by admin.`);
+  res.json({ ok: true });
+});
+
+// ── Data checks (admin only) ──
+function mtimeOf(f) { try { return fs.statSync(path.join(__dirname, f)).mtimeMs; } catch (_) { return null; } }
+const BACKUP_DIR = path.join(__dirname, 'backups');
+const STAT_FILE = { nba: 'player_stats.json', wnba: 'wnba_player_stats.json' };
+// The same Python scripts the 7 AM jobs run. One attempt, five minute limit.
+function runStatsScript(league) {
+  return new Promise((resolve, reject) => {
+    const [cmd, script] = league === 'nba' ? ['python', 'fetch_stats.py'] : ['python3', 'fetch_wnba_stats.py'];
+    const py = spawn(cmd, [script], { cwd: __dirname });
+    const timer = setTimeout(() => { py.kill(); reject(new Error('timed out after 5 minutes')); }, 5 * 60 * 1000);
+    py.on('error', err => { clearTimeout(timer); reject(err); });
+    py.on('close', code => {
+      clearTimeout(timer);
+      if (league === 'nba') { nbaStatsCache = null; lastStatsDiskRead = 0; } else { wnbaStatsCache = null; lastWnbaStatsDiskRead = 0; }
+      code === 0 ? resolve() : reject(new Error(`exit code ${code}`));
+    });
+  });
+}
+const dataCheckCtx = {
+  store, adminEmail: String(process.env.ADMIN_EMAIL || '').trim().toLowerCase() || null,
+  today: getToday,
+  daysAgo: n => { const d = new Date(); d.setDate(d.getDate() - n); return toLocalDateStr(d); },
+  fileMtime: lg => mtimeOf(STAT_FILE[lg]),
+  refreshStats: runStatsScript,
+  statRows: lg => { try { return JSON.parse(fs.readFileSync(path.join(__dirname, STAT_FILE[lg]), 'utf8')); } catch (_) { return null; } },
+  slateCacheDates: () => Object.fromEntries(Object.entries(slateScanCache).map(([k, v]) => [k, v?.dateKey])),
+  clearSlateCache: lg => { delete slateScanCache[lg]; saveSlateScanCacheToDisk(slateScanCache); },
+  newestBackupMtime: () => {
+    try { return Math.max(0, ...fs.readdirSync(BACKUP_DIR).filter(f => /^winai-\d{4}-\d{2}-\d{2}\.db$/.test(f)).map(f => fs.statSync(path.join(BACKUP_DIR, f)).mtimeMs)) || null; } catch (_) { return null; }
+  },
+  runBackup: () => store.backup(BACKUP_DIR),
+  picks: () => loadCLV(),
+  runGrade: () => trackJob('grade', autoGradePendingPicks)(),
+  creditBudget: currentCreditBudget,
+  authStatus,
+};
+let dataChecksRunning = null;
+function runDataChecks() {
+  if (dataChecksRunning) return dataChecksRunning;      // one run at a time
+  let result = null;
+  dataChecksRunning = trackJob('datachecks', async () => {
+    result = await datachecks.runAll({ checks: datachecks.buildChecks(dataCheckCtx), store, alerts, log: m => console.log(m) });
+    return `${result.counts.ok} healthy, ${result.counts.fixed} fixed, ${result.counts.bad} need you`;
+  })().then(() => result).finally(() => { dataChecksRunning = null; });
+  return dataChecksRunning;
+}
+app.get('/api/admin/checks', requireAdmin, (req, res) => {
+  let last = null; try { last = JSON.parse(store.getMeta('datachecks:last') || 'null'); } catch (_) {}
+  res.json({ last, running: !!dataChecksRunning, activity: store.recentEvents(200).filter(e => e.kind === 'datacheck').slice(0, 25) });
+});
+app.post('/api/admin/checks/run', requireAdmin, async (req, res) => {
+  try { res.json({ last: await runDataChecks(), running: false }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+cron.schedule('10 3 * * *', () => runDataChecks().catch(err => console.error('[DataChecks] failed:', err.message)));
+setTimeout(() => runDataChecks().catch(err => console.error('[DataChecks] failed:', err.message)), 45000);
+
 app.post('/api/admin/alerts/test', requireAdmin, async (req, res) => {
   const out = await alerts.notify({ key: 'test:' + Date.now(), level: 'info', kind: 'test', message: 'Test alert from the admin page.' });
   res.json({ webhookConfigured: alerts.configured, ...out });

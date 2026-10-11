@@ -106,6 +106,14 @@
   .bar i { position: absolute; top: 0; bottom: 0; background: var(--muted); opacity: .55; border-radius: 4px; }
   .bar b { position: absolute; top: -2px; bottom: -2px; width: 2px; background: #fff; }
   svg.ch { width: 100%; height: auto; display: block; } svg.ch text { font-family: 'Barlow', sans-serif; fill: var(--muted); font-size: 11px; }
+  .dot.fixed { background: var(--muted2); }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0 14px; }
+  .chipf { background: var(--surface2); color: var(--muted2); border: 1px solid var(--border2); border-radius: 999px; padding: 5px 13px; font-family: var(--display); font-weight: 700; font-size: 14px; letter-spacing: .1em; text-transform: uppercase; cursor: pointer; }
+  .chipf[aria-pressed="true"] { background: #e6e6ea; border-color: #e6e6ea; color: #0a0a0b; }
+  .chk .why { display: block; margin-top: 2px; }
+  .chk .tag { margin-left: auto; flex: none; align-self: flex-start; }
+  .chk > div { min-width: 0; flex: 1; }
+  .list3 { margin: 6px 0 0; padding-left: 18px; color: var(--muted2); font-size: 13.5px; }
   #app { display: none; }
 </style>
 </head>
@@ -124,11 +132,15 @@
     <div class="sub">Private. Only you can open this page: it needs the admin token, and none of it is visible in the app.</div>
     <div class="tabs" role="tablist" aria-label="Admin sections">
       <button class="tab" role="tab" id="t-health" data-p="health" aria-selected="true" aria-controls="p-health">Health</button>
+      <button class="tab" role="tab" id="t-checks" data-p="checks" aria-selected="false" aria-controls="p-checks" tabindex="-1">Data checks</button>
+      <button class="tab" role="tab" id="t-users" data-p="users" aria-selected="false" aria-controls="p-users" tabindex="-1">Users</button>
       <button class="tab" role="tab" id="t-backtest" data-p="backtest" aria-selected="false" aria-controls="p-backtest" tabindex="-1">Backtest</button>
       <button class="tab" role="tab" id="t-calibration" data-p="calibration" aria-selected="false" aria-controls="p-calibration" tabindex="-1">Calibration</button>
       <button class="tab" role="tab" id="t-notes" data-p="notes" aria-selected="false" aria-controls="p-notes" tabindex="-1">Scouting notes</button>
     </div>
     <div class="pane" id="p-health" role="tabpanel" aria-labelledby="t-health"><div class="empty">Loading...</div></div>
+    <div class="pane" id="p-checks" role="tabpanel" aria-labelledby="t-checks" hidden><div class="empty">Loading...</div></div>
+    <div class="pane" id="p-users" role="tabpanel" aria-labelledby="t-users" hidden><div class="empty">Loading...</div></div>
     <div class="pane" id="p-backtest" role="tabpanel" aria-labelledby="t-backtest" hidden><div class="empty">Loading...</div></div>
     <div class="pane" id="p-calibration" role="tabpanel" aria-labelledby="t-calibration" hidden><div class="empty">Loading...</div></div>
     <div class="pane" id="p-notes" role="tabpanel" aria-labelledby="t-notes" hidden>
@@ -275,7 +287,7 @@ async function deleteNote(id) {
 
 
 /* ───────── tabs ───────── */
-const LOADERS = { health: loadHealth, backtest: loadBacktest, calibration: loadCalibration, notes: () => {} };
+const LOADERS = { health: loadHealth, checks: loadChecks, users: loadUsers, backtest: loadBacktest, calibration: loadCalibration, notes: () => {} };
 function showTab(id) {
   document.querySelectorAll('.tab').forEach(t => { const on = t.dataset.p === id; t.setAttribute('aria-selected', on); t.tabIndex = on ? 0 : -1; });
   document.querySelectorAll('.pane').forEach(p => { p.hidden = p.id !== 'p-' + id; });
@@ -326,6 +338,74 @@ async function loadHealth() {
       loadHealth();
     }));
     document.getElementById('test-alert').addEventListener('click', async e => { e.target.disabled = true; try { const r = await apiCall('/api/admin/alerts/test', { method: 'POST' }); e.target.textContent = r.sent ? 'Sent' : (r.webhookConfigured ? 'Not sent: ' + r.reason : 'Logged here'); } catch (err) { e.target.textContent = err.message; } });
+  } catch (err) { if (TOKEN) el.innerHTML = `<div class="err">${escapeHtml(err.message)}</div>`; }
+}
+
+
+/* ───────── data checks (admin only) ───────── */
+let checkFilter = 'all';
+const CHECK_LABEL = { ok: 'Healthy', fixed: 'Fixed itself', bad: 'Needs you' };
+async function loadChecks() {
+  const el = document.getElementById('p-checks');
+  try {
+    const d = await apiCall('/api/admin/checks'), h = await apiCall('/api/admin/health').catch(() => ({}));
+    const last = d.last;
+    if (!last) { el.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px"><h2 style="margin:0">Data checks</h2><button class="btn2" id="chk-run">${d.running ? 'Running...' : 'Run checks now'}</button></div><div class="banner">The checks have not run yet. They run at startup and every night at 3:10 AM.</div>`; wireChecks(el); return; }
+    const c = last.counts, list = last.checks.filter(x => checkFilter === 'all' || x.status === checkFilter);
+    const rows = list.map(x => `<div class="chk"><span class="dot ${x.status === 'bad' ? 'critical' : x.status === 'fixed' ? 'fixed' : ''}"></span><div><b>${escapeHtml(x.name)}</b><span>${escapeHtml(x.description)}</span><span class="why" style="color:${x.status === 'bad' ? 'var(--red)' : 'var(--muted2)'}">${escapeHtml(x.detail)}</span></div><span class="pill tag ${x.status === 'bad' ? 'bad' : x.status === 'ok' ? 'ok' : ''}">${CHECK_LABEL[x.status]}</span></div>`).join('') || '<div class="empty">Nothing in this group.</div>';
+    const chip = (k, l, n) => `<button type="button" class="chipf" data-f="${k}" aria-pressed="${checkFilter === k}">${l}${n != null ? ' ' + n : ''}</button>`;
+    const act = (d.activity || []).map(e => `<div class="ev"><small>${ago(e.ts)}</small><span class="pill ${e.level === 'warn' ? 'warn' : ''}">${escapeHtml(e.kind)}</span><span>${escapeHtml(e.message)}</span></div>`).join('') || '<div class="empty">No activity yet.</div>';
+    el.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px"><h2 style="margin:0">Data checks</h2><span><span class="hint">Last run ${ago(last.ranAt)}</span> <button class="btn2" id="chk-run" ${d.running ? 'disabled' : ''}>${d.running ? 'Running...' : 'Run checks now'}</button></span></div>
+      <div class="banner">Runs at startup and every night at 3:10 AM. It fixes what is safe to fix and tells you about the rest. It never edits a pick or a stat. Only you can see this page.</div>
+      <div class="grid4" style="margin-bottom:16px">
+        <div class="tile"><div class="k">Healthy</div><div class="v">${c.ok}</div></div>
+        <div class="tile"><div class="k">Fixed themselves</div><div class="v">${c.fixed}</div></div>
+        <div class="tile" style="${c.bad ? 'border-color:#7a2f2f;background:#2a1414' : ''}"><div class="k">Need you</div><div class="v ${c.bad ? 'neg' : ''}">${c.bad}</div></div>
+        <div class="tile"><div class="k">Alerts</div><div class="v" style="font-size:24px;padding-top:6px">${h.alertWebhookConfigured ? 'Webhook on' : 'Page only'}</div></div>
+      </div>
+      <div class="chips">${chip('all', 'All', last.checks.length)}${chip('bad', 'Needs you', c.bad)}${chip('fixed', 'Fixed', c.fixed)}${chip('ok', 'Healthy', c.ok)}</div>
+      <div class="card" style="padding-top:8px;padding-bottom:8px">${rows}</div>
+      <div class="grid2">
+        <div class="card"><h2>Fixes itself</h2><ul class="list3"><li>Clears a stale slate cache</li><li>Writes a backup if there is none from the last 26 hours</li><li>Re-fetches a stat file the server can fetch (once every 6 hours)</li><li>Runs grading when picks are overdue</li></ul></div>
+        <div class="card"><h2>Only tells you</h2><ul class="list3"><li>Stat files the server cannot refresh itself</li><li>Low Odds credits</li><li>Impossible values in picks or stats</li><li>A damaged database, or sign-in not set up</li></ul></div>
+      </div>
+      <div class="card"><h2>Activity</h2>${act}</div>`;
+    el.querySelectorAll('[data-f]').forEach(b => b.addEventListener('click', () => { checkFilter = b.dataset.f; loadChecks(); }));
+    wireChecks(el);
+  } catch (err) { if (TOKEN) el.innerHTML = `<div class="err">${escapeHtml(err.message)}</div>`; }
+}
+function wireChecks(el) {
+  const b = el.querySelector('#chk-run'); if (!b) return;
+  b.addEventListener('click', async () => {
+    b.disabled = true; b.textContent = 'Running...';
+    try { await apiCall('/api/admin/checks/run', { method: 'POST' }); } catch (err) { alert(err.message); }
+    loadChecks();
+  });
+}
+
+/* ───────── users (admin only) ───────── */
+async function loadUsers() {
+  const el = document.getElementById('p-users');
+  try {
+    const d = await apiCall('/api/admin/users'), t = d.totals;
+    const rows = d.users.map(u => `<tr><td class="r" style="color:var(--muted)">#${u.id}</td><td>${escapeHtml(u.email)}</td><td>${ago(u.joined)}</td><td>${ago(u.lastSeen)}</td><td class="r">${u.props}</td><td><span class="pill ${u.disabled ? 'bad' : 'ok'}">${u.disabled ? 'Disabled' : 'Active'}</span></td><td><button class="btn2" data-uid="${u.id}" data-act="${u.disabled ? 'enable' : 'disable'}">${u.disabled ? 'Enable' : 'Disable'}</button></td></tr>`).join('');
+    el.innerHTML = `
+      <h2>Users</h2>
+      <div class="banner">${d.auth.enabled ? '<span class="pill ok">Sign-in on</span> ' : '<span class="pill bad">Sign-in off</span> '}${escapeHtml(d.auth.detail)}<br>Counts only. You can switch an account off, but nobody's saved props can be read from here. Only you can see this page.</div>
+      <div class="grid4" style="margin-bottom:16px">
+        <div class="tile"><div class="k">Accounts</div><div class="v">${t.accounts}</div><div class="s">${t.active} active</div></div>
+        <div class="tile"><div class="k">New this week</div><div class="v">${t.newThisWeek}</div></div>
+        <div class="tile"><div class="k">Props saved</div><div class="v">${t.propsSaved}</div><div class="s">${t.unclaimedProps ? t.unclaimedProps + ' older props have no owner yet' : 'all have an owner'}</div></div>
+        <div class="tile"><div class="k">Sign-ins blocked, 24h</div><div class="v">${t.signInsBlocked24h}</div><div class="s">since the server started</div></div>
+      </div>
+      <div class="card"><div class="scroll"><table class="t"><thead><tr><th class="r">ID</th><th>Email</th><th>Joined</th><th>Last seen</th><th class="r">Props</th><th>Status</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="7" style="color:var(--muted)">No accounts yet.</td></tr>'}</tbody></table></div></div>
+      <div class="card"><h2>Limits in place</h2><ul class="list3"><li>5 sign-in emails per address per hour, 10 sign-in attempts per address per 15 minutes</li><li>Throwaway email providers are refused (add more with BLOCKED_EMAIL_DOMAINS)</li><li>Each account can save up to 300 props</li><li>Sign-in links work once and expire in 15 minutes; sessions last 30 days</li></ul></div>`;
+    el.querySelectorAll('[data-uid]').forEach(b => b.addEventListener('click', async () => {
+      b.disabled = true;
+      try { await apiCall(`/api/admin/users/${b.dataset.uid}/${b.dataset.act}`, { method: 'POST' }); } catch (err) { alert(err.message); }
+      loadUsers();
+    }));
   } catch (err) { if (TOKEN) el.innerHTML = `<div class="err">${escapeHtml(err.message)}</div>`; }
 }
 

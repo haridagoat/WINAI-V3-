@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>Sign in — WIN AI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@700;800&family=Barlow+Semi+Condensed:wght@600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0a0a0b;--surface:#111113;--surface2:#18181b;--border:rgba(255,255,255,.09);--border2:rgba(255,255,255,.17);--text:#ececee;--muted:#9a9aa3;--muted2:#c4c4cb;--neg:#ffb3b3;--neg-bg:#2a1414;--neg-line:#7a2f2f;
+  --display:'Barlow Condensed','Arial Narrow',Impact,sans-serif;--label:'Barlow Semi Condensed','Barlow',system-ui,sans-serif;--body:'Barlow',system-ui,-apple-system,'Segoe UI',sans-serif;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{background:var(--bg);color:var(--text);margin:0;min-height:100%}
+body{font-family:var(--body);font-size:15px;line-height:1.45;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px 16px}
+.card{width:100%;max-width:420px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:26px}
+.logo{font-family:var(--display);font-weight:800;font-size:26px;letter-spacing:.06em}
+h1{font-family:var(--display);font-weight:800;font-size:30px;letter-spacing:.05em;text-transform:uppercase;margin:18px 0 6px;line-height:1}
+p{color:var(--muted);margin:0 0 18px}
+button{width:100%;background:#e6e6ea;border:1px solid #e6e6ea;color:#0a0a0b;border-radius:9px;padding:12px 18px;font-family:var(--label);font-weight:700;font-size:14px;letter-spacing:.12em;text-transform:uppercase;cursor:pointer}
+button:hover{background:#fff}button[disabled]{background:#202024;border-color:var(--border);color:#6f6f78;cursor:not-allowed}
+button:focus-visible,a:focus-visible{outline:2px solid var(--muted2);outline-offset:2px}
+a.alt{display:block;text-align:center;margin-top:14px;color:var(--muted2);font-family:var(--label);font-weight:600;font-size:13px;letter-spacing:.1em;text-transform:uppercase}
+.err{background:var(--neg-bg);border:1px solid var(--neg-line);color:var(--neg);border-radius:10px;padding:11px 13px;margin-bottom:16px;font-size:14px}
+</style>
+</head>
+<body>
+<main class="card">
+  <div class="logo">WIN AI</div>
+  <h1 id="h">Sign in</h1>
+  <p id="p">Tap the button to finish signing in on this device.</p>
+  <div class="err" id="err" hidden></div>
+  <button id="go" type="button">Sign in</button>
+  <a class="alt" id="back" href="/" hidden>Back to WIN AI</a>
+</main>
+<script>
+(function(){
+  var token = new URLSearchParams(location.search).get('t') || '';
+  try { history.replaceState(null, '', location.pathname); } catch (_) {}   // keep the one-time token out of history
+  var go = document.getElementById('go'), err = document.getElementById('err'), back = document.getElementById('back');
+  function fail(msg){ err.textContent = msg; err.hidden = false; go.hidden = true; back.hidden = false; document.getElementById('h').textContent = 'Link not valid'; document.getElementById('p').textContent = 'Go back and ask for a new link.'; }
+  if (!token) return fail('This page needs the link from your email.');
+  go.addEventListener('click', function(){
+    go.disabled = true; go.textContent = 'Signing in…';
+    fetch('/api/auth/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: token }) })
+      .then(function(r){ return r.json().then(function(j){ return { ok: r.ok, j: j }; }); })
+      .then(function(x){
+        if (!x.ok) return fail(x.j && x.j.error ? x.j.error : 'Could not sign in.');
+        try { sessionStorage.setItem('winai_welcome', x.j.created ? 'new' : 'back'); } catch (_) {}
+        location.replace('/');
+      })
+      .catch(function(){ go.disabled = false; go.textContent = 'Try again'; });
+  });
+})();
+</script>
+</body>
+</html>
