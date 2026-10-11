@@ -18,6 +18,7 @@ function ctx(over = {}) {
     picks: () => [], runGrade: async () => calls.push('grade'),
     creditBudget: () => ({ known: true, canScan: true, remaining: 300, scanCost: 60 }),
     authStatus: () => ({ enabled: true }),
+    billingStatus: () => ({ requested: false, configured: false, missing: ['STRIPE_SECRET_KEY'], on: false, mode: null, lastWebhookAt: null }),
   };
   const c = { ...base, ...over };
   return { c, calls, run: async key => D.buildChecks(c).find(x => x.key === key).run() };

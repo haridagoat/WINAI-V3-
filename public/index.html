@@ -1311,6 +1311,17 @@
   .acct-alt{margin-top:8px;background:var(--surface2);border:1px solid var(--border2);color:var(--muted2)}
   .acct-alt:hover{background:var(--surface3);color:var(--text)}
   .acct-toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:#e6e6ea;color:#0a0a0b;border-radius:10px;padding:10px 18px;font-family:var(--label);font-weight:700;font-size:13px;letter-spacing:.08em;z-index:400;max-width:calc(100vw - 32px);text-align:center}
+  .plan-row{display:flex;align-items:center;gap:8px;padding:2px 12px 10px;border-bottom:1px solid var(--border);margin-bottom:4px;font-size:12.5px;color:var(--muted)}
+  .plan-row .who{padding:0;border:0;margin:0}
+  .plan-pill{display:inline-block;font-family:var(--label);font-weight:700;font-size:11px;letter-spacing:.14em;text-transform:uppercase;padding:1px 8px;border-radius:5px;border:1px solid var(--border2);color:var(--muted2)}
+  .plan-pill.pro{background:#12261b;border-color:#2a6b47;color:#9ee0bd}
+  .quota-note{margin-top:8px;font-size:13px;color:var(--muted);text-align:center}
+  .quota-note button{background:none;border:0;padding:0;color:var(--text);font:inherit;font-weight:600;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+  .up-list{list-style:none;margin:14px 0 0;padding:0;display:flex;flex-direction:column;gap:9px}
+  .up-list li{display:flex;gap:10px;font-size:14.5px;color:var(--muted2)}
+  .up-list li::before{content:"";flex:none;width:6px;height:6px;border-radius:50%;background:var(--pos,#4cb47e);margin-top:8px}
+  .up-price{margin-top:16px;font-family:var(--display);font-weight:800;font-size:30px;letter-spacing:.04em;line-height:1}
+  .up-price small{font-family:var(--label);font-weight:600;font-size:13px;letter-spacing:.06em;color:var(--muted);margin-left:8px}
   .pl-empty{padding:34px 16px;text-align:center;color:var(--muted);background:var(--surface);border:1px solid var(--border);border-radius:12px}
   .pl-empty b{display:block;color:var(--muted2);font-family:var(--display);font-weight:800;font-size:24px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:4px}
   .pl-empty button{margin-top:14px;background:#e6e6ea;border:1px solid #e6e6ea;color:#0a0a0b;border-radius:9px;padding:10px 20px;font-family:var(--label);font-weight:700;font-size:13px;letter-spacing:.12em;text-transform:uppercase;cursor:pointer}
@@ -2390,6 +2401,11 @@ async function analyzeProp(league='nba') {
   if (!player || !line) { alert('Fill in player name and prop line.'); return; }
   if (parseFloat(line) <= 0) { alert('Line must be a positive number.'); return; }
 
+  // While the paywall is on, each analysis starts with a ticket from the server: free accounts get one a day.
+  let ticketHeaders;
+  try { const tk = await analysisStart(); if (tk) ticketHeaders = { 'X-Analysis-Ticket': tk }; }
+  catch (e) { if (!gateError(e, 'analyzer')) alert(e.message); return; }
+
   const myGen = ++_analyzeRequestGen[league];
   const isCurrent = () => _analyzeRequestGen[league] === myGen;
   const btn = elFor(league,'analyze-btn');
@@ -2433,19 +2449,20 @@ async function analyzeProp(league='nba') {
     // fetched object is used both in the prompt and in the rendered charts,
     // so Claude can never claim this data is missing while it's on screen.
     const [ctx, { playerData: playerShotChart, defData: oppShotChart }] = await Promise.all([
-      apiGet(`${contextRoute}?player=${encodeURIComponent(player)}&opponent=${encodeURIComponent(opp)}&propType=${propType}`),
+      apiGet(`${contextRoute}?player=${encodeURIComponent(player)}&opponent=${encodeURIComponent(opp)}&propType=${propType}`, ticketHeaders),
       fetchShotChartData(league, player, opp),
     ]);
     if (!isCurrent()) return;
     updateStep(1, league);
     const prompt = buildEnrichedPrompt(player, opp, propType, line, context, ctx, league, playerShotChart, oppShotChart);
     updateStep(2, league);
-    const claudeRes = await apiPost('/api/analyze', { prompt });
+    const claudeRes = await apiPost('/api/analyze', { prompt, kind: 'prop' }, ticketHeaders);
     if (!isCurrent()) return; // a newer request already rendered its own result
     updateStep(3, league);
     const parsedVerdict = parseVerdict(claudeRes.response, { ...ctx, _postedLine: line });
     elFor(league,'result-area').innerHTML = renderResult(claudeRes.response, player, opp, propType, line, ctx, parsedVerdict, league);
     _currentAnalysis = { player, opp, propType, line, ctx, league, ...parsedVerdict };
+    if (AUTH.paywall) refreshMe();
     analysisHistory.unshift({ player, opp, propType, line, league, ...parsedVerdict, raw: claudeRes.response, ctx, playerShotChart, oppShotChart, time: new Date(), result: null, closingLine: null, actualStat: null, clv: null });
     if (analysisHistory.length > HISTORY_MAX_ENTRIES) analysisHistory.length = HISTORY_MAX_ENTRIES;
     saveHistoryToStorage();
@@ -3865,7 +3882,7 @@ Return ONLY valid JSON in exactly this shape:
   "blowout": {"level": "LOW or MODERATE or HIGH", "note": "one sentence${odds?.available ? ' using the spread and total' : ''}"}
 }`;
   try {
-    const res = await apiPost('/api/analyze', { prompt });
+    const res = await apiPost('/api/analyze', { prompt, kind: 'team' });
     if (window._tmToken !== token || !body) return;
     const json = (res.response.match(/\{[\s\S]*\}/) || [])[0];
     body.innerHTML = tmBreakdownHtml(JSON.parse(json), league, t1, t2);
@@ -4027,13 +4044,13 @@ function escapeHtml(str) {
   }[c]));
 }
 
-async function apiGet(url) {
-  const res = await fetch(url);
+async function apiGet(url, headers) {
+  const res = await fetch(url, headers ? { headers } : undefined);
   if (!res.ok) { const e = await res.json().catch(()=>({error:'Unknown'})); const err = new Error(e.error || `Server error ${res.status}`); err.code = e.code; err.status = res.status; throw err; }
   return res.json();
 }
-async function apiPost(url, body) {
-  const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+async function apiPost(url, body, headers) {
+  const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json', ...(headers || {})}, body:JSON.stringify(body) });
   if (!res.ok) { const e = await res.json().catch(()=>({error:'Unknown'})); const err = new Error(e.error || `Error ${res.status}`); err.code = e.code; err.status = res.status; throw err; }
   return res.json();
 }
@@ -4183,7 +4200,8 @@ async function renderTodayPage() {
       const tp = await get(`/api/top-plays?league=${lg}`, { fallbackPlays: [] });
       (tp.fallbackPlays || []).forEach(p => fbPlays.push({ ...p, league: lg }));
     }
-    TD.data = { games, props, fallback, fbPlays, clv, teamPicks: { nba: nbaTeam.games || [], wnba: wnbaTeam.games || [] } };
+    const limited = !!(nbaB.limited || wnbaB.limited), boardTotal = (nbaB.total ?? (nbaB.props || []).length) + (wnbaB.total ?? (wnbaB.props || []).length);
+    TD.data = { games, props, limited, boardTotal, fallback, fbPlays, clv, teamPicks: { nba: nbaTeam.games || [], wnba: wnbaTeam.games || [] } };
     TD.conf = uniqueConfs([...props, ...fbPlays]);
     paintToday();
     tdLoadLines(games);
@@ -4271,7 +4289,7 @@ function paintToday() {
       <div class="td-sh" style="padding:0 10px"><h2>Prop board</h2><div class="td-srch"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M13 13l4.5 4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><input type="search" id="td-q" placeholder="Search a player or team" autocomplete="off" aria-label="Search the prop board" value="${escapeHtml(TD.q)}"></div></div>
       <div class="td-chips" id="td-chips">${[['all', 'All'], ['points', 'Points'], ['assists', 'Assists'], ['rebounds', 'Rebounds']].map(([v, l]) => `<button type="button" class="td-chip" data-prop="${v}" aria-pressed="${TD.prop === v}">${l}</button>`).join('')}</div>
       <div class="td-scroll"><table id="td-brd">${board.html}</table></div>
-      <div class="td-bf"><button type="button" class="td-link" id="td-more" ${TD.q || board.total <= 10 ? 'hidden' : ''}>${TD.all ? 'Show top 10' : 'Show all ' + board.total}</button><span class="td-note">⚠ = EV of ${EV_TRUST_LIMIT}% or more, treated as too good to trust</span></div></section>` : '';
+      <div class="td-bf"><button type="button" class="td-link" id="td-more" ${tdMoreState(board.total).hidden ? 'hidden' : ''}>${tdMoreState(board.total).text}</button><span class="td-note">⚠ = EV of ${EV_TRUST_LIMIT}% or more, treated as too good to trust</span></div></section>` : '';
 
   // side column
   const c = D.clv?.summary?.autoCLV, tot = D.clv?.summary?.total, gr = D.clv?.summary?.graded;
@@ -4286,7 +4304,9 @@ function paintToday() {
   const slip = (typeof betslip !== 'undefined' && betslip) ? betslip : [];
   const slipCard = `<div class="td-card"><div class="td-sh" style="margin-bottom:6px"><h3>Prop List</h3>${slip.length ? `<button type="button" class="td-link" data-go="betslip">Open</button>` : ''}</div>${slip.length
     ? slip.slice(0, 3).map(b => `<div class="td-ij"><span>${escapeHtml(b.player)} <small>${(PROP_LABEL[b.propType] || '').toString()} ${b.line}</small></span><span class="td-pill ${/OVER/.test(b.verdict || '') ? 'pos' : /UNDER/.test(b.verdict || '') ? 'neg' : ''}">${escapeHtml(String(b.verdict || 'PASS').replace('_', ' '))}</span></div>`).join('') + (slip.length > 3 ? `<div class="td-note" style="margin-top:6px">+ ${slip.length - 3} more</div>` : '')
-    : (AUTH.loaded && !AUTH.user && AUTH.enabled
+    : (AUTH.paywall && AUTH.user && AUTH.plan === 'free'
+        ? '<div class="td-empty" style="padding:12px 0"><b style="font-size:18px">A Pro feature</b>Save props and have them graded for you.<br><button type="button" class="td-link" style="margin-top:8px" onclick="openUpgrade(\'prop_list\')">See Pro</button></div>'
+      : AUTH.loaded && !AUTH.user && AUTH.enabled
         ? '<div class="td-empty" style="padding:12px 0"><b style="font-size:18px">Keep your own list</b>Sign in to save props. Browsing needs no account.<br><button type="button" class="td-link" style="margin-top:8px" onclick="openSignin(\'signin\')">Sign in</button></div>'
         : '<div class="td-empty" style="padding:12px 0"><b style="font-size:18px">Nothing saved yet</b>Tap + ADD TO LIST on any analysis to save it here.</div>')}</div>`;
   const rv = (analysisHistory || []).slice(0, 3);
@@ -4303,6 +4323,11 @@ function paintToday() {
 }
 
 // the board re-renders on its own so typing in the search box never loses focus
+// The free plan shows the top of the board; the button then leads to the upgrade sheet instead of expanding.
+function tdMoreState(total) {
+  if (TD.data?.limited && !TD.q) return { hidden: false, text: `See all ${TD.data.boardTotal} props with Pro` };
+  return { hidden: !!TD.q || total <= 10, text: TD.all ? 'Show top 10' : 'Show all ' + total };
+}
 function tdRepaintBoard() {
   const t = document.getElementById('td-brd'); if (!t) return;
   const prev = _todayPicks.length;
@@ -4310,7 +4335,7 @@ function tdRepaintBoard() {
   t.innerHTML = b.html;
   document.querySelectorAll('#td-chips .td-chip').forEach(x => x.setAttribute('aria-pressed', x.dataset.prop === TD.prop));
   const more = document.getElementById('td-more');
-  if (more) { more.hidden = !!TD.q || b.total <= 10; more.textContent = TD.all ? 'Show top 10' : 'Show all ' + b.total; }
+  if (more) { const m = tdMoreState(b.total); more.hidden = m.hidden; more.textContent = m.text; }
 }
 function tdBindBoard() {
   const root = document.getElementById('today-root');
@@ -4319,7 +4344,7 @@ function tdBindBoard() {
     if (th) { const k = th.dataset.k; TD.dir = TD.key === k ? -TD.dir : (k === 'player' ? 1 : -1); TD.key = k; return tdRepaintBoard(); }
     const lg = e.target.closest('[data-lg]'); if (lg) { TD.league = lg.dataset.lg; return paintToday(); }
     const chip = e.target.closest('[data-prop]'); if (chip) { TD.prop = chip.dataset.prop; return tdRepaintBoard(); }
-    if (e.target.closest('#td-more')) { TD.all = !TD.all; return tdRepaintBoard(); }
+    if (e.target.closest('#td-more')) { if (TD.data?.limited) return openUpgrade('prop_board'); TD.all = !TD.all; return tdRepaintBoard(); }
     const mu = e.target.closest('[data-matchup]'); if (mu) { const [a, h, l] = mu.dataset.matchup.split('|'); return prefillMatchup(a, h, l); }
     const go = e.target.closest('[data-go]'); if (go) return switchTab(go.dataset.go);
     const hi = e.target.closest('[data-hist]'); if (hi) return loadHistory(+hi.dataset.hist);
@@ -4876,6 +4901,7 @@ async function addToBetslip() {
   const { player, opp, propType, line, verdict, edge, projection, confidence, league } = _currentAnalysis;
   // An account is only asked for here, at the moment someone saves. The prop is kept and saved after sign-in.
   if (!AUTH.user) { openSignin('save', { player, opp, propType, line, verdict, edge, projection, confidence, league }); return; }
+  if (AUTH.paywall && AUTH.plan !== 'pro') { openUpgrade('prop_list'); return; }
   if (betslip.find(b => b.player===player && b.propType===propType && b.line==line)) {
     alert(player+' '+propType+' '+line+' already in list.'); return;
   }
@@ -4893,6 +4919,7 @@ async function addToBetslip() {
     if (document.getElementById('panel-betslip')?.classList.contains('active')) renderBetslip();
     if (btn) { btn.textContent='✓ ADDED'; btn.style.color='var(--green)'; btn.style.borderColor='var(--green)'; setTimeout(()=>{ btn.textContent='+ ADD TO LIST'; btn.style.color='var(--gold)'; btn.style.borderColor='var(--gold)'; },2000); }
   } catch (err) {
+    if (err.code === 'pro_required') { openUpgrade('prop_list', err.message); return; }
     if (err.code === 'auth_required') { AUTH.user = null; paintAccount(); openSignin('save', { player, opp, propType, line, verdict, edge, projection, confidence, league }); return; }
     alert('Could not save prop: ' + err.message);
   }
@@ -5020,7 +5047,12 @@ function renderBetslip() {
   const sb = document.getElementById('betslip-summary-bar');
   if (!el) return;
   const acts = document.getElementById('betslip-actions');
-  if (acts) acts.style.display = (AUTH.loaded && !AUTH.user) ? 'none' : 'flex';
+  const freeNoList = AUTH.paywall && AUTH.user && AUTH.plan === 'free' && !betslip.length;
+  if (acts) acts.style.display = ((AUTH.loaded && !AUTH.user) || freeNoList) ? 'none' : 'flex';
+  if (freeNoList) {
+    el.innerHTML = '<div class="pl-empty"><b>The Prop List is a Pro feature</b>Save props, have them graded automatically, and track how you do.<br><button type="button" onclick="openUpgrade(\'prop_list\')">See Pro</button></div>';
+    if(sb) sb.innerHTML=''; return;
+  }
   if (!betslip.length && AUTH.loaded && !AUTH.user) {
     el.innerHTML = AUTH.enabled
       ? '<div class="pl-empty"><b>Sign in to start your list</b>Your saved props are private to you. Browsing the app does not need an account.<br><button type="button" onclick="openSignin(\'signin\')">Sign in</button></div>'
@@ -5107,7 +5139,7 @@ async function clearBetslip() {
 // ACCOUNTS — sign in by emailed link. Visitors browse as guests; an account is only asked for when
 // they save a prop. Saved props are private to the account that saved them.
 // ══════════════════════════════════════════════════════
-const AUTH = { enabled: false, user: null, loaded: false, maxProps: 300 };
+const AUTH = { enabled: false, user: null, loaded: false, maxProps: 300, paywall: false, plan: null, billing: null, quota: null };
 let _authResolve; const authReady = new Promise(r => { _authResolve = r; });
 const SI = { open: false, step: 'form', reason: 'signin', pending: null, email: '', age: false, busy: false, err: '', devLink: null };
 
@@ -5122,9 +5154,18 @@ function paintAccount() {
   if (!AUTH.loaded) { el.innerHTML = ''; return; }
   if (!AUTH.user) { el.innerHTML = AUTH.enabled ? '<button type="button" class="acct-btn" onclick="openSignin(\'signin\')">Sign in</button>' : ''; return; }
   const em = escapeHtml(AUTH.user.email);
+  const fd = iso => iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+  const b = AUTH.billing || {};
+  const planRow = !AUTH.paywall ? '' : AUTH.plan === 'pro'
+    ? `<div class="plan-row"><span class="plan-pill pro">${b.comped ? 'Pro · complimentary' : 'Pro'}</span>${!b.comped && b.renewsAt ? `<small>${b.cancelAtPeriodEnd ? 'Ends' : 'Renews'} ${escapeHtml(fd(b.renewsAt))}</small>` : ''}</div>`
+    : '<div class="plan-row"><span class="plan-pill">Free</span></div>';
+  const planBtn = !AUTH.paywall ? '' : AUTH.plan === 'pro'
+    ? (b.canManage ? '<button type="button" role="menuitem" onclick="closeAcctMenu();openPortal()">Manage subscription</button>' : '')
+    : '<button type="button" role="menuitem" onclick="closeAcctMenu();openUpgrade(\'general\')">Upgrade to Pro</button>';
   el.innerHTML = `<button type="button" class="acct-btn in" id="acct-btn" aria-haspopup="menu" aria-expanded="false" onclick="toggleAcctMenu()"><span class="acct-av">${escapeHtml(AUTH.user.email[0].toUpperCase())}</span><span class="acct-em">${em}</span></button>
     <div class="acct-menu" id="acct-menu" role="menu" hidden>
       <div class="who">${em}</div>
+      ${planRow}${planBtn}
       <button type="button" role="menuitem" onclick="closeAcctMenu();switchTab('betslip')">My Prop List</button>
       <button type="button" role="menuitem" onclick="closeAcctMenu();acctExport()">Export my data</button>
       <button type="button" role="menuitem" onclick="closeAcctMenu();acctSignOut()">Sign out</button>
@@ -5158,6 +5199,21 @@ function renderSignin() {
       ${SI.devLink ? `<a class="acct-go" style="text-decoration:none" href="${escapeHtml(SI.devLink)}">Open the link (development only)</a>` : ''}
       <button type="button" class="acct-alt" onclick="siClose()">Close</button>
       <button type="button" class="acct-alt" onclick="SI.step='form';renderSignin()">Use a different email</button>`;
+  } else if (SI.step === 'upgrade') {
+    const P = _plans || {}, price = P.price?.label;
+    const head = { analyzer: 'Run unlimited analyses', prop_list: 'Save props to your Prop List', prop_board: 'See every prop on the board', general: 'Go Pro' }[SI.upFeature] || 'Go Pro';
+    body = `<h2>${escapeHtml(head)}</h2>
+      <p>${escapeHtml(SI.upMsg || 'WIN AI Pro unlocks the full toolkit.')}</p>
+      <ul class="up-list">
+        <li>Prop analyzer: up to ${P.proDailyAnalyses || 100} full analyses a day (free accounts get ${P.freeDailyAnalyses ?? 1})</li>
+        <li>Prop List: save up to ${P.maxProps || 300} props and have them graded for you</li>
+        <li>The full Prop Board, every prop and not only the top ones</li>
+        <li>New Pro tools as they ship</li></ul>
+      ${price ? `<div class="up-price">${escapeHtml(price.split(' / ')[0])}<small>per ${escapeHtml(price.split(' / ')[1] || 'month')}</small></div>` : ''}
+      ${SI.err ? `<div class="err">${escapeHtml(SI.err)}</div>` : ''}
+      <button type="button" class="acct-go" onclick="upCheckout()">${SI.busy ? 'Opening checkout…' : 'Continue to checkout'}</button>
+      <button type="button" class="acct-alt" onclick="siClose()">Not now</button>
+      <p class="note">Secure checkout by Stripe. Cancel any time from Manage subscription.</p>`;
   } else if (SI.step === 'delete') {
     const n = betslip.length;
     body = `<h2>Delete my account</h2><p>This deletes <b style="color:var(--text)">${escapeHtml(AUTH.user?.email || '')}</b> and ${n === 1 ? 'the 1 prop' : `all ${n} props`} you saved. It cannot be undone.</p>
@@ -5203,7 +5259,7 @@ async function siSubmit() {
 
 async function acctSignOut() {
   try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (_) {}
-  AUTH.user = null; betslip.length = 0; updateBetslipCount(); paintAccount();
+  AUTH.user = null; AUTH.plan = null; AUTH.billing = null; AUTH.quota = null; betslip.length = 0; updateBetslipCount(); paintAccount(); paintQuota();
   if (document.getElementById('panel-betslip')?.classList.contains('active')) loadBetslip();
   acctToast('Signed out');
 }
@@ -5221,7 +5277,7 @@ async function acctDelete() {
   try { await apiPost('/api/account/delete', { confirm: true }); }
   catch (e) { SI.busy = false; SI.err = e.message; return renderSignin(); }
   SI.busy = false; siClose();
-  AUTH.user = null; betslip.length = 0; updateBetslipCount(); paintAccount();
+  AUTH.user = null; AUTH.plan = null; AUTH.billing = null; AUTH.quota = null; betslip.length = 0; updateBetslipCount(); paintAccount(); paintQuota();
   if (document.getElementById('panel-betslip')?.classList.contains('active')) loadBetslip();
   acctToast('Account and props deleted');
 }
@@ -5240,7 +5296,7 @@ async function afterAuthLoaded() {
       acctToast(`Signed in and saved ${p.player}`);
       if (document.getElementById('panel-betslip')?.classList.contains('active')) loadBetslip(); else loadBetslipCount();
       return;
-    } catch (e) { acctToast(e.message); return; }
+    } catch (e) { if (e.code === 'pro_required') { openUpgrade('prop_list', e.message); return; } acctToast(e.message); return; }
   }
   if (welcome) acctToast('Signed in');
   loadBetslipCount();
@@ -5249,13 +5305,84 @@ async function afterAuthLoaded() {
 async function loadBetslipCount() {
   try { const d = await apiGet('/api/clv'); betslip.length = 0; betslip.push(...(d.entries || []).filter(e => e.source !== 'auto')); updateBetslipCount(); } catch (_) {}
 }
+// ── Pro: upgrade sheet, quota, checkout ──
+let _plans = null;
+async function openUpgrade(feature, msg) {
+  if (!AUTH.paywall) return;
+  if (!AUTH.user) { openSignin('signin'); return; }
+  Object.assign(SI, { open: true, step: 'upgrade', upFeature: feature || 'general', upMsg: msg || '', err: '', busy: false });
+  renderSignin();
+  if (!_plans) { try { _plans = await fetch('/api/billing/plans').then(r => r.json()); } catch (_) {} if (SI.open && SI.step === 'upgrade') renderSignin(); }
+}
+async function upCheckout() {
+  if (SI.busy) return;
+  SI.busy = true; SI.err = ''; renderSignin();
+  try { const r = await apiPost('/api/billing/checkout', {}); location.href = r.url; return; }
+  catch (e) { SI.err = e.message; }
+  SI.busy = false; renderSignin();
+}
+async function openPortal() {
+  try { const r = await apiPost('/api/billing/portal', {}); location.href = r.url; }
+  catch (e) { acctToast(e.message); }
+}
+function gateError(e, feature) {
+  if (e.code === 'auth_required') { openSignin('signin'); return true; }
+  if (e.code === 'pro_required') { openUpgrade(e.feature || feature, e.message); return true; }
+  if (e.code === 'daily_limit') { acctToast(e.message); return true; }
+  if (e.code === 'ticket_required') { acctToast('That went out of sync. Run the analysis again.'); return true; }
+  return false;
+}
+// Free accounts get one analysis a day. Each starts with a ticket, and counts only once it works.
+async function analysisStart() {
+  await authReady;
+  if (!AUTH.paywall) return null;
+  const r = await apiPost('/api/analysis/start', {});
+  return r.ticket;
+}
+function paintQuota() {
+  for (const [id, lg] of [['analyze-btn', 'nba'], ['analyze-btn-wnba', 'wnba']]) {
+    const btn = document.getElementById(id); if (!btn) continue;
+    let n = document.getElementById('quota-' + lg);
+    if (!n) { n = document.createElement('div'); n.id = 'quota-' + lg; n.className = 'quota-note'; btn.insertAdjacentElement('afterend', n); }
+    let html = '';
+    if (AUTH.loaded && AUTH.paywall) {
+      const q = AUTH.quota;
+      if (!AUTH.user) html = 'Sign in to run an analysis. Free accounts get one a day. <button type="button" onclick="openSignin(\'signin\')">Sign in</button>';
+      else if (AUTH.plan === 'pro') html = q ? `Pro: ${Math.max(0, q.limit - q.used)} of ${q.limit} analyses left today.` : '';
+      else if (q) html = q.used >= q.limit
+        ? `You have used today's free analysis. <button type="button" onclick="openUpgrade('analyzer')">Go Pro</button> for more.`
+        : `Free plan: ${q.limit - q.used} of ${q.limit} analysis left today.`;
+    }
+    n.innerHTML = html; n.hidden = !html;
+  }
+}
+function applyMe(j) {
+  AUTH.enabled = !!j.enabled; AUTH.user = j.user || null; AUTH.maxProps = j.maxProps || 300;
+  AUTH.paywall = !!j.paywall; AUTH.plan = j.plan || null; AUTH.billing = j.billing || null; AUTH.quota = j.quota || null;
+}
+async function refreshMe() {
+  try { applyMe(await fetch('/api/auth/me', { cache: 'no-store' }).then(r => r.json())); } catch (_) {}
+  paintAccount(); paintQuota();
+  if (document.getElementById('panel-betslip')?.classList.contains('active')) renderBetslip();
+}
+// Back from Stripe: the webhook can lag a few seconds behind the redirect, so wait for it briefly.
+async function handleReturn() {
+  const q = new URLSearchParams(location.search);
+  if (!q.has('upgraded') && !q.has('checkout')) return;
+  try { history.replaceState(null, '', location.pathname); } catch (_) {}
+  if (q.get('checkout') === 'canceled') { acctToast('Checkout canceled. You have not been charged.'); return; }
+  if (!AUTH.user) return;
+  acctToast('Finishing your upgrade…');
+  for (let i = 0; i < 10 && AUTH.plan !== 'pro'; i++) { await new Promise(r => setTimeout(r, 2000)); await refreshMe(); }
+  acctToast(AUTH.plan === 'pro' ? 'Welcome to Pro' : 'Payment received. Pro can take a minute to appear. Refresh in a moment.');
+}
 async function loadAuth() {
   try {
-    const j = await fetch('/api/auth/me', { cache: 'no-store' }).then(r => r.json());
-    AUTH.enabled = !!j.enabled; AUTH.user = j.user || null; AUTH.maxProps = j.maxProps || 300;
+    applyMe(await fetch('/api/auth/me', { cache: 'no-store' }).then(r => r.json()));
   } catch (_) { /* stay a guest */ }
-  AUTH.loaded = true; _authResolve(); paintAccount();
+  AUTH.loaded = true; _authResolve(); paintAccount(); paintQuota();
   afterAuthLoaded();
+  handleReturn();
 }
 loadAuth();
 

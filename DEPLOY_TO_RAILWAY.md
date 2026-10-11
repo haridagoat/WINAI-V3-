@@ -99,3 +99,48 @@ or check results.
 backup, a stat file the server can re-fetch, picks overdue for grading) and alert you about the rest. They never edit a
 pick or a stat. The WNBA/NBA stat refresh needs Python on the server, so on Railway it will usually report
 "needs you" and you refresh those files on your own computer.
+
+## Payments (Pro subscriptions)
+
+Pro is a subscription sold through Stripe. Stripe's own pages take the card, so card details never reach this
+server. The server only learns the result from a signed webhook, and it never trusts the browser about who is Pro.
+
+**What is free and what is Pro** (limits are enforced on the server, not just hidden in the page):
+
+| Free (guests and free accounts) | Pro |
+|---|---|
+| Today, Daily Matchups, team pages, search, the top 3 picks, the full track record, export and delete my data | The prop analyzer, up to `PRO_DAILY_ANALYSES` a day (default 100) |
+| The top of the Prop Board | The full Prop Board |
+| 1 prop analysis a day, free account required (`FREE_DAILY_ANALYSES`) | The Prop List (save props, auto-grading, up to 300) |
+
+A free analysis counts only once it works, so a failed one never uses up the day. Saved props stay readable and
+exportable if a subscription ends. Your own account (`ADMIN_EMAIL`) is always Pro, and the Users tab on
+`/admin.html` has a Give Pro button for friends and testing.
+
+**Setup, in order. Do it in Stripe's Test mode first.**
+1. At dashboard.stripe.com, switch to **Test mode**. Create a product ("WIN AI Pro") with a recurring monthly
+   price. Copy the price id (`price_...`) into `STRIPE_PRICE_ID`. The amount lives in Stripe; the site reads it.
+2. Developers > API keys: copy the **secret key** (`sk_test_...`) into `STRIPE_SECRET_KEY`.
+3. Settings > Billing > **Customer portal**: turn it on, and allow customers to **cancel subscriptions** and update
+   payment methods.
+4. Developers > Webhooks > Add endpoint: `https://YOUR-SITE/api/stripe/webhook`, with these events:
+   `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`,
+   `customer.subscription.deleted`, `invoice.payment_failed`. Copy its **signing secret** (`whsec_...`) into
+   `STRIPE_WEBHOOK_SECRET`.
+5. Set `PUBLIC_URL` (see above), then **`PAYWALL=on`**. The paywall only switches on when the key, the price and
+   the webhook secret are all set and sign-in works. If anything is missing, nothing is limited and the Data checks
+   tab says why. Nobody can be locked out by a half-finished setup.
+6. Test with Stripe's test card `4242 4242 4242 4242` (any future date, any CVC). Check that the account becomes
+   Pro, that Manage subscription opens, and that cancelling returns it to free.
+7. To go live: repeat steps 1 to 4 in **Live mode** with live keys, and swap the three values. The Users tab shows
+   whether the server is in test or live mode.
+
+**Local testing:** install the Stripe CLI and run `stripe listen --forward-to localhost:3001/api/stripe/webhook`.
+It prints a `whsec_...` secret to use as `STRIPE_WEBHOOK_SECRET` locally.
+
+Optional: `STRIPE_PRICE_ID_YEARLY` (a yearly price), `STRIPE_AUTOMATIC_TAX=1` (Stripe Tax, once you have set it up in
+Stripe).
+
+**Before charging real money:** add Terms and a Privacy page, a "21+, analytics not advice, not a sportsbook"
+notice, and responsible-gambling help text. Check your state's rules on selling gambling-related picks and on
+advertising claims, and get a quick legal review. Refunds and disputes are handled in the Stripe dashboard.

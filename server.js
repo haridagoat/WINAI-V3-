@@ -16,9 +16,10 @@ const calibration = require('./lib/calibration');
 const { buildReport } = require('./lib/backtest');
 const { createAlerts } = require('./lib/alerts');
 const { evaluateHealth, creditBudget, envNum } = require('./lib/health');
-const { createAuth, sessionCookie, clearCookie, maskEmail } = require('./lib/auth');
+const { createAuth, sessionCookie, clearCookie, maskEmail, sha, newToken } = require('./lib/auth');
 const { createMailer } = require('./lib/mailer');
 const datachecks = require('./lib/datachecks');
+const billingLib = require('./lib/billing');
 
 const CLV_FILE = 'clv_tracker.json';   // legacy file, imported into SQLite on first start
 const store = createStore({
@@ -67,11 +68,13 @@ if (process.env.TRUST_PROXY) app.set('trust proxy', /^\d+$/.test(process.env.TRU
 // app's own frontend.
 const security = require('./lib/security');
 app.use(security.securityHeaders);
-app.use(express.json({ limit: '100kb' }));
+app.use(express.json({ limit: '100kb', verify: (req, res, buf) => { if (req.originalUrl === '/api/stripe/webhook') req.rawBody = buf; } }));   // Stripe signs the exact bytes
 // One bad character in a name used to reach a Python launch call and crash the whole server.
 // Reject control characters and oversized values before any route sees them.
 app.use('/api', (req, res, next) => {
-  const problem = security.queryProblem(req.query, 200) || (req.body && security.bodyProblem(req.body));
+  // Stripe's webhook bodies are nested deeper than anything the app sends, and are authenticated by their
+  // signature instead, so only the query is checked for that one route.
+  const problem = security.queryProblem(req.query, 200) || (req.path !== '/stripe/webhook' && req.body && security.bodyProblem(req.body));
   if (problem) return res.status(400).json({ error: `Invalid input: ${problem}` });
   next();
 });
@@ -84,6 +87,10 @@ app.use('/api', apiLimiter);
 app.use(['/api/prop-context', '/api/wnba/prop-context', '/api/current-line', '/api/shotchart', '/api/player-matchup',
   '/api/wnba/player-matchup', '/api/team-compare', '/api/matchup-targets', '/api/game-odds', '/api/top-plays', '/api/team-picks', '/api/prop-board',
   '/api/debug', '/api/grade-prop'], costlyLimiter);
+// Who is signed in, for every API call (set early so the gates on the analysis routes below can use it).
+app.use('/api', (req, res, next) => { req.user = store.supportsAccounts ? auth.userFromCookieHeader(req.headers.cookie) : null; next(); });
+// When the paywall is on, the analyzer's data routes need a ticket from /api/analysis/start (see BILLING below).
+app.use(['/api/prop-context', '/api/wnba/prop-context'], (req, res, next) => analysisGate('ctx')(req, res, next));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Lightweight per-IP rate limiter — no user-account system exists to gate
@@ -5169,9 +5176,7 @@ app.get('/api/prop-board', async (req, res) => {
   const league = (req.query.league || 'nba').toLowerCase() === 'wnba' ? 'wnba' : 'nba';
   try {
     const { candidates, results } = await collectSlateResults(league);
-    res.json({
-      league, date: getToday(), scanned: (candidates || []).length,
-      props: (results || []).filter(r => r.realEdge || r.line != null).map(r => ({
+    const all = (results || []).filter(r => r.realEdge || r.line != null).map(r => ({
         player: r.player, playerId: lookupPlayerId(league, r.player), team: r.team, opponent: r.opponent,
         homeTeam: r.homeTeam, awayTeam: r.awayTeam,
         propType: r.propType, line: r.line, book: r.book,
@@ -5179,8 +5184,10 @@ app.get('/api/prop-board', async (req, res) => {
         projection: r.projection, edge: r.edge, confidence: r.confidence,
         overProbability: r.overProbability ?? null, underProbability: r.underProbability ?? null,
         consensusLine: r.consensusLine ?? null, bookCount: r.bookCount ?? null, realEdge: r.realEdge ?? null,
-      })),
-    });
+      }));
+    // Free accounts and guests see the top of the board; Pro sees every prop.
+    const limited = paywallOn() && !isProReq(req);
+    res.json({ league, date: getToday(), scanned: (candidates || []).length, props: limited ? billingLib.freeBoard(all) : all, ...(limited ? { limited: true, total: all.length } : {}) });
   } catch (err) {
     res.json({ league, date: getToday(), scanned: 0, props: [], error: err.message });
   }
@@ -5225,12 +5232,24 @@ app.get('/api/team-picks', async (req, res) => {
 // /api/analyze forwards whatever prompt it is sent to the paid Anthropic key, so anyone who can reach
 // it can use that key. The app's own prompts are well under 30,000 characters; a daily ceiling
 // (ANALYZE_DAILY_CAP, default 400) bounds the worst case. The admin is not capped.
+// Only a local stand-in may replace the Anthropic address (used by the tests); the real key never goes anywhere else.
+const ANTHROPIC_BASE = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(process.env.ANTHROPIC_BASE_URL || '') ? process.env.ANTHROPIC_BASE_URL : 'https://api.anthropic.com';
 let analyzeDay = '', analyzeCount = 0;
-app.post('/api/analyze', analyzeRateLimiter, async (req, res) => {
+// `kind` says what the prompt is for. 'team' is the free written breakdown on Daily Matchups: its prompt must
+// be the app's own template, so it cannot be used as a free general-purpose AI. 'prop' is the prop analyzer,
+// which needs a ticket from /api/analysis/start while the paywall is on.
+const TEAM_PROMPT_START = 'You are WIN AI. Write a short scouting read of';
+app.post('/api/analyze', analyzeRateLimiter, (req, res, next) => {
+  const kind = req.body?.kind === 'team' ? 'team' : 'prop';
+  req.analyzeKind = kind;
+  return kind === 'prop' ? analysisGate('ai')(req, res, next) : next();
+}, async (req, res) => {
   const { prompt } = req.body;
   if (!prompt || typeof prompt !== 'string') return res.status(400).json({ error: 'prompt required' });
   if (prompt.length > 30000) return res.status(413).json({ error: 'Prompt too long.' });
-  if (!isAdmin(req)) {
+  if (req.analyzeKind === 'team' && (!prompt.startsWith(TEAM_PROMPT_START) || prompt.length > 12000)) return res.status(400).json({ error: 'Not a team breakdown request.' });
+  // Pro accounts have their own daily limit, so they do not count toward the shared ceiling.
+  if (!isAdmin(req) && !(paywallOn() && isProReq(req))) {
     const today = getToday();
     if (analyzeDay !== today) { analyzeDay = today; analyzeCount = 0; }
     if (++analyzeCount > envNum(process.env.ANALYZE_DAILY_CAP, 400)) return res.status(429).json({ error: 'Daily AI analysis limit reached. It resets at midnight.' });
@@ -5240,7 +5259,7 @@ app.post('/api/analyze', analyzeRateLimiter, async (req, res) => {
   }
   try {
     const claudeRes = await axios.post(
-      'https://api.anthropic.com/v1/messages',
+      `${ANTHROPIC_BASE}/v1/messages`,
       {
         model: 'claude-sonnet-5',
         max_tokens: 4096,
@@ -5249,6 +5268,8 @@ app.post('/api/analyze', analyzeRateLimiter, async (req, res) => {
       },
       { headers: { 'x-api-key': process.env.ANTHROPIC_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, timeout: 60000 }
     );
+    // The analysis counts toward the daily limit only now, once it has actually worked.
+    if (req.analysisTicket) store.finishTicket(req.analysisTicket);
     res.json({ response: claudeRes.data.content.map(b => b.text || '').join('') });
   } catch (err) {
     const errMsg = err.response?.data?.error?.message || err.message || 'Unknown error';
@@ -5782,8 +5803,7 @@ const noteBlock = () => { authBlocks.push(Date.now()); if (authBlocks.length > 2
 const authRequestLimiter = security.createRateLimiter({ windowMs: 15 * 60 * 1000, max: 10, onBlock: noteBlock, message: 'Too many sign-in attempts. Try again in a few minutes.' });
 const authVerifyLimiter = security.createRateLimiter({ windowMs: 15 * 60 * 1000, max: 30, onBlock: noteBlock, message: 'Too many attempts. Try again in a few minutes.' });
 
-app.use('/api', (req, res, next) => { req.user = store.supportsAccounts ? auth.userFromCookieHeader(req.headers.cookie) : null; next(); });
-app.use(['/api/auth', '/api/account', '/api/clv'], (req, res, next) => (req.method === 'GET' || req.method === 'HEAD') ? next() : security.sameOrigin(req, res, next));
+app.use(['/api/auth', '/api/account', '/api/clv', '/api/billing', '/api/analysis'], (req, res, next) => (req.method === 'GET' || req.method === 'HEAD') ? next() : security.sameOrigin(req, res, next));
 function requireUser(req, res, next) {
   if (!authStatus().enabled) return res.status(503).json({ error: 'Sign-in is not set up on this server yet.', code: 'auth_disabled' });
   if (!req.user) return res.status(401).json({ error: 'Sign in to continue.', code: 'auth_required' });
@@ -5792,7 +5812,16 @@ function requireUser(req, res, next) {
 
 app.get('/api/auth/me', (req, res) => {
   res.set('Cache-Control', 'no-store');
-  res.json({ enabled: authStatus().enabled, user: req.user ? { email: req.user.email } : null, maxProps: USER_MAX_PROPS });
+  const on = paywallOn(), info = req.user ? planFor(req) : null;
+  res.json({
+    enabled: authStatus().enabled, user: req.user ? { email: req.user.email } : null, maxProps: USER_MAX_PROPS,
+    paywall: on,
+    ...(on && req.user ? {
+      plan: info.plan,
+      billing: { status: info.status, renewsAt: info.renewsAt, cancelAtPeriodEnd: info.cancelAtPeriodEnd, comped: info.comped, canManage: info.hasCustomer },
+      quota: { used: store.analysesDone(req.user.id, getToday()), limit: info.plan === 'pro' ? PRO_DAILY_ANALYSES : FREE_DAILY_ANALYSES },
+    } : {}),
+  });
 });
 app.post('/api/auth/request', authRequestLimiter, async (req, res) => {
   const base = authStatus().enabled ? authBaseUrl(req) : null;
@@ -5822,14 +5851,167 @@ app.get('/api/account/export', requireUser, (req, res) => {
   res.json({ email: req.user.email, createdAt: req.user.created_at, exportedAt: new Date().toISOString(), props: store.picksForUser(req.user.id) });
 });
 // Deletes the account and every prop it saved. There is no undo and nothing is kept.
-app.post('/api/account/delete', requireUser, (req, res) => {
+app.post('/api/account/delete', requireUser, async (req, res) => {
   if (req.body?.confirm !== true) return res.status(400).json({ error: 'Confirm the deletion first.' });
+  // A live subscription is cancelled first, so deleting an account never leaves someone being charged.
+  const b = store.getBilling(req.user.id);
+  if (b?.subscription_id && ['active', 'trialing', 'past_due', 'unpaid', 'incomplete'].includes(b.status)) {
+    if (!stripe) return res.status(409).json({ error: 'Cancel your subscription first (Manage subscription), then delete your account.' });
+    try { await stripe.cancelSubscription(b.subscription_id); }
+    catch (err) {
+      if (!/ 404/.test(err.message)) { console.error('[Billing] cancel on delete failed:', err.message); return res.status(502).json({ error: 'We could not cancel your subscription, so nothing was deleted. Cancel it from Manage subscription, then try again.' }); }
+    }
+  }
   const r = store.deleteUser(req.user.id);
   res.set('Set-Cookie', clearCookie({ secure: isSecureReq(req) }));
   res.json({ ok: true, propsDeleted: r.props });
 });
 const userPicks = id => (store.supportsAccounts ? store.picksForUser(id) : []);
 const systemPicks = () => (store.supportsAccounts ? store.systemPicks() : loadCLV().filter(e => e.source === 'auto'));
+
+// ═══════════════════════════════════════════════════════════════════
+// BILLING — Pro subscriptions through Stripe (lib/billing.js). Stripe's own pages take the card; this server
+// only learns the result from a signed webhook. PAYWALL=on turns the limits on, and only once Stripe is fully
+// set up, so a half-finished setup can never lock anyone out. With it off, everyone has everything.
+// ═══════════════════════════════════════════════════════════════════
+const STRIPE_KEY = process.env.STRIPE_SECRET_KEY || '';
+const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || '';
+const STRIPE_PRICE = process.env.STRIPE_PRICE_ID || '';
+const STRIPE_PRICE_YEARLY = process.env.STRIPE_PRICE_ID_YEARLY || '';
+// Only a local stand-in may replace Stripe's address (used by the tests).
+const STRIPE_BASE = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(process.env.STRIPE_API_BASE || '') ? process.env.STRIPE_API_BASE : 'https://api.stripe.com';
+const FREE_DAILY_ANALYSES = envNum(process.env.FREE_DAILY_ANALYSES, 1);
+const PRO_DAILY_ANALYSES = envNum(process.env.PRO_DAILY_ANALYSES, 100);
+const stripeHttp = async (method, url, form, headers) => {
+  const r = await axios({ method, url, data: form || undefined, headers: { ...headers, ...(form ? { 'Content-Type': 'application/x-www-form-urlencoded' } : {}) }, timeout: 15000, validateStatus: () => true });
+  if (r.status >= 400) throw new Error(`Stripe ${r.status}: ${r.data?.error?.message || 'request failed'}`);
+  return r.data;
+};
+const stripe = STRIPE_KEY ? billingLib.createStripeClient({ secretKey: STRIPE_KEY, base: STRIPE_BASE, http: stripeHttp }) : null;
+function billingStatus() {
+  const missing = [];
+  if (!STRIPE_KEY) missing.push('STRIPE_SECRET_KEY');
+  if (!STRIPE_WEBHOOK_SECRET) missing.push('STRIPE_WEBHOOK_SECRET');
+  if (!STRIPE_PRICE) missing.push('STRIPE_PRICE_ID');
+  const requested = process.env.PAYWALL === 'on';
+  return { requested, configured: !missing.length, missing, on: requested && !missing.length && authStatus().enabled,
+    mode: STRIPE_KEY ? (/^(sk|rk)_test_/.test(STRIPE_KEY) ? 'test' : 'live') : null, lastWebhookAt: store.getMeta('stripe:last_event_at') };
+}
+const paywallOn = () => billingStatus().on;
+const planFor = req => {
+  const info = billingLib.planInfo(req.user, req.user ? store.getBilling(req.user.id) : null);
+  if (req.user && auth.isAdminEmail(req.user.email)) { info.plan = 'pro'; info.owner = true; }   // the owner always has everything
+  return info;
+};
+const isProReq = req => isAdmin(req) || (!!req.user && planFor(req).plan === 'pro');
+const FEATURE_NAME = { prop_list: 'The Prop List', analyzer: 'The prop analyzer', prop_board: 'The full Prop Board' };
+function requirePro(feature) {
+  return (req, res, next) => {
+    if (!paywallOn() || isProReq(req)) return next();
+    if (!req.user) return res.status(401).json({ error: 'Sign in to continue.', code: 'auth_required' });
+    return res.status(402).json({ error: `${FEATURE_NAME[feature] || 'This'} is a Pro feature.`, code: 'pro_required', feature });
+  };
+}
+const returnBase = req => PUBLIC_URL || (isLoopback(req.ip) ? `${req.protocol}://${req.get('host')}` : null);
+const safeStripeUrl = u => { try { const x = new URL(u); return (x.protocol === 'https:' && /(^|\.)stripe\.com$/.test(x.hostname)) || (STRIPE_BASE !== 'https://api.stripe.com' && /^(localhost|127\.0\.0\.1)$/.test(x.hostname)); } catch (_) { return false; } };
+
+// ── analysis tickets: one per analysis, so the daily limit counts analyses and not requests ──
+const TICKET_TTL_MS = 5 * 60 * 1000, TICKET_CTX_MAX = 4, TICKET_AI_MAX = 2;
+const TICKET_SHAPE = /^[A-Za-z0-9_-]{43}$/;
+const analysisStartLimiter = security.createRateLimiter({ windowMs: 60 * 1000, max: 20, message: 'Too many analyses started. Wait a moment.' });
+app.post('/api/analysis/start', analysisStartLimiter, (req, res) => {
+  if (!paywallOn() || isAdmin(req)) return res.json({ ticket: null, unlimited: true });
+  if (!req.user) return res.status(401).json({ error: 'Sign in to run an analysis.', code: 'auth_required' });
+  const pro = isProReq(req), limit = pro ? PRO_DAILY_ANALYSES : FREE_DAILY_ANALYSES, day = getToday();
+  const used = store.analysesDone(req.user.id, day);
+  if (used >= limit) {
+    return res.status(402).json(pro
+      ? { error: `You have used today's ${limit} analyses. The limit resets at midnight.`, code: 'daily_limit', feature: 'analyzer', quota: { used, limit } }
+      : { error: "You've used today's free analysis. Pro removes the daily limit.", code: 'pro_required', feature: 'analyzer', quota: { used, limit } });
+  }
+  // A person who keeps starting analyses without finishing one is stopped, so the data routes cannot be farmed.
+  if (store.ticketsStarted(req.user.id, day) >= limit * (pro ? 2 : 5) + 3) return res.status(429).json({ error: 'Too many analyses started today.', code: 'daily_limit', quota: { used, limit } });
+  const ticket = newToken();
+  store.startTicket({ hash: sha(ticket), userId: req.user.id, day, expiresAt: new Date(Date.now() + TICKET_TTL_MS).toISOString() });
+  res.json({ ticket, quota: { used, limit } });
+});
+// Checks the ticket on a data route ('ctx') or the AI route ('ai'). With the paywall off this does nothing.
+function analysisGate(use) {
+  return (req, res, next) => {
+    if (!paywallOn() || isAdmin(req)) return next();
+    if (!req.user) return res.status(401).json({ error: 'Sign in to run an analysis.', code: 'auth_required' });
+    const t = String(req.get('x-analysis-ticket') || '');
+    const row = TICKET_SHAPE.test(t) ? store.getTicket(sha(t)) : null;
+    if (!row || row.user_id !== req.user.id) return res.status(403).json({ error: 'Start the analysis again.', code: 'ticket_required' });
+    if (!store.useTicket(row.hash, use, use === 'ctx' ? TICKET_CTX_MAX : TICKET_AI_MAX)) return res.status(403).json({ error: 'Start the analysis again.', code: 'ticket_required' });
+    if (use === 'ai') req.analysisTicket = row.hash;
+    next();
+  };
+}
+
+// ── price shown on the upgrade sheet (cached; the price itself lives in Stripe) ──
+let priceCache = { at: 0, price: null };
+async function currentPrice() {
+  if (!stripe || !STRIPE_PRICE) return null;
+  if (Date.now() - priceCache.at < 3600e3) return priceCache.price;
+  try { priceCache = { at: Date.now(), price: await stripe.getPrice(STRIPE_PRICE) }; } catch (err) { console.error('[Billing] price lookup failed:', err.message); priceCache = { at: Date.now() - 3300e3, price: priceCache.price }; }
+  return priceCache.price;
+}
+app.get('/api/billing/plans', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const on = paywallOn();
+  const price = on ? await currentPrice() : null;
+  res.json({ paywall: on, price: price ? { label: billingLib.priceLabel(price), interval: price.recurring?.interval || null } : null, freeDailyAnalyses: FREE_DAILY_ANALYSES, proDailyAnalyses: PRO_DAILY_ANALYSES, maxProps: USER_MAX_PROPS });
+});
+const checkoutLimiter = security.createRateLimiter({ windowMs: 15 * 60 * 1000, max: 10, message: 'Too many attempts. Try again in a few minutes.' });
+app.post('/api/billing/checkout', requireUser, checkoutLimiter, async (req, res) => {
+  if (!paywallOn() || !stripe) return res.status(503).json({ error: 'Payments are not turned on yet.' });
+  const base = returnBase(req);
+  if (!base) return res.status(503).json({ error: 'The site address is not set up for payments yet.' });
+  const info = planFor(req);
+  try {
+    let customer = store.getBilling(req.user.id)?.customer_id;
+    if (info.plan === 'pro' && !info.comped && !info.owner && customer) {          // already subscribed: send them to manage it
+      const p = await stripe.createPortalSession({ customer, returnUrl: `${base}/` });
+      return res.json({ url: p.url, already: true });
+    }
+    if (!customer) { const c = await stripe.createCustomer({ email: req.user.email, userId: req.user.id }); customer = c.id; store.setCustomer(req.user.id, customer); }
+    const priceId = req.body?.interval === 'year' && STRIPE_PRICE_YEARLY ? STRIPE_PRICE_YEARLY : STRIPE_PRICE;
+    const session = await stripe.createCheckoutSession({ customer, priceId, userId: req.user.id, successUrl: `${base}/?upgraded=1`, cancelUrl: `${base}/?checkout=canceled`, automaticTax: process.env.STRIPE_AUTOMATIC_TAX === '1' });
+    if (!safeStripeUrl(session.url)) throw new Error('Stripe returned an unexpected address');
+    res.json({ url: session.url });
+  } catch (err) { console.error('[Billing] checkout failed:', err.message); res.status(502).json({ error: 'Could not start checkout. Try again in a moment.' }); }
+});
+app.post('/api/billing/portal', requireUser, checkoutLimiter, async (req, res) => {
+  if (!stripe) return res.status(503).json({ error: 'Payments are not turned on yet.' });
+  const customer = store.getBilling(req.user.id)?.customer_id, base = returnBase(req);
+  if (!customer) return res.status(400).json({ error: 'There is no subscription to manage.' });
+  if (!base) return res.status(503).json({ error: 'The site address is not set up for payments yet.' });
+  try {
+    const p = await stripe.createPortalSession({ customer, returnUrl: `${base}/` });
+    if (!safeStripeUrl(p.url)) throw new Error('Stripe returned an unexpected address');
+    res.json({ url: p.url });
+  } catch (err) { console.error('[Billing] portal failed:', err.message); res.status(502).json({ error: 'Could not open the billing page. Try again in a moment.' }); }
+});
+// Stripe calls this when a subscription changes. Nothing is trusted unless the signature checks out.
+app.post('/api/stripe/webhook', (req, res) => {
+  if (!STRIPE_WEBHOOK_SECRET) return res.status(503).json({ error: 'Webhook is not configured.' });
+  let event;
+  try { event = billingLib.verifyWebhook(req.rawBody, req.get('stripe-signature'), STRIPE_WEBHOOK_SECRET); }
+  catch (err) { return res.status(400).json({ error: 'Invalid signature.' }); }
+  if (!event.id || !event.type) return res.status(400).json({ error: 'Malformed event.' });
+  if (!store.recordStripeEvent(event.id, event.type)) return res.json({ received: true, duplicate: true });
+  try {
+    const r = billingLib.handleEvent({ store, event, log: m => console.log(m) });
+    if (r.handled && r.status) store.addEvent('billing', 'info', `Account #${r.userId}: subscription ${r.status}${r.applied === false ? ' (older event, ignored)' : ''}.`);
+    store.setMeta('stripe:last_event_at', new Date().toISOString());
+    res.json({ received: true });
+  } catch (err) {
+    store.forgetStripeEvent(event.id);            // let Stripe retry it
+    console.error('[Billing] webhook handler failed:', err.message);
+    res.status(500).json({ error: 'Could not process the event.' });
+  }
+});
 
 // ═══════════════════════════════════════════════════════════════════
 // CLV TRACKING — Closing Line Value
@@ -5967,7 +6149,7 @@ async function captureClosingLines() {
 
 // Save a prop to the signed-in user's own list
 const CLV_MAX_ENTRIES = 200000;
-app.post('/api/clv/save', requireUser, writeLimiter, (req, res) => {
+app.post('/api/clv/save', requireUser, requirePro('prop_list'), writeLimiter, (req, res) => {
   const { value, error } = security.cleanEntryInput(req.body);
   if (error) return res.status(400).json({ error });
   const { player, opp, propType, line, projection, verdict, edge, confidence, gameDate, league } = value;
@@ -6437,6 +6619,16 @@ app.post('/api/admin/jobs/:name/run', requireAdmin, async (req, res) => {
   catch (err) { res.status(500).json({ ok: false, error: err.message }); }
 });
 // ── Users (admin only: nothing here is public) ──
+const planOf = u => {
+  const info = billingLib.planInfo(u, store.getBilling(u.id));
+  if (auth.isAdminEmail(u.email)) info.plan = 'pro';
+  return { plan: info.plan, comped: !!u.comped, subStatus: info.status, renewsAt: info.renewsAt, cancelling: info.cancelAtPeriodEnd && info.plan === 'pro' };
+};
+const planTotals = users => {
+  const t = { pro: 0, free: 0, comped: 0, cancelling: 0 };
+  for (const u of users) { const p = planOf(u); t[p.plan]++; if (p.comped) t.comped++; if (p.cancelling) t.cancelling++; }
+  return t;
+};
 app.get('/api/admin/users', requireAdmin, (req, res) => {
   const users = store.supportsAccounts ? store.listUsers() : [];
   const t = Date.now(), week = t - 7 * 24 * 3600 * 1000, day = t - 24 * 3600 * 1000;
@@ -6450,14 +6642,17 @@ app.get('/api/admin/users', requireAdmin, (req, res) => {
       unclaimedProps: store.supportsAccounts ? store.countUnclaimedPicks() : 0,
       signInsBlocked24h: authBlocks.filter(x => x > day).length,
     },
-    users: users.map(u => ({ id: u.id, email: maskEmail(u.email), joined: u.created_at, lastSeen: u.last_seen, props: u.props, disabled: !!u.disabled })),
+    users: users.map(u => ({ id: u.id, email: maskEmail(u.email), joined: u.created_at, lastSeen: u.last_seen, props: u.props, disabled: !!u.disabled, ...planOf(u) })),
+    billing: { ...(({ requested, configured, missing, on, mode, lastWebhookAt }) => ({ requested, configured, missing, on, mode, lastWebhookAt }))(billingStatus()), plans: planTotals(users) },
   });
 });
-app.post('/api/admin/users/:id/:action(disable|enable)', requireAdmin, (req, res) => {
+app.post('/api/admin/users/:id/:action(disable|enable|comp|uncomp)', requireAdmin, (req, res) => {
   const u = store.supportsAccounts ? store.userById(req.params.id) : null;
   if (!u) return res.status(404).json({ error: 'No such account' });
-  store.setUserDisabled(u.id, req.params.action === 'disable');
-  store.addEvent('account', 'info', `Account #${u.id} ${req.params.action}d by admin.`);
+  const a = req.params.action;
+  if (a === 'comp' || a === 'uncomp') store.setUserComped(u.id, a === 'comp');   // free Pro, for friends and testing; no payment involved
+  else store.setUserDisabled(u.id, a === 'disable');
+  store.addEvent('account', 'info', `Account #${u.id}: ${a} by admin.`);
   res.json({ ok: true });
 });
 
@@ -6495,7 +6690,7 @@ const dataCheckCtx = {
   picks: () => loadCLV(),
   runGrade: () => trackJob('grade', autoGradePendingPicks)(),
   creditBudget: currentCreditBudget,
-  authStatus,
+  authStatus, billingStatus,
 };
 let dataChecksRunning = null;
 function runDataChecks() {
