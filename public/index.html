@@ -5193,7 +5193,7 @@ function paintAccount() {
   const planRow = !AUTH.paywall ? '' : AUTH.plan === 'pro'
     ? `<div class="plan-row"><span class="plan-pill pro">${b.comped ? 'Pro · complimentary' : 'Pro'}</span>${!b.comped && b.renewsAt ? `<small>${b.cancelAtPeriodEnd ? 'Ends' : 'Renews'} ${escapeHtml(fd(b.renewsAt))}</small>` : ''}</div>`
     : '<div class="plan-row"><span class="plan-pill">Free</span></div>';
-  const unconfirmed = AUTH.user && AUTH.user.emailVerified === false && AUTH.methods?.mail
+  const unconfirmed = AUTH.user && AUTH.user.emailVerified === false && AUTH.methods?.mail && AUTH.methods?.confirm !== false
     ? '<div class="plan-row"><span class="plan-pill">Email not confirmed</span></div><button type="button" role="menuitem" onclick="closeAcctMenu();acctResendConfirm()">Send confirmation email</button>' : '';
   const planBtn = !AUTH.paywall ? '' : AUTH.plan === 'pro'
     ? (b.canManage ? '<button type="button" role="menuitem" onclick="closeAcctMenu();openPortal()">Manage subscription</button>' : '')
@@ -5324,9 +5324,9 @@ function renderSignin() {
       <div class="si-links" style="margin-top:14px"><span class="note" style="margin:0">Already have an account?</span><button type="button" class="si-link" onclick="siGo('login')">Sign in</button></div>`;
   } else if (SI.step === 'created') {
     const prov = mailProvider(SI.email.trim()), u = AUTH.user;
-    const confirmed = !!u?.emailVerified, mailOn = !!M.mail;
+    const off = M.confirm === false, confirmed = !!u?.emailVerified || off, mailOn = !!M.mail;
     body = `<h2>You're in</h2><p>Your account is ready and you're signed in.</p>
-      <div class="signedin"><span class="acct-av">${escapeHtml((SI.email.trim()[0] || 'U').toUpperCase())}</span><div style="min-width:0"><b style="font-weight:600;display:block;overflow:hidden;text-overflow:ellipsis">${escapeHtml(SI.email.trim())}</b><span class="note" style="margin:0" id="si-conf-state">${confirmed ? '<span style="color:#9ee0bd">✓ Email confirmed</span>' : 'Email not confirmed yet'}</span></div></div>
+      <div class="signedin"><span class="acct-av">${escapeHtml((SI.email.trim()[0] || 'U').toUpperCase())}</span><div style="min-width:0"><b style="font-weight:600;display:block;overflow:hidden;text-overflow:ellipsis">${escapeHtml(SI.email.trim())}</b><span class="note" style="margin:0" id="si-conf-state">${off ? 'Welcome to WIN AI' : confirmed ? '<span style="color:#9ee0bd">✓ Email confirmed</span>' : 'Email not confirmed yet'}</span></div></div>
       ${confirmed ? '' : !mailOn ? '<div class="mail"><div><b>Email is not set up on this server yet</b><div class="note" style="margin-top:2px">You can use WIN AI now. Confirming your address will be possible once email is set up.</div></div></div>'
         : `<div class="mail"><div><b>${SI.emailSent ? 'We just sent a confirmation link' : "We couldn't send the confirmation email"}</b><div class="note" style="margin-top:2px">${SI.emailSent ? 'Tap it to confirm this address. You need a confirmed email to subscribe and to reset a password.' : 'Tap Send it again, or try later from your account menu.'}</div></div></div>
         ${prov && SI.emailSent ? `<a class="acct-go" href="${escapeHtml(prov.url)}" target="_blank" rel="noopener">Open ${escapeHtml(prov.name)}</a>` : ''}
@@ -5334,6 +5334,8 @@ function renderSignin() {
         <button type="button" class="acct-alt" id="si-resend" onclick="siResendConfirm()" disabled>Send it again</button>`}
       <button type="button" class="acct-${confirmed || !mailOn ? 'go' : 'alt'}" onclick="siFinishCreated()">Continue to WIN AI</button>
       ${confirmed || !mailOn ? '' : '<p class="note" style="text-align:center">Can\'t find it? Check your spam or promotions folder.</p>'}`;
+  } else if (SI.step === 'forgot' && !M.mail) {
+    body = `<h2>Reset password</h2><p>Resetting a password by email is not available on this site yet. Sign in with Google, or create a new account with a different email.</p><button type="button" class="acct-alt" onclick="siGo('login')">Back to sign in</button>`;
   } else if (SI.step === 'forgot') {
     body = `<h2>Reset password</h2><p>Enter your email and we'll send a link to choose a new password.</p>
       <label class="f" for="si-email">Email</label>

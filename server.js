@@ -5790,7 +5790,11 @@ const mailer = createMailer({
   },
   log: m => console.log(m), devLinks: process.env.AUTH_DEV_LINKS === '1' && process.env.NODE_ENV !== 'production',
 });
+// EMAIL_CONFIRMATION=off: people sign up and are in straight away, and no confirmation email is sent or asked for. Turn it back
+// on (remove the line) once emails can be delivered to anyone, which needs a verified sending domain at Resend.
+const CONFIRM_REQUIRED = String(process.env.EMAIL_CONFIRMATION || 'on').toLowerCase() !== 'off';
 const auth = createAuth({
+  confirmEmails: CONFIRM_REQUIRED,
   store, send: m => mailer.send(m), adminEmail: process.env.ADMIN_EMAIL, devLinks: mailer.devLinks, log: m => console.log(m),
   extraBlocked: String(process.env.BLOCKED_EMAIL_DOMAINS || '').toLowerCase().split(',').map(x => x.trim()).filter(Boolean),
 });
@@ -5813,7 +5817,7 @@ function authStatus() {
   if (!store.supportsAccounts) return { enabled: false, methods: { password: false, google: false, mail: false }, mailReady: false, detail: 'Accounts need the SQLite database. This server is on the JSON fallback (use Node 22.13 or newer).' };
   const mail = mailer.configured ? !!PUBLIC_URL : mailer.devLinks;
   const googleOn = !!(googleVerifier && GOOGLE_CLIENT_SECRET);
-  const methods = { password: true, google: googleOn, mail };
+  const methods = { password: true, google: googleOn, mail, confirm: CONFIRM_REQUIRED };
   const mailDetail = mailer.configured
     ? (PUBLIC_URL ? 'Confirmation and reset emails are set up.' : 'Set PUBLIC_URL to your site address (for example https://yourapp.up.railway.app) so the links in emails point to the right place. Until then confirmation and reset emails are NOT sent.')
     : mailer.devLinks ? 'Development mode: confirmation and reset links are printed in the server log, not emailed. Never use AUTH_DEV_LINKS on a public site.'
@@ -5821,7 +5825,8 @@ function authStatus() {
   const googleDetail = googleOn ? ', and so is Google' : googleVerifier ? '. Google sign-in is NOT on: GOOGLE_CLIENT_SECRET is missing' : '';
   let lastMailError = null;
   try { const e = JSON.parse(store.getMeta('mail:last_error') || 'null'); if (e && Date.now() - new Date(e.at).getTime() < 24 * 3600e3) lastMailError = e.why; } catch (_) {}
-  return { enabled: true, methods, mailReady: mail && !lastMailError, lastMailError, detail: `Email and password sign-in is on${googleDetail}. ${lastMailError ? `The last email could not be sent: ${lastMailError}` : mailDetail}` };
+  const confirmDetail = CONFIRM_REQUIRED ? '' : ' Email confirmation is OFF (EMAIL_CONFIRMATION=off): people sign up and are in straight away. Password reset emails still need working email.';
+  return { enabled: true, methods, confirmRequired: CONFIRM_REQUIRED, mailReady: mail && !lastMailError, lastMailError, detail: `Email and password sign-in is on${googleDetail}.${confirmDetail} ${lastMailError ? `The last email could not be sent: ${lastMailError}` : mailDetail}` };
 }
 // The address in a sign-in email must never come from the request, or a forged Host header could point a
 // victim's link at another site. In development (links printed, not emailed) only loopback requests may use it.
@@ -5848,7 +5853,7 @@ app.get('/api/auth/me', (req, res) => {
   res.set('Cache-Control', 'no-store');
   const on = paywallOn(), info = req.user ? planFor(req) : null;
   res.json({
-    enabled: authStatus().enabled, methods: { password: authStatus().methods.password, mail: authStatus().methods.mail, google: authStatus().methods.google },
+    enabled: authStatus().enabled, methods: { password: authStatus().methods.password, mail: authStatus().mailReady, confirm: CONFIRM_REQUIRED, google: authStatus().methods.google },
     user: req.user ? { email: req.user.email, name: req.user.name || null, emailVerified: !!req.user.email_verified_at } : null, maxProps: USER_MAX_PROPS,
     paywall: on,
     ...(on && req.user ? {
@@ -6007,7 +6012,7 @@ function billingStatus() {
   if (!STRIPE_WEBHOOK_SECRET) missing.push('STRIPE_WEBHOOK_SECRET');
   if (!STRIPE_PRICE) missing.push('STRIPE_PRICE_ID');
   const requested = process.env.PAYWALL === 'on';
-  return { requested, configured: !missing.length, missing, on: requested && !missing.length && authStatus().enabled && authStatus().methods.mail,
+  return { requested, configured: !missing.length, missing, on: requested && !missing.length && authStatus().enabled && (authStatus().methods.mail || !CONFIRM_REQUIRED),
     mode: STRIPE_KEY ? (/^(sk|rk)_test_/.test(STRIPE_KEY) ? 'test' : 'live') : null, lastWebhookAt: store.getMeta('stripe:last_event_at') };
 }
 const paywallOn = () => billingStatus().on;
@@ -6082,7 +6087,7 @@ app.post('/api/billing/checkout', requireUser, checkoutLimiter, async (req, res)
   const base = returnBase(req);
   if (!base) return res.status(503).json({ error: 'The site address is not set up for payments yet.' });
   const info = planFor(req);
-  if (!req.user.email_verified_at && !info.owner) return res.status(403).json({ error: 'Confirm your email first. We sent a link when you signed up.', code: 'email_unverified' });
+  if (CONFIRM_REQUIRED && !req.user.email_verified_at && !info.owner) return res.status(403).json({ error: 'Confirm your email first. We sent a link when you signed up.', code: 'email_unverified' });
   try {
     let customer = store.getBilling(req.user.id)?.customer_id;
     if (info.plan === 'pro' && !info.comped && !info.owner && customer) {          // already subscribed: send them to manage it

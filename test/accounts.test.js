@@ -9,7 +9,7 @@ function setup(opts = {}) {
   const store = createStore({ dbPath: ':memory:' });
   let t = Date.parse('2026-10-10T12:00:00Z');
   const sent = [];
-  const auth = A.createAuth({ store, now: () => t, adminEmail: opts.adminEmail, devLinks: !!opts.devLinks, extraBlocked: opts.extraBlocked || [],
+  const auth = A.createAuth({ store, now: () => t, adminEmail: opts.adminEmail, devLinks: !!opts.devLinks, extraBlocked: opts.extraBlocked || [], confirmEmails: opts.confirmEmails !== false,
     send: async m => { if (opts.failSend) throw new Error('mail down'); sent.push(m); } });
   const tokenOf = m => new URL(m.link).searchParams.get('t');
   const cookie = r => `${A.COOKIE}=${r.sessionToken}`;
@@ -69,6 +69,17 @@ test('a taken email says so, case-insensitively, and does not touch the existing
 test('the dev link is only returned when dev links are on', async () => {
   assert.equal((await setup().signUp()).devLink, undefined);
   assert.match((await setup({ devLinks: true }).signUp()).devLink, /\/auth\/confirm\?t=/);
+});
+
+test('with email confirmation switched off, sign up sends nothing and the person is simply in', async () => {
+  const w = setup({ confirmEmails: false });
+  const r = await w.signUp();
+  assert.equal(r.status, 200); assert.equal(r.emailSent, false); assert.equal(w.sent.length, 0);
+  assert.equal(w.auth.userFromCookieHeader(w.cookie(r)).email, 'maya@example.com');
+  assert.equal(w.store.lastLoginTokenAt('maya@example.com', 'confirm'), null);                        // no confirmation link is even created
+  const again = await w.auth.resendConfirmation(r.user, { baseUrl: BASE });
+  assert.equal(again.status, 200); assert.equal(again.confirmationOff, true); assert.equal(w.sent.length, 0);
+  assert.equal((await w.auth.signIn({ email: 'maya@example.com', password: PW })).status, 200);       // and they can sign back in
 });
 
 // ── sign in ──

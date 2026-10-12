@@ -76,6 +76,9 @@ prop belongs to the account that saved it. People sign in with **email and passw
 
 - **Sign up** asks for a first name, an email, a password (at least 10 characters, not a common one, not containing
   their email name or first name) and the 21+ box. They are signed in straight away.
+- **Email confirmation can be switched off** with `EMAIL_CONFIRMATION=off`. People then sign up and are in straight away,
+  nothing is emailed, and subscribing does not wait for it. Use this until you have a verified sending domain at Resend,
+  then remove the line. Password reset emails still need working email.
 - **Nothing is emailed until someone signs up.** Then one email confirms the address. A reset email goes out only when
   someone asks for it. Subscribing needs a confirmed address.
 - **Passwords** are stored only as salted scrypt hashes. Nobody, including you, can read one. Five wrong tries on an
