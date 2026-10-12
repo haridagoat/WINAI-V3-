@@ -24,6 +24,7 @@ const { createAuth, sessionCookie, clearCookie, maskEmail, sha, newToken, parseC
 const { createMailer } = require('./lib/mailer');
 const datachecks = require('./lib/datachecks');
 const billingLib = require('./lib/billing');
+const rg = require('./lib/rg');
 const { createGoogleVerifier } = require('./lib/google');
 
 const CLV_FILE = 'clv_tracker.json';   // legacy file, imported into SQLite on first start
@@ -5879,6 +5880,7 @@ app.get('/api/auth/me', (req, res) => {
   res.json({
     enabled: authStatus().enabled, methods: { password: authStatus().methods.password, mail: authStatus().mailReady, confirm: CONFIRM_REQUIRED, google: authStatus().methods.google },
     user: req.user ? { email: req.user.email, name: req.user.name || null, emailVerified: !!req.user.email_verified_at } : null, maxProps: USER_MAX_PROPS,
+    ...(req.user ? { rg: rgView(req.user) } : {}),
     paywall: on,
     ...(on && req.user ? {
       plan: info.plan,
@@ -5988,6 +5990,18 @@ app.post('/api/auth/logout', (req, res) => {
   res.json({ ok: true });
 });
 // Everything the account holds, as a file.
+// Change the password while signed in: needs the current one, signs out every other device, keeps this one signed in.
+app.post('/api/account/password', requireUser, authLoginLimiter, async (req, res) => {
+  const b = req.body || {};
+  const r = await auth.changePassword({ user: req.user, current: b.current, password: b.password, ip: req.ip });
+  if (r.error) return authFail(res, r);
+  startSession(req, res, r, { changed: true });
+});
+app.post('/api/account/sign-out-others', requireUser, writeLimiter, (req, res) => {
+  const r = auth.signOutOthers(req.user);
+  if (r.error) return authFail(res, r);
+  startSession(req, res, r, { signedOutOthers: true });
+});
 app.get('/api/account/export', requireUser, (req, res) => {
   res.set({ 'Content-Disposition': 'attachment; filename="winai-my-data.json"', 'Cache-Control': 'no-store' });
   res.json({ email: req.user.email, name: req.user.name || null, emailConfirmed: !!req.user.email_verified_at, createdAt: req.user.created_at, exportedAt: new Date().toISOString(), props: store.picksForUser(req.user.id) });
@@ -6062,25 +6076,35 @@ const TICKET_TTL_MS = 5 * 60 * 1000, TICKET_CTX_MAX = 4, TICKET_AI_MAX = 2;
 const TICKET_SHAPE = /^[A-Za-z0-9_-]{43}$/;
 const analysisStartLimiter = security.createRateLimiter({ windowMs: 60 * 1000, max: 20, message: 'Too many analyses started. Wait a moment.' });
 app.post('/api/analysis/start', analysisStartLimiter, (req, res) => {
-  if (!paywallOn() || isAdmin(req)) return res.json({ ticket: null, unlimited: true });
+  const planGate = paywallOn() && !isAdmin(req);
+  const eff = req.user ? rg.effective(rgRow(req.user)) : null;
+  const rgOn = !!eff && (eff.dailyLimit != null || eff.restricted || !!eff.pending);
+  if (!planGate && !rgOn) return res.json({ ticket: null, unlimited: true });
   if (!req.user) return res.status(401).json({ error: 'Sign in to run an analysis.', code: 'auth_required' });
-  const pro = isProReq(req), limit = pro ? PRO_DAILY_ANALYSES : FREE_DAILY_ANALYSES, day = getToday();
+  if (eff.restricted) return res.status(403).json(rgBreakBody(eff));
+  const pro = isProReq(req), planLimit = planGate ? (pro ? PRO_DAILY_ANALYSES : FREE_DAILY_ANALYSES) : Infinity, day = getToday();
+  const limit = Math.min(planLimit, eff.dailyLimit ?? Infinity);
   const used = store.analysesDone(req.user.id, day);
   if (used >= limit) {
+    if (eff.dailyLimit != null && eff.dailyLimit <= planLimit) return res.status(403).json({ error: `You have reached the daily limit you set (${eff.dailyLimit}). It resets at midnight.`, code: 'rg_limit', quota: { used, limit } });
     return res.status(402).json(pro
       ? { error: `You have used today's ${limit} analyses. The limit resets at midnight.`, code: 'daily_limit', feature: 'analyzer', quota: { used, limit } }
       : { error: "You've used today's free analysis. Pro removes the daily limit.", code: 'pro_required', feature: 'analyzer', quota: { used, limit } });
   }
   // A person who keeps starting analyses without finishing one is stopped, so the data routes cannot be farmed.
-  if (store.ticketsStarted(req.user.id, day) >= limit * (pro ? 2 : 5) + 3) return res.status(429).json({ error: 'Too many analyses started today.', code: 'daily_limit', quota: { used, limit } });
+  if (store.ticketsStarted(req.user.id, day) >= Math.min(limit, 100) * (pro ? 2 : 5) + 3) return res.status(429).json({ error: 'Too many analyses started today.', code: 'daily_limit', quota: { used, limit } });
   const ticket = newToken();
   store.startTicket({ hash: sha(ticket), userId: req.user.id, day, expiresAt: new Date(Date.now() + TICKET_TTL_MS).toISOString() });
-  res.json({ ticket, quota: { used, limit } });
+  res.json({ ticket, quota: { used, limit: Number.isFinite(limit) ? limit : null } });
 });
-// Checks the ticket on a data route ('ctx') or the AI route ('ai'). With the paywall off this does nothing.
+// Checks the ticket on a data route ('ctx') or the AI route ('ai'). Needed while the paywall is on, and for anyone
+// who has set a limit or a break on themselves, whether or not the paywall is on.
 function analysisGate(use) {
   return (req, res, next) => {
-    if (!paywallOn() || isAdmin(req)) return next();
+    const eff = req.user ? rg.effective(rgRow(req.user)) : null;
+    if (eff?.restricted) return res.status(403).json(rgBreakBody(eff));
+    const rgOn = !!eff && (eff.dailyLimit != null || !!eff.pending);
+    if (!(paywallOn() && !isAdmin(req)) && !rgOn) return next();
     if (!req.user) return res.status(401).json({ error: 'Sign in to run an analysis.', code: 'auth_required' });
     const t = String(req.get('x-analysis-ticket') || '');
     const row = TICKET_SHAPE.test(t) ? store.getTicket(sha(t)) : null;
@@ -6090,6 +6114,49 @@ function analysisGate(use) {
     next();
   };
 }
+
+// ── responsible gambling: limits and breaks people set on themselves. Free for everyone, never paid. ──
+// An active break or exclusion also follows the email, so deleting the account and signing up again does not end it.
+function rgRow(user) {
+  let row = store.getRg(user.id);
+  const hold = store.holdFor(user.email);
+  if (hold && !(row?.restricted_until && row.restricted_until >= hold.until)) row = store.saveRg(user.id, { restricted_until: hold.until, restriction_kind: hold.kind || 'exclusion', restricted_at: new Date().toISOString() });
+  return row;
+}
+function rgBreakBody(eff) {
+  const until = new Date(eff.until).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return { error: eff.kind === 'exclusion' ? `You chose to step away until ${until}. The analyzer and Prop List are paused.` : `You are on a break until ${until}. The analyzer and Prop List are paused.`, code: 'rg_break', kind: eff.kind, until: eff.until };
+}
+function rgView(user) {
+  const row = rgRow(user), e = rg.effective(row);
+  return { dailyLimit: e.dailyLimit, pending: e.pending, restricted: e.restricted, kind: e.kind, until: e.until, reminderMinutes: row?.reminder_minutes || 0, usedToday: store.analysesDone(user.id, getToday()) };
+}
+function rgBlock(req, res, next) {
+  const eff = req.user ? rg.effective(rgRow(req.user)) : null;
+  return eff?.restricted ? res.status(403).json(rgBreakBody(eff)) : next();
+}
+app.get('/api/account/rg', requireUser, (req, res) => { res.set('Cache-Control', 'no-store'); res.json(rgView(req.user)); });
+app.post('/api/account/rg/limit', requireUser, writeLimiter, (req, res) => {
+  const raw = req.body?.limit;
+  const r = rg.planLimitChange(rgRow(req.user), raw === null ? null : (typeof raw === 'number' ? raw : NaN));
+  if (r.error) return res.status(400).json({ error: r.error });
+  if (Object.keys(r.patch).length) store.saveRg(req.user.id, r.patch);
+  res.json({ ...rgView(req.user), appliesAt: r.appliesAt });
+});
+app.post('/api/account/rg/break', requireUser, writeLimiter, (req, res) => {
+  const kind = req.body?.kind === 'exclusion' ? 'exclusion' : req.body?.kind === 'break' ? 'break' : null;
+  const r = kind ? rg.planRestriction(rgRow(req.user), kind, Number(req.body?.amount)) : { error: 'Choose a break or self-exclusion.' };
+  if (r.error) return res.status(400).json({ error: r.error });
+  store.saveRg(req.user.id, r.patch);
+  store.addEvent('rg', 'info', `${kind} set (user ${req.user.id})`);
+  res.json(rgView(req.user));
+});
+app.post('/api/account/rg/reminder', requireUser, writeLimiter, (req, res) => {
+  const m = req.body?.minutes;
+  if (![0, 15, 30, 60].includes(m)) return res.status(400).json({ error: 'Choose off, 15, 30 or 60 minutes.' });
+  store.saveRg(req.user.id, { reminder_minutes: m });
+  res.json(rgView(req.user));
+});
 
 // ── price shown on the upgrade sheet (cached; the price itself lives in Stripe) ──
 let priceCache = { at: 0, price: null };
@@ -6292,7 +6359,7 @@ async function captureClosingLines() {
 
 // Save a prop to the signed-in user's own list
 const CLV_MAX_ENTRIES = 200000;
-app.post('/api/clv/save', requireUser, requirePro('prop_list'), writeLimiter, (req, res) => {
+app.post('/api/clv/save', requireUser, rgBlock, requirePro('prop_list'), writeLimiter, (req, res) => {
   const { value, error } = security.cleanEntryInput(req.body);
   if (error) return res.status(400).json({ error });
   const { player, opp, propType, line, projection, verdict, edge, confidence, gameDate, league } = value;

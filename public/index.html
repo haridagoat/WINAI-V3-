@@ -1356,6 +1356,21 @@
   .plan-pill.pro{background:#12261b;border-color:#2a6b47;color:#9ee0bd}
   .quota-note{margin-top:8px;font-size:13px;color:var(--muted);text-align:center}
   .quota-note button{background:none;border:0;padding:0;color:var(--text);font:inherit;font-weight:600;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+  .rg-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+  .rg-chip{background:var(--surface2);border:1px solid var(--border2);color:var(--muted2);border-radius:9px;padding:9px 14px;font-family:var(--label);font-weight:700;font-size:13px;letter-spacing:.08em;text-transform:uppercase;cursor:pointer}
+  .rg-chip:hover{background:var(--surface3);color:var(--text)}
+  .rg-chip.on{background:#e6e6ea;border-color:#e6e6ea;color:#0a0a0b}
+  .rg-sec{border-top:1px solid var(--border);margin-top:18px;padding-top:14px}
+  .rg-sec h3{margin:0;font-family:var(--label);font-weight:700;font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--text)}
+  .rg-sec p{margin:4px 0 0;font-size:13.5px}
+  .rg-banner{background:var(--surface2);border:1px solid var(--border2);border-radius:10px;padding:11px 13px;margin-top:14px;font-size:14px;color:var(--text)}
+  .rg-help a{color:var(--text);text-underline-offset:3px}
+  .rg-remind{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);width:min(440px,calc(100vw - 32px));background:var(--surface);border:1px solid var(--border2);border-radius:12px;padding:14px 16px;z-index:390;box-shadow:0 12px 32px rgba(0,0,0,.5)}
+  .rg-remind b{display:block;font-family:var(--label);letter-spacing:.08em;text-transform:uppercase;font-size:14px}
+  .rg-remind p{margin:4px 0 0;font-size:13.5px;color:var(--muted)}
+  .rg-remind div{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+  .rg-foot{margin:28px auto 8px;max-width:640px;padding:0 16px;text-align:center;font-size:12.5px;color:var(--muted)}
+  .rg-foot a{color:var(--muted2);text-underline-offset:3px}
   .up-list{list-style:none;margin:14px 0 0;padding:0;display:flex;flex-direction:column;gap:9px}
   .up-list li{display:flex;gap:10px;font-size:14.5px;color:var(--muted2)}
   .up-list li::before{content:"";flex:none;width:6px;height:6px;border-radius:50%;background:var(--pos,#4cb47e);margin-top:8px}
@@ -1703,6 +1718,7 @@
   </div>
 </div>
 
+<p class="rg-foot">WIN AI is analytics, not betting advice. Must be 21+. If gambling is a problem, call <a href="tel:18004262537">1-800-GAMBLER</a>.</p>
 
 <script>
 // History used to be a plain in-memory array — every refresh silently
@@ -4951,6 +4967,7 @@ async function addToBetslip() {
     if (btn) { btn.textContent='✓ ADDED'; btn.style.color='var(--green)'; btn.style.borderColor='var(--green)'; setTimeout(()=>{ btn.textContent='+ ADD TO LIST'; btn.style.color='var(--gold)'; btn.style.borderColor='var(--gold)'; },2000); }
   } catch (err) {
     if (err.code === 'pro_required') { openUpgrade('prop_list', err.message); return; }
+    if (err.code === 'rg_break') { acctToast(err.message); refreshMe(); return; }
     if (err.code === 'auth_required') { AUTH.user = null; paintAccount(); openSignin('save', { player, opp, propType, line, verdict, edge, projection, confidence, league }); return; }
     alert('Could not save prop: ' + err.message);
   }
@@ -5217,6 +5234,9 @@ function paintAccount() {
       <div class="who">${em}</div>
       ${unconfirmed}${planRow}${planBtn}
       <button type="button" role="menuitem" onclick="closeAcctMenu();switchTab('betslip')">My Prop List</button>
+      <button type="button" role="menuitem" onclick="closeAcctMenu();openSafer()">Safer play &amp; limits</button>
+      <button type="button" role="menuitem" onclick="closeAcctMenu();openChangePassword()">Change password</button>
+      <button type="button" role="menuitem" onclick="closeAcctMenu();acctSignOutOthers()">Sign out other devices</button>
       <button type="button" role="menuitem" onclick="closeAcctMenu();acctExport()">Export my data</button>
       <button type="button" role="menuitem" onclick="closeAcctMenu();acctSignOut()">Sign out</button>
       <button type="button" role="menuitem" class="danger" onclick="closeAcctMenu();openDeleteAccount()">Delete my account</button>
@@ -5385,20 +5405,28 @@ function renderSignin() {
       ${SI.err ? `<div class="err">${escapeHtml(SI.err)}</div>` : ''}
       <button type="button" class="acct-go danger" id="si-del" onclick="acctDelete()">${SI.busy ? 'Deleting…' : 'Yes, delete everything'}</button>
       <button type="button" class="acct-alt" onclick="siClose()">Keep my account</button>`;
-  } else if (SI.step === 'delete') {
-    const n = betslip.length;
-    body = `<h2>Delete my account</h2><p>This deletes <b style="color:var(--text)">${escapeHtml(AUTH.user?.email || '')}</b> and ${n === 1 ? 'the 1 prop' : `all ${n} props`} you saved. It cannot be undone.</p>
-      ${SI.err ? `<div class="err">${escapeHtml(SI.err)}</div>` : ''}
-      <button type="button" class="acct-go danger" id="si-del" onclick="acctDelete()">${SI.busy ? 'Deleting…' : 'Yes, delete everything'}</button>
-      <button type="button" class="acct-alt" onclick="siClose()">Keep my account</button>`;
+  } else if (SI.step === 'safer') {
+    body = saferHtml();
+  } else if (SI.step === 'password') {
+    body = `<h2>Change password</h2><p>Every other device is signed out when you change it.</p>
+      <label class="f" for="cp-cur">Current password</label>
+      <div class="pw"><input id="cp-cur" type="password" autocomplete="current-password" autocapitalize="off" spellcheck="false" aria-label="Current password" oninput="CP.cur=this.value;cpClear('current')"></div>
+      <label class="f" for="cp-new">New password</label>
+      <div class="pw"><input id="cp-new" type="password" autocomplete="new-password" autocapitalize="off" spellcheck="false" aria-label="New password" oninput="CP.pw=this.value;cpClear('password')" onkeydown="if(event.key==='Enter'){event.preventDefault();cpSubmit()}"></div>
+      <p class="note">At least 10 characters, nothing common, and not your name or email.</p>
+      <div class="err" id="cp-err" role="alert" ${CP.err ? '' : 'hidden'}>${escapeHtml(CP.err)}</div>
+      <button type="button" class="acct-go" onclick="cpSubmit()">${CP.busy ? 'Saving…' : 'Change password'}</button>
+      <button type="button" class="acct-alt" onclick="siClose()">Cancel</button>`;
   }
   const wrap = document.createElement('div');
   wrap.id = 'acct-modal'; wrap.className = 'acct-scrim';
   wrap.innerHTML = `<div class="acct-sheet" role="dialog" aria-modal="true" aria-label="Sign in">${body}</div>`;
   wrap.addEventListener('mousedown', e => { if (e.target === wrap) siClose(); });
   document.body.appendChild(wrap);
+  if (SI.step === 'password') document.getElementById('cp-cur')?.focus({ preventScroll: true });
   if (['login', 'signup', 'forgot'].includes(SI.step)) { siPaintErr(); siAgeChanged(); if (SI.step === 'signup') { siTyping(); siPwTyping(); } }
   if (SI.step === 'created') siStartCreatedTimers();
+  if (['password', 'safer'].includes(SI.step)) return;
   const focusId = SI.step === 'signup' ? 'si-name' : (SI.step === 'login' && SI.email ? 'si-pw' : 'si-email');
   (document.getElementById(focusId) || wrap.querySelector('a.acct-go, button'))?.focus({ preventScroll: true });
 }
@@ -5535,6 +5563,78 @@ function showGoogleError() {
     || 'Google sign-in could not be completed. Try again, or use your email.';
   siShowErr('google', msg);
 }
+// ── change password / sign out other devices ──
+const CP = { cur: '', pw: '', err: '', busy: false };
+function openChangePassword() { Object.assign(CP, { cur: '', pw: '', err: '', busy: false }); Object.assign(SI, { open: true, step: 'password', err: '', busy: false }); renderSignin(); }
+function cpClear() { if (CP.err) { CP.err = ''; const e = document.getElementById('cp-err'); if (e) e.hidden = true; } }
+async function cpSubmit() {
+  if (CP.busy) return;
+  if (!CP.cur) { CP.err = 'Enter your current password.'; return renderCpKeep(); }
+  if (!CP.pw) { CP.err = 'Choose a new password.'; return renderCpKeep(); }
+  CP.busy = true; CP.err = ''; renderCpKeep();
+  try { await apiPost('/api/account/password', { current: CP.cur, password: CP.pw }); }
+  catch (e) { CP.busy = false; CP.err = e.message; return renderCpKeep(); }
+  CP.busy = false; CP.cur = CP.pw = ''; siClose(); acctToast('Password changed. Other devices were signed out.');
+}
+function renderCpKeep() { const c = CP.cur, n = CP.pw; renderSignin(); const a = document.getElementById('cp-cur'), b = document.getElementById('cp-new'); if (a) a.value = c; if (b) b.value = n; (CP.err && !c ? a : b || a)?.focus({ preventScroll: true }); }
+async function acctSignOutOthers() {
+  try { await apiPost('/api/account/sign-out-others', {}); acctToast('Every other device was signed out.'); }
+  catch (e) { acctToast(e.message || 'Could not do that. Try again.'); }
+}
+
+// ── safer play: limits and breaks people set on themselves. Free for everyone. ──
+const RG_UI = { err: '', confirm: null, busy: false };
+const rgDate = iso => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+const rgDateTime = iso => new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+async function openSafer() {
+  Object.assign(RG_UI, { err: '', confirm: null, busy: false });
+  Object.assign(SI, { open: true, step: 'safer', err: '', busy: false }); renderSignin();
+  try { AUTH.rg = await fetch('/api/account/rg', { cache: 'no-store' }).then(r => r.json()); renderSignin(); paintQuota(); } catch (_) {}
+}
+function saferHtml() {
+  const R = AUTH.rg || { dailyLimit: null, pending: null, restricted: false, reminderMinutes: 0, usedToday: 0 };
+  const chip = (on, label, fn) => `<button type="button" class="rg-chip ${on ? 'on' : ''}" aria-pressed="${on ? 'true' : 'false'}" onclick="${fn}">${label}</button>`;
+  const lims = [1, 3, 5, 10, 25].map(n => chip(R.dailyLimit === n, n, `rgSetLimit(${n})`)).join('') + chip(R.dailyLimit == null, 'No limit', 'rgSetLimit(null)');
+  const rem = [[0, 'Off'], [15, '15 min'], [30, '30 min'], [60, '1 hour']].map(([m, l]) => chip(R.reminderMinutes === m, l, `rgSetReminder(${m})`)).join('');
+  const ask = (kind, amount, label) => RG_UI.confirm && RG_UI.confirm.kind === kind && RG_UI.confirm.amount === amount
+    ? `<button type="button" class="rg-chip on" onclick="rgDoRestrict()">${RG_UI.busy ? 'Saving…' : 'Yes, confirm'}</button><button type="button" class="rg-chip" onclick="RG_UI.confirm=null;renderSignin()">Cancel</button>`
+    : chip(false, label, `RG_UI.confirm={kind:'${kind}',amount:${amount}};renderSignin()`);
+  const cfm = RG_UI.confirm;
+  const cfmNote = cfm ? `<div class="rg-banner" role="alert">${cfm.kind === 'exclusion' ? 'This cannot be ended early, by you or by us, even if you delete your account and come back.' : 'This cannot be ended early. The analyzer and Prop List stay paused until it is over.'}</div>` : '';
+  const pending = R.pending ? `<p class="note">Raising it to ${R.pending.limit == null ? 'no limit' : R.pending.limit} starts ${escapeHtml(rgDateTime(R.pending.at))}. Lowering a limit is instant; raising one waits a day, so a bad moment cannot undo a good decision.</p>` : '<p class="note">Lowering a limit is instant. Raising it or removing it starts 24 hours later.</p>';
+  return `<h2>Safer play</h2>
+    <p>These tools are free for everyone, always. They follow your account on every device.</p>
+    ${R.restricted ? `<div class="rg-banner"><b>${R.kind === 'exclusion' ? 'You are stepping away' : 'You are on a break'} until ${escapeHtml(rgDate(R.until))}.</b><br>The analyzer and Prop List are paused. You can still look around, export your data or delete your account.</div>` : ''}
+    <div class="rg-sec"><h3>Daily limit on analyses</h3><p>${R.dailyLimit == null ? 'No limit set.' : `You have used ${R.usedToday} of ${R.dailyLimit} today.`}</p><div class="rg-chips">${lims}</div>${pending}</div>
+    <div class="rg-sec"><h3>Time reminders</h3><p>A gentle nudge after you have been on for a while.</p><div class="rg-chips">${rem}</div></div>
+    <div class="rg-sec"><h3>Take a break</h3><p>Pauses the analyzer and Prop List. It cannot be ended early.</p><div class="rg-chips">${ask('break', 24, '24 hours')}${ask('break', 168, '7 days')}${ask('break', 720, '30 days')}</div></div>
+    <div class="rg-sec"><h3>Step away for longer</h3><p>Self-exclusion. For when you need real distance.</p><div class="rg-chips">${ask('exclusion', 180, '6 months')}${ask('exclusion', 365, '1 year')}</div>${cfmNote}</div>
+    ${RG_UI.err ? `<div class="err" role="alert">${escapeHtml(RG_UI.err)}</div>` : ''}
+    <div class="rg-sec rg-help"><h3>Need to talk to someone?</h3><p>Free, private, 24/7: <a href="tel:18004262537">1-800-GAMBLER</a> (1-800-426-2537), text <a href="sms:800426">800GAM</a>, or chat at <a href="https://www.ncpgambling.org/chat" target="_blank" rel="noopener noreferrer">ncpgambling.org/chat</a>.</p></div>
+    <button type="button" class="acct-alt" onclick="siClose()">Done</button>`;
+}
+async function rgCall(path, body) {
+  try { const r = await apiPost(path, body); AUTH.rg = r; RG_UI.err = ''; RG_UI.confirm = null; paintQuota(); return r; }
+  catch (e) { RG_UI.err = e.message; RG_UI.confirm = null; }
+  finally { RG_UI.busy = false; renderSignin(); }
+}
+async function rgSetLimit(n) { const r = await rgCall('/api/account/rg/limit', { limit: n }); if (r?.appliesAt) acctToast('That change starts in 24 hours.'); }
+function rgSetReminder(m) { rgCall('/api/account/rg/reminder', { minutes: m }); rgStartReminders(); }
+async function rgDoRestrict() { if (!RG_UI.confirm || RG_UI.busy) return; RG_UI.busy = true; renderSignin(); const c = RG_UI.confirm; const r = await rgCall('/api/account/rg/break', c); if (r) acctToast('Done. The analyzer and Prop List are paused.'); }
+// Time reminders: counted from when this page was opened, and asked again each time the interval passes.
+let _rgTimer = null, _rgStart = Date.now(), _rgNext = 0;
+function rgStartReminders() {
+  clearInterval(_rgTimer); _rgTimer = null;
+  const m = AUTH.user && AUTH.rg ? AUTH.rg.reminderMinutes : 0; if (!m) return;
+  _rgNext = _rgStart + m * 60000;
+  _rgTimer = setInterval(() => { if (document.hidden || Date.now() < _rgNext) return; _rgNext = Date.now() + m * 60000; rgShowReminder(Math.round((Date.now() - _rgStart) / 60000)); }, 20000);
+}
+function rgShowReminder(mins) {
+  document.getElementById('rg-remind')?.remove();
+  const d = document.createElement('div'); d.id = 'rg-remind'; d.className = 'rg-remind'; d.setAttribute('role', 'alert');
+  d.innerHTML = `<b>You have been on for ${mins >= 60 ? Math.floor(mins / 60) + ' h ' + (mins % 60 ? (mins % 60) + ' min' : '') : mins + ' minutes'}</b><p>A good moment to stretch and step back.</p><div><button type="button" class="rg-chip" onclick="document.getElementById('rg-remind').remove()">Keep going</button><button type="button" class="rg-chip" onclick="document.getElementById('rg-remind').remove();openSafer()">Safer play</button></div>`;
+  document.body.appendChild(d);
+}
 async function acctResendConfirm() {
   try { const x = await postJson('/api/auth/resend-confirmation', {}); acctToast(x.ok ? (x.j.alreadyConfirmed ? 'Your email is already confirmed' : 'Confirmation email sent') : (x.j.error || 'Could not send it. Try again.')); }
   catch (_) { acctToast('Could not reach the server.'); }
@@ -5611,13 +5711,14 @@ function gateError(e, feature) {
   if (e.code === 'auth_required') { openSignin('signin'); return true; }
   if (e.code === 'pro_required') { openUpgrade(e.feature || feature, e.message); return true; }
   if (e.code === 'daily_limit') { acctToast(e.message); return true; }
+  if (e.code === 'rg_break' || e.code === 'rg_limit') { acctToast(e.message); refreshMe(); return true; }
   if (e.code === 'ticket_required') { acctToast('That went out of sync. Run the analysis again.'); return true; }
   return false;
 }
 // Free accounts get one analysis a day. Each starts with a ticket, and counts only once it works.
 async function analysisStart() {
   await authReady;
-  if (!AUTH.paywall) return null;
+  if (!AUTH.paywall && !(AUTH.user && AUTH.rg && (AUTH.rg.dailyLimit != null || AUTH.rg.pending || AUTH.rg.restricted))) return null;
   const r = await apiPost('/api/analysis/start', {});
   return r.ticket;
 }
@@ -5627,7 +5728,10 @@ function paintQuota() {
     let n = document.getElementById('quota-' + lg);
     if (!n) { n = document.createElement('div'); n.id = 'quota-' + lg; n.className = 'quota-note'; btn.insertAdjacentElement('afterend', n); }
     let html = '';
-    if (AUTH.loaded && AUTH.paywall) {
+    const R = AUTH.user ? AUTH.rg : null;
+    if (R && R.restricted) html = `${R.kind === 'exclusion' ? 'You are away until' : 'You are on a break until'} ${escapeHtml(rgDate(R.until))}. The analyzer is paused. <button type="button" onclick="openSafer()">Safer play</button>`;
+    else if (R && R.dailyLimit != null && (!AUTH.paywall || !AUTH.quota || R.dailyLimit <= AUTH.quota.limit)) html = `Your daily limit: ${Math.max(0, R.dailyLimit - R.usedToday)} of ${R.dailyLimit} analyses left today. <button type="button" onclick="openSafer()">Change</button>`;
+    else if (AUTH.loaded && AUTH.paywall) {
       const q = AUTH.quota;
       if (!AUTH.user) html = 'Sign in to run an analysis. Free accounts get one a day. <button type="button" onclick="openSignin(\'signin\')">Sign in</button>';
       else if (AUTH.plan === 'pro') html = q ? `Pro: ${Math.max(0, q.limit - q.used)} of ${q.limit} analyses left today.` : '';
@@ -5640,11 +5744,11 @@ function paintQuota() {
 }
 function applyMe(j) {
   AUTH.enabled = !!j.enabled; AUTH.methods = j.methods || { password: true, mail: false, google: null }; AUTH.user = j.user || null; AUTH.maxProps = j.maxProps || 300;
-  AUTH.paywall = !!j.paywall; AUTH.plan = j.plan || null; AUTH.billing = j.billing || null; AUTH.quota = j.quota || null;
+  AUTH.rg = j.rg || null; AUTH.paywall = !!j.paywall; AUTH.plan = j.plan || null; AUTH.billing = j.billing || null; AUTH.quota = j.quota || null;
 }
 async function refreshMe() {
   try { applyMe(await fetch('/api/auth/me', { cache: 'no-store' }).then(r => r.json())); } catch (_) {}
-  paintAccount(); paintQuota();
+  paintAccount(); paintQuota(); rgStartReminders();
   if (document.getElementById('panel-betslip')?.classList.contains('active')) renderBetslip();
 }
 // Back from Stripe: the webhook can lag a few seconds behind the redirect, so wait for it briefly.
@@ -5663,7 +5767,7 @@ async function loadAuth() {
     applyMe(await fetch('/api/auth/me', { cache: 'no-store' }).then(r => r.json()));
   } catch (_) { /* stay a guest */ }
   captureGoogleReturn();
-  AUTH.loaded = true; _authResolve(); paintAccount(); paintQuota();
+  AUTH.loaded = true; _authResolve(); paintAccount(); paintQuota(); rgStartReminders();
   afterAuthLoaded();
   handleReturn();
   showGoogleError();

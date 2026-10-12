@@ -374,3 +374,70 @@ test('masked emails hide most of the address', () => {
   assert.equal(A.maskEmail('jo@example.com'), 'j*@example.com');
   assert.equal(A.maskEmail('a@example.com'), 'a*@example.com');
 });
+
+// ── change password / sign out everywhere ──
+test('changing the password needs the current one, applies the rules, and signs out every other device', async () => {
+  const w = setup();
+  const first = await w.signUp();
+  const other = await w.auth.signIn({ email: 'maya@example.com', password: PW });
+  const user = w.store.userById(first.user.id);
+  const NEW = 'green-harbor-lantern-77';
+  const bad = [[{ current: '', password: NEW }, 'current'], [{ current: 'wrong-wrong-1234', password: NEW }, 'current'], [{ current: PW, password: '' }, 'password'],
+    [{ current: PW, password: PW }, 'password'], [{ current: PW, password: 'short' }, 'password'], [{ current: PW, password: 'maya-is-great-2026' }, 'password']];
+  for (const [over, field] of bad) { const r = await w.auth.changePassword({ user, ...over }); assert.equal(r.status === 429 ? 'x' : r.status, 400, JSON.stringify(over)); assert.equal(r.field, field, JSON.stringify(over)); }
+  const ok = await w.auth.changePassword({ user, current: PW, password: NEW });
+  assert.equal(ok.status, 200);
+  assert.equal(w.auth.userFromCookieHeader(w.cookie(first)), null);            // the old sessions are gone
+  assert.equal(w.auth.userFromCookieHeader(w.cookie(other)), null);
+  assert.equal(w.auth.userFromCookieHeader(w.cookie(ok)).email, 'maya@example.com');   // this device stays in
+  assert.equal((await w.auth.signIn({ email: 'maya@example.com', password: PW })).status, 401);
+  assert.equal((await w.auth.signIn({ email: 'maya@example.com', password: NEW })).status, 200);
+});
+test('guessing the current password is limited like signing in', async () => {
+  const w = setup();
+  const r0 = await w.signUp(); const user = w.store.userById(r0.user.id);
+  let last;
+  for (let i = 0; i < 6; i++) last = await w.auth.changePassword({ user, current: 'not-it-' + i + '-xxxxx', password: 'green-harbor-lantern-77', ip: '9.9.9.9' });
+  assert.equal(last.status, 429);
+  assert.equal((await w.auth.changePassword({ user, current: PW, password: 'green-harbor-lantern-77', ip: '9.9.9.9' })).status, 429);     // even the right one is paused
+});
+test('an account with no password (Google only) cannot use change password', async () => {
+  const w = setup();
+  const g = w.auth.signInVerified({ email: 'gina@example.com', name: 'Gina', ageConfirmed: true });
+  const r = await w.auth.changePassword({ user: g.user, current: 'whatever-1234', password: 'green-harbor-lantern-77' });
+  assert.equal(r.status, 400); assert.equal(r.code, 'no_password');
+  assert.equal((await w.auth.changePassword({ user: null, current: 'a', password: 'b' })).status, 401);
+});
+test('sign out of other devices ends every other session and keeps this one', async () => {
+  const w = setup();
+  const a = await w.signUp(); const b = await w.auth.signIn({ email: 'maya@example.com', password: PW });
+  const r = w.auth.signOutOthers(w.store.userById(a.user.id));
+  assert.equal(r.status, 200);
+  assert.equal(w.auth.userFromCookieHeader(w.cookie(a)), null); assert.equal(w.auth.userFromCookieHeader(w.cookie(b)), null);
+  assert.equal(w.auth.userFromCookieHeader(w.cookie(r)).email, 'maya@example.com');
+  assert.equal(w.auth.signOutOthers(null).status, 401);
+});
+
+// ── responsible gambling storage ──
+test('settings are stored per person, and deleting the account removes them', async () => {
+  const w = setup(); const a = await w.signUp(); const id = a.user.id;
+  assert.equal(w.store.getRg(id), null);
+  w.store.saveRg(id, { daily_limit: 3, reminder_minutes: 30, bogus: 1 });
+  assert.equal(w.store.getRg(id).daily_limit, 3); assert.equal(w.store.getRg(id).reminder_minutes, 30);
+  w.store.saveRg(id, { daily_limit: 2 });
+  assert.equal(w.store.getRg(id).daily_limit, 2); assert.equal(w.store.getRg(id).reminder_minutes, 30);
+  w.store.deleteUser(id);
+  assert.equal(w.store.getRg(id), null);
+});
+test('an active break survives deleting the account and signing up again; an ended one does not', async () => {
+  const w = setup(); const a = await w.signUp();
+  const future = new Date(Date.now() + 5 * 86400e3).toISOString();
+  w.store.saveRg(a.user.id, { restricted_until: future, restriction_kind: 'exclusion' });
+  w.store.deleteUser(a.user.id);
+  assert.equal(w.store.holdFor('maya@example.com').until, future);
+  assert.equal(w.store.holdFor('MAYA@example.com ').until, future);                // same address however it is typed
+  assert.equal(w.store.holdFor('someone@else.com'), null);
+  const b = await w.signUp({ name: 'Maya' }); w.store.saveRg(b.user.id, { restricted_until: new Date(Date.now() - 1000).toISOString(), restriction_kind: 'break' });
+  w.store.deleteUser(b.user.id);
+  assert.equal(w.store.holdFor('maya@example.com').until, future);                 // the ended break wrote nothing new
+});
