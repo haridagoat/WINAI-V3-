@@ -25,6 +25,7 @@ const { createMailer } = require('./lib/mailer');
 const datachecks = require('./lib/datachecks');
 const billingLib = require('./lib/billing');
 const rg = require('./lib/rg');
+const freshness = require('./lib/freshness');
 const { createGoogleVerifier } = require('./lib/google');
 
 const CLV_FILE = 'clv_tracker.json';   // legacy file, imported into SQLite on first start
@@ -3894,17 +3895,19 @@ app.get('/api/health', (req, res) => {
 // this server made actually returned (also free — no probe call).
 app.get('/api/data-status', (req, res) => {
   const oddsConfigured = !!(process.env.ODDS_API_KEY && !process.env.ODDS_API_KEY.includes('XXXXX'));
+  const fresh = freshness.describe({ oddsConfigured, odds: oddsApiHealth, inSeason: datachecks.inSeason,
+    statMtimes: { nba: mtimeOf(STAT_FILE.nba), wnba: mtimeOf(STAT_FILE.wnba) } });
   // Visitors only need to know whether the odds feed is up. Credit counts, usage and error text
   // are for the admin.
   if (!isAdmin(req)) {
     return res.json({
-      odds: { configured: oddsConfigured, exhausted: !!oddsApiHealth.exhausted },
+      odds: { configured: oddsConfigured, exhausted: !!oddsApiHealth.exhausted }, fresh,
       balldontlie: { configured: !!process.env.BALLDONTLIE_KEY },
       anthropic: { configured: !!(process.env.ANTHROPIC_KEY && !process.env.ANTHROPIC_KEY.includes('your_')) },
     });
   }
   res.json({
-    odds: { configured: oddsConfigured, ...oddsApiHealth, usage: oddsUsage },
+    odds: { configured: oddsConfigured, ...oddsApiHealth, usage: oddsUsage }, fresh,
     balldontlie: { configured: !!process.env.BALLDONTLIE_KEY },
     anthropic: { configured: !!(process.env.ANTHROPIC_KEY && !process.env.ANTHROPIC_KEY.includes('your_')) },
   });

@@ -74,6 +74,10 @@
   .dfs-synced .dfs-dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:pulse 2s infinite;}
   .dfs-synced.degraded{background:rgba(229,72,77,0.1);border-color:rgba(229,72,77,0.3);color:var(--red);}
   .dfs-synced.degraded .dfs-dot{background:var(--red);animation:none;}
+  .dfs-sub{margin:-4px 0 10px;font-size:12px;color:var(--muted)}
+  .dfs-sub .warn{color:var(--amber,#e0b34a)}
+  .fresh-banner{margin:0 auto;max-width:1100px;padding:10px 16px;font-size:13.5px;color:var(--text);background:var(--surface2);border-bottom:1px solid var(--border2)}
+  .fresh-banner[hidden]{display:none}
 
   .matchup-banner{display:none;align-items:center;gap:8px;font-family:var(--body);font-size:11px;padding:9px 12px;border-radius:8px;margin-top:2px;}
   .matchup-banner.confirmed{display:flex;background:rgba(76,180,126,0.08);border:1px solid rgba(76,180,126,0.25);color:var(--green);}
@@ -1515,6 +1519,7 @@
   </div>
   <div class="acct-slot" id="acct-slot"></div>
 </nav>
+<div class="fresh-banner" id="fresh-banner" role="status" hidden></div>
 
 <div id="panel-today" class="panel active">
   <div id="today-root"><div class="td-empty">Loading today's slate...</div></div>
@@ -1531,6 +1536,7 @@
         <span class="dfs-label"><span style="opacity:0.7;">📶</span> DATA FEED STATUS</span>
         <span class="dfs-synced" id="dfs-status-nba"><span class="dfs-dot"></span> CHECKING...</span>
       </div>
+      <div class="dfs-sub" id="dfs-sub-nba" aria-live="polite"></div>
       <div class="card-label">Player Prop Input</div>
       <div class="field-group">
         <label>PLAYER NAME <span class="verified-badge" id="player-verified"><span class="vb-dot">✓</span> verified</span></label>
@@ -1604,6 +1610,7 @@
         <span class="dfs-label"><span style="opacity:0.7;">📶</span> DATA FEED STATUS</span>
         <span class="dfs-synced" id="dfs-status-wnba"><span class="dfs-dot"></span> CHECKING...</span>
       </div>
+      <div class="dfs-sub" id="dfs-sub-wnba" aria-live="polite"></div>
       <div class="card-label">WNBA Player Prop Input</div>
       <div class="field-group">
         <label>PLAYER NAME <span class="verified-badge" id="player-verified-wnba"><span class="vb-dot">✓</span> verified</span></label>
@@ -3545,7 +3552,17 @@ async function checkDataFeedStatus() {
     el.title = title;
     el.innerHTML = `<span class="dfs-dot"></span> ${label}`;
   });
+  // How fresh the data is, in words: "Odds updated 8 min ago · NBA stats updated 3 hours ago".
+  const F = status.fresh;
+  for (const lg of ['nba', 'wnba']) {
+    const sub = document.getElementById('dfs-sub-' + lg); if (!sub) continue;
+    const bits = F ? [[F.odds, F.odds.state], [F.stats[lg], F.stats[lg].state]] : [];
+    sub.innerHTML = bits.map(([b, st]) => `<span class="${['old', 'down', 'off', 'missing'].includes(st) ? 'warn' : ''}">${escapeHtml(b.label)}</span>`).join(' · ');
+  }
+  const bn = document.getElementById('fresh-banner');
+  if (bn) { bn.textContent = F?.banner?.text || ''; bn.hidden = !F?.banner; }
 }
+setInterval(() => { if (!document.hidden) checkDataFeedStatus(); }, 5 * 60 * 1000);
 
 // Defaulted to NBA unconditionally before — dead during NBA offseason
 // (or any day NBA just has no games) when WNBA is the only live league.
