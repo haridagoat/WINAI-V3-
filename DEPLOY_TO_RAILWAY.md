@@ -81,12 +81,25 @@ Set these in the host's variables:
 | `RESEND_API_KEY` | Key from resend.com, used to send the sign-in email. |
 | `MAIL_FROM` | The sender, on a domain you verified at Resend, for example `WIN AI <login@yourdomain.com>`. |
 | `PUBLIC_URL` | Your site address, for example `https://yourapp.up.railway.app`. Sign-in links are built from this, never from the request. |
+| `GOOGLE_CLIENT_ID` | Optional. Turns on the white Continue with Google button (steps below). |
 | `ADMIN_EMAIL` | Your own email. Props saved before accounts existed move to this account the first time it signs in. |
 | `USER_MAX_PROPS` | Optional. Props one account can save (default 300). |
 | `BLOCKED_EMAIL_DOMAINS` | Optional. Extra throwaway email domains to refuse, comma separated. |
 
 Until `RESEND_API_KEY`, `MAIL_FROM` and `PUBLIC_URL` are all set, sign-in is switched off and visitors see
 "Sign-in is not ready" when they try to save.
+
+**Sign in with Google (optional, recommended).** It needs only a public client id. There is no Google secret to store.
+1. console.cloud.google.com: create a project, then APIs & Services > OAuth consent screen (External, add your app
+   name and support email).
+2. Credentials > Create credentials > OAuth client ID > **Web application**. Under **Authorized JavaScript origins**
+   add your site (`https://yourapp.up.railway.app`, and `http://localhost:3001` for local testing). Leave redirect URIs empty.
+3. Copy the client id (`...apps.googleusercontent.com`) into **`GOOGLE_CLIENT_ID`**. The white "Continue with Google"
+   button then appears. With the variable unset, the button is hidden.
+
+The server checks Google's signed token itself (signature, your client id, expiry, and that Google verified the email).
+A Google sign-in and an email sign-in with the same address reach the same account. New accounts still confirm 21+.
+You can run with Google only: email sign-in turns itself off until `RESEND_API_KEY`, `MAIL_FROM` and `PUBLIC_URL` are set.
 
 **On your own computer** you can skip email: set `AUTH_DEV_LINKS=1` in `.env`. The sign-in link is then shown on
 screen and printed in the server log instead of being emailed. It only works for requests from the same machine and

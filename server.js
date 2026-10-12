@@ -20,6 +20,7 @@ const { createAuth, sessionCookie, clearCookie, maskEmail, sha, newToken } = req
 const { createMailer } = require('./lib/mailer');
 const datachecks = require('./lib/datachecks');
 const billingLib = require('./lib/billing');
+const { createGoogleVerifier } = require('./lib/google');
 
 const CLV_FILE = 'clv_tracker.json';   // legacy file, imported into SQLite on first start
 const store = createStore({
@@ -5784,12 +5785,27 @@ const auth = createAuth({
   store, send: m => mailer.send(m), adminEmail: process.env.ADMIN_EMAIL, devLinks: mailer.devLinks, log: m => console.log(m),
   extraBlocked: String(process.env.BLOCKED_EMAIL_DOMAINS || '').toLowerCase().split(',').map(x => x.trim()).filter(Boolean),
 });
+// Google sign-in needs only the public client id (Google Cloud Console > Credentials > OAuth client ID, Web).
+const GOOGLE_CLIENT_ID = /^[\w.-]+\.apps\.googleusercontent\.com$/.test(process.env.GOOGLE_CLIENT_ID || '') ? process.env.GOOGLE_CLIENT_ID : '';
+// Only a local stand-in may replace Google's key address (used by the tests).
+const GOOGLE_JWKS_URL = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//.test(process.env.GOOGLE_JWKS_URL || '') ? process.env.GOOGLE_JWKS_URL : 'https://www.googleapis.com/oauth2/v3/certs';
+const googleVerifier = GOOGLE_CLIENT_ID ? createGoogleVerifier({
+  clientId: GOOGLE_CLIENT_ID,
+  fetchJwks: async () => {
+    const r = await axios.get(GOOGLE_JWKS_URL, { timeout: 8000 });
+    return { keys: r.data.keys || [], maxAgeSec: Number(/max-age=(\d+)/.exec(r.headers['cache-control'] || '')?.[1]) || 3600 };
+  },
+}) : null;
 function authStatus() {
-  if (!store.supportsAccounts) return { enabled: false, detail: 'Accounts need the SQLite database. This server is on the JSON fallback (use Node 22.13 or newer).' };
-  if (mailer.configured && !PUBLIC_URL) return { enabled: false, detail: 'Set PUBLIC_URL to your site address (for example https://yourapp.up.railway.app) so sign-in emails link to the right place.' };
-  if (mailer.configured) return { enabled: true, detail: 'Sign-in email is set up.' };
-  if (mailer.devLinks) return { enabled: true, dev: true, detail: 'Development mode: sign-in links are printed in the server log and are not emailed. Never use AUTH_DEV_LINKS on a public site.' };
-  return { enabled: false, detail: 'Sign-in email is not set up. Add RESEND_API_KEY, MAIL_FROM and PUBLIC_URL in the host\'s variables.' };
+  if (!store.supportsAccounts) return { enabled: false, methods: { email: false, google: false }, detail: 'Accounts need the SQLite database. This server is on the JSON fallback (use Node 22.13 or newer).' };
+  const google = !!googleVerifier;
+  const email = mailer.configured ? !!PUBLIC_URL : mailer.devLinks;
+  const methods = { email, google };
+  if (email && mailer.configured) return { enabled: true, methods, detail: `Sign-in by email${google ? ' and Google' : ''} is set up.` };
+  if (email) return { enabled: true, methods, dev: true, detail: `Development mode: email sign-in links are printed in the server log and are not emailed${google ? '. Google sign-in is on.' : '.'} Never use AUTH_DEV_LINKS on a public site.` };
+  if (google) return { enabled: true, methods, detail: mailer.configured ? 'Google sign-in is set up. Email sign-in is off until PUBLIC_URL is set.' : 'Google sign-in is set up. Email sign-in is off (add RESEND_API_KEY, MAIL_FROM and PUBLIC_URL to turn it on).' };
+  if (mailer.configured && !PUBLIC_URL) return { enabled: false, methods, detail: 'Set PUBLIC_URL to your site address (for example https://yourapp.up.railway.app) so sign-in emails link to the right place.' };
+  return { enabled: false, methods, detail: 'Sign-in is not set up. Add RESEND_API_KEY, MAIL_FROM and PUBLIC_URL for email, and/or GOOGLE_CLIENT_ID for Google.' };
 }
 // The address in a sign-in email must never come from the request, or a forged Host header could point a
 // victim's link at another site. In development (links printed, not emailed) only loopback requests may use it.
@@ -5814,7 +5830,8 @@ app.get('/api/auth/me', (req, res) => {
   res.set('Cache-Control', 'no-store');
   const on = paywallOn(), info = req.user ? planFor(req) : null;
   res.json({
-    enabled: authStatus().enabled, user: req.user ? { email: req.user.email } : null, maxProps: USER_MAX_PROPS,
+    enabled: authStatus().enabled, methods: { email: authStatus().methods.email, google: GOOGLE_CLIENT_ID || null },
+    user: req.user ? { email: req.user.email } : null, maxProps: USER_MAX_PROPS,
     paywall: on,
     ...(on && req.user ? {
       plan: info.plan,
@@ -5824,8 +5841,8 @@ app.get('/api/auth/me', (req, res) => {
   });
 });
 app.post('/api/auth/request', authRequestLimiter, async (req, res) => {
-  const base = authStatus().enabled ? authBaseUrl(req) : null;
-  if (!base) return res.status(503).json({ error: 'Sign-in is not set up on this server yet.' });
+  const base = authStatus().methods.email ? authBaseUrl(req) : null;
+  if (!base) return res.status(503).json({ error: 'Sign-in by email is not set up on this server yet.' });
   const r = await auth.requestLink({ email: req.body?.email, ageConfirmed: req.body?.ageConfirmed === true, ip: req.ip, baseUrl: base });
   const out = r.error ? { error: r.error } : { ok: true };
   if (r.devLink && isLoopback(req.ip)) out.devLink = r.devLink;
@@ -5837,6 +5854,17 @@ app.get('/auth/verify', (req, res) => { res.set('Cache-Control', 'no-store'); re
 app.post('/api/auth/verify', authVerifyLimiter, (req, res) => {
   const r = auth.verifyLink(req.body?.token);
   if (r.error) return res.status(r.status).json({ error: r.error });
+  res.set('Set-Cookie', sessionCookie(r.sessionToken, { secure: isSecureReq(req) }));
+  res.json({ ok: true, email: r.user.email, created: r.created, claimed: r.claimed });
+});
+// Google hands the browser a signed token. It is checked here before anything is trusted.
+app.post('/api/auth/google', authVerifyLimiter, async (req, res) => {
+  if (!googleVerifier) return res.status(503).json({ error: 'Google sign-in is not set up on this server yet.' });
+  let g;
+  try { g = await googleVerifier.verify(req.body?.credential); }
+  catch (err) { console.error('[Auth] Google token refused:', err.message); return res.status(401).json({ error: 'Google sign-in could not be verified. Try again, or use email.' }); }
+  const r = auth.signInVerified({ email: g.email, ageConfirmed: req.body?.ageConfirmed === true });
+  if (r.error) return res.status(r.status).json({ error: r.error, ...(r.code ? { code: r.code } : {}) });
   res.set('Set-Cookie', sessionCookie(r.sessionToken, { secure: isSecureReq(req) }));
   res.json({ ok: true, email: r.user.email, created: r.created, claimed: r.claimed });
 });
