@@ -5461,7 +5461,7 @@ async function siSubmit() {
       }
       lsSet('winai_last_email', email); lsSet('winai_age_ok', '1'); siStashPending();
       SI.pw = ''; await refreshMe();
-      Object.assign(SI, { step: 'created', emailSent: !!x.j.emailSent, devLink: x.j.devLink || null, resendAt: Date.now() + 30000 }); renderSignin();
+      Object.assign(SI, { step: 'created', emailSent: !!x.j.emailSent, devLink: x.j.devLink || null, resendAt: x.j.emailSent ? Date.now() + 300000 : Date.now() }); renderSignin();
     }, 'si-go', 'Creating…', 'Create account');
   }
 }
@@ -5476,14 +5476,18 @@ function siFinishCreated() { siClose(); afterAuthLoaded(); }
 async function siResendConfirm() {
   const b = document.getElementById('si-resend'); if (!b || b.disabled) return;
   b.disabled = true; b.textContent = 'Sending…';
-  try { const x = await postJson('/api/auth/resend-confirmation', {}); if (x.ok) { SI.emailSent = true; SI.devLink = x.j.devLink || SI.devLink; acctToast('Confirmation email sent again'); } else acctToast(x.j.error || 'Could not send it. Try again.'); } catch (_) { acctToast('Could not reach the server.'); }
-  SI.resendAt = Date.now() + 30000; renderSignin();
+  try {
+    const x = await postJson('/api/auth/resend-confirmation', {});
+    if (x.ok) { SI.emailSent = true; SI.devLink = x.j.devLink || SI.devLink; SI.resendAt = Date.now() + 300000; acctToast('Confirmation email sent again'); }
+    else { SI.resendAt = Date.now() + (x.j.retryAfterSec ? x.j.retryAfterSec * 1000 : 0); acctToast(x.j.error || 'Could not send it. Try again.'); }
+  } catch (_) { SI.resendAt = Date.now(); acctToast('Could not reach the server.'); }
+  renderSignin();
 }
 // While the "You're in" screen is open: count down the resend button, and notice when the confirmation link is used
 // (possibly on another device) so the screen updates itself.
 function siStartCreatedTimers() {
   siStopTimers();
-  const paint = () => { const b = document.getElementById('si-resend'); if (!b) return; const left = Math.ceil((SI.resendAt - Date.now()) / 1000); b.disabled = left > 0; b.textContent = left > 0 ? `Send again in ${left}s` : 'Send it again'; };
+  const paint = () => { const b = document.getElementById('si-resend'); if (!b) return; const left = Math.ceil((SI.resendAt - Date.now()) / 1000); b.disabled = left > 0; b.textContent = left > 0 ? `Send again in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}` : 'Send it again'; };
   paint(); SI.tick = setInterval(paint, 1000);
   SI.poll = setInterval(async () => {
     if (!SI.open || SI.step !== 'created') return siStopTimers();

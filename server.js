@@ -5859,7 +5859,7 @@ app.get('/api/auth/me', (req, res) => {
   });
 });
 const mailBase = req => (authStatus().methods.mail ? authBaseUrl(req) : null);
-const authFail = (res, r) => res.status(r.status).json({ error: r.error, ...(r.field ? { field: r.field } : {}), ...(r.code ? { code: r.code } : {}), ...(r.locked ? { locked: true } : {}), ...(r.problems ? { problems: r.problems } : {}) });
+const authFail = (res, r) => res.status(r.status).json({ error: r.error, ...(r.field ? { field: r.field } : {}), ...(r.code ? { code: r.code } : {}), ...(r.locked ? { locked: true } : {}), ...(r.problems ? { problems: r.problems } : {}), ...(r.retryAfterSec ? { retryAfterSec: r.retryAfterSec } : {}) });
 const startSession = (req, res, r, extra = {}) => {
   res.set('Set-Cookie', sessionCookie(r.sessionToken, { secure: isSecureReq(req) }));
   res.json({ ok: true, email: r.user.email, name: r.user.name || null, emailVerified: !!r.user.email_verified_at, created: r.created, claimed: r.claimed, ...extra });

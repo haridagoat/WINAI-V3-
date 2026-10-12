@@ -152,15 +152,35 @@ test('a link for one purpose cannot be used for another', async () => {
   assert.equal(w.auth.confirmEmail({ token: resetToken }).status, 400);                                                    // and a reset link does not confirm
   assert.equal(w.store.userByEmail('maya@example.com').email_verified_at, null);
 });
-test('the confirmation email can be sent again, a few times an hour', async () => {
-  const w = setup(); const r = await w.signUp();
-  const out = []; for (let i = 0; i < 4; i++) out.push((await w.auth.resendConfirmation(r.user, { baseUrl: BASE })).status);
-  assert.deepEqual(out, [200, 200, 429, 429]);                                                    // the sign-up email counts as the first of three
-  w.advance(HOUR + 1000);
+test('the confirmation email can be sent again once every 5 minutes', async () => {
+  const w = setup(); const r = await w.signUp();                                                   // the sign-up email just went out
+  const early = await w.auth.resendConfirmation(r.user, { baseUrl: BASE });
+  assert.equal(early.status, 429); assert.ok(early.retryAfterSec > 290 && early.retryAfterSec <= 300); assert.match(early.error, /5 minutes/);
+  w.advance(4 * 60 * 1000);
+  const soon = await w.auth.resendConfirmation(r.user, { baseUrl: BASE });
+  assert.equal(soon.status, 429); assert.ok(soon.retryAfterSec <= 60); assert.match(soon.error, /a minute/);
+  w.advance(61 * 1000);
+  assert.equal((await w.auth.resendConfirmation(r.user, { baseUrl: BASE })).status, 200);          // 5 minutes after the last one
+  assert.equal((await w.auth.resendConfirmation(r.user, { baseUrl: BASE })).status, 429);          // and then 5 more minutes again
+  w.advance(5 * 60 * 1000 + 1000);
   assert.equal((await w.auth.resendConfirmation(r.user, { baseUrl: BASE })).status, 200);
   assert.equal((await w.auth.resendConfirmation(r.user, { baseUrl: null })).status, 503);
   w.auth.confirmEmail({ token: w.tokenOf(w.sent.at(-1)) });
   assert.equal((await w.auth.resendConfirmation(w.store.userById(r.user.id), { baseUrl: BASE })).alreadyConfirmed, true);
+});
+test('there is a daily ceiling so the form cannot flood an inbox, and it resets', async () => {
+  const w = setup(); const r = await w.signUp();
+  let sent = 1, lastStatus;                                                                         // sign-up counts as the first
+  for (let i = 0; i < 30; i++) { w.advance(5 * 60 * 1000 + 1000); lastStatus = await w.auth.resendConfirmation(r.user, { baseUrl: BASE }); if (lastStatus.status === 200) sent++; else break; }
+  assert.equal(sent, A.EMAILS_PER_DAY); assert.equal(lastStatus.status, 429); assert.match(lastStatus.error, /tomorrow/);
+  w.advance(24 * HOUR);
+  assert.equal((await w.auth.resendConfirmation(r.user, { baseUrl: BASE })).status, 200);
+});
+test('an email that failed to send does not use up the limit, so it can be tried again straight away', async () => {
+  const w = setup({ failSend: true }); const r = await w.signUp();
+  assert.equal(r.emailSent, false);
+  for (let i = 0; i < 6; i++) assert.equal((await w.auth.resendConfirmation(r.user, { baseUrl: BASE })).status, 502);   // never "wait 5 minutes"
+  assert.equal(w.store.lastLoginTokenAt('maya@example.com', 'confirm'), null);                                        // nothing is left behind
 });
 
 // ── forgot and reset ──
@@ -173,10 +193,13 @@ test('asking for a reset answers the same for any address, and emails only a rea
   assert.match(w.sent[0].link, /\/auth\/reset\?t=/);
   assert.equal((await w.auth.requestReset({ email: 'not an email' })).status, 400);
 });
-test('at most 3 reset emails an hour per address, silently', async () => {
+test('reset emails go out one every 5 minutes per address, and extra asks are quietly ignored', async () => {
   const w = setup(); await w.signUp(); w.sent.length = 0;
-  const statuses = []; for (let i = 0; i < 5; i++) statuses.push((await w.auth.requestReset({ email: 'maya@example.com', baseUrl: BASE })).status);
-  assert.deepEqual(statuses, [200, 200, 200, 200, 200]); assert.equal(w.sent.length, 3);
+  const statuses = []; for (let i = 0; i < 3; i++) statuses.push((await w.auth.requestReset({ email: 'maya@example.com', baseUrl: BASE })).status);
+  assert.deepEqual(statuses, [200, 200, 200]); assert.equal(w.sent.length, 1);                      // the same answer every time, one email
+  w.advance(5 * 60 * 1000 + 1000);
+  await w.auth.requestReset({ email: 'maya@example.com', baseUrl: BASE });
+  assert.equal(w.sent.length, 2);
 });
 test('a turned-off account is sent no reset email', async () => {
   const w = setup(); const r = await w.signUp(); w.store.setUserDisabled(r.user.id, true); w.sent.length = 0;

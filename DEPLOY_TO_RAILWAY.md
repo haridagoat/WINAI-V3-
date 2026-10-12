@@ -79,7 +79,7 @@ prop belongs to the account that saved it. People sign in with **email and passw
 - **Nothing is emailed until someone signs up.** Then one email confirms the address. A reset email goes out only when
   someone asks for it. Subscribing needs a confirmed address.
 - **Passwords** are stored only as salted scrypt hashes. Nobody, including you, can read one. Five wrong tries on an
-  address pause it for 15 minutes (the screen offers a reset). A wrong email and a wrong password give the same answer.
+  address pause it for 15 minutes. Confirmation and reset emails can go out once every 5 minutes per address (20 a day) (the screen offers a reset). A wrong email and a wrong password give the same answer.
 - If an address is already in use, sign up says **"Email is already taken"**.
 - Older accounts made with email links or Google keep working. They can add a password with "Forgot password".
 
