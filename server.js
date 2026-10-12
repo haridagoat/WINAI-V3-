@@ -28,6 +28,7 @@ const rg = require('./lib/rg');
 const freshness = require('./lib/freshness');
 const offsiteLib = require('./lib/offsite');
 const errorsLib = require('./lib/errors');
+const totp = require('./lib/totp');
 const { createGoogleVerifier } = require('./lib/google');
 
 const CLV_FILE = 'clv_tracker.json';   // legacy file, imported into SQLite on first start
@@ -6627,32 +6628,63 @@ function saveNotes(data) {
 // not "anyone can write" (the opposite of a missing-config default would
 // silently expose this to every visitor).
 const adminFails = security.createFailLimiter({ max: 10, windowMs: 15 * 60 * 1000 });
-// True only for a request that carries the right token. No side effects (used to decide how much a
-// public route may reveal), so it never counts toward the brute-force lockout.
-function isAdmin(req) {
-  const configured = process.env.ADMIN_TOKEN && !process.env.ADMIN_TOKEN.includes('XXXXX');
-  if (!configured) return false;
+// ── Admin: the token, plus (when ADMIN_TOTP_SECRET is set) a 6-digit code from an authenticator app ──
+// With the code switched on, the token alone opens nothing: signing in also needs a current code, which starts a short
+// session (an HttpOnly cookie). A stolen token is useless without the phone; a stolen cookie is useless without the token.
+const adminTokenConfigured = () => !!(process.env.ADMIN_TOKEN && !process.env.ADMIN_TOKEN.includes('XXXXX'));
+const tokenMatches = req => {
+  if (!adminTokenConfigured()) return false;
   const a = Buffer.from(String(req.headers['x-admin-token'] || '')), b = Buffer.from(process.env.ADMIN_TOKEN);
   return a.length === b.length && crypto.timingSafeEqual(a, b);
+};
+const ADMIN_TOTP = (() => { const raw = String(process.env.ADMIN_TOTP_SECRET || '').trim(); if (!raw) return null; try { totp.base32Decode(raw); return raw; } catch (_) { console.error('[Admin] ADMIN_TOTP_SECRET is not valid base32, so the second factor is NOT active. Fix it or remove it.'); return null; } })();
+const ADMIN_COOKIE = 'winai_admin', ADMIN_SESSION_MS = 8 * 3600 * 1000;
+const adminSessions = new Map();            // sha256(cookie value) -> expiry. Kept in memory: a restart signs the admin out.
+const adminCodeFails = security.createFailLimiter({ max: 8, windowMs: 15 * 60 * 1000 });     // one shared count: an attacker with the token still cannot guess codes
+function adminSessionOk(req) {
+  const t = parseCookiesHeader(req.headers.cookie)[ADMIN_COOKIE];
+  if (typeof t !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(t)) return false;
+  const exp = adminSessions.get(sha(t));
+  if (!exp) return false;
+  if (exp < Date.now()) { adminSessions.delete(sha(t)); return false; }
+  return true;
 }
+const adminSecondFactorOk = req => !ADMIN_TOTP || adminSessionOk(req);
+// True only for a request that has everything the admin needs. No side effects (used to decide how much a
+// public route may reveal), so it never counts toward the brute-force lockout.
+function isAdmin(req) { return tokenMatches(req) && adminSecondFactorOk(req); }
 function requireAdmin(req, res, next) {
-  const configured = process.env.ADMIN_TOKEN && !process.env.ADMIN_TOKEN.includes('XXXXX');
-  if (!configured) return res.status(503).json({ error: 'ADMIN_TOKEN not configured on the server — set it in .env' });
+  if (!adminTokenConfigured()) return res.status(503).json({ error: 'ADMIN_TOKEN not configured on the server — set it in .env' });
   // Ten wrong guesses lock that address out for 15 minutes.
   if (adminFails.blocked(req.ip)) return res.status(429).json({ error: 'Too many wrong tokens. Try again in 15 minutes.' });
-  const supplied = req.headers['x-admin-token'] || '';
-  const expected = process.env.ADMIN_TOKEN;
-  // Constant-time compare — a plain !== leaks how many leading bytes
-  // matched via response timing. Buffers must be equal length for
-  // timingSafeEqual, so a length mismatch is checked (and rejected) first,
-  // itself in constant time relative to the shorter of the two strings.
-  const suppliedBuf = Buffer.from(supplied);
-  const expectedBuf = Buffer.from(expected);
-  const valid = suppliedBuf.length === expectedBuf.length && crypto.timingSafeEqual(suppliedBuf, expectedBuf);
-  if (!valid) { adminFails.fail(req.ip); return res.status(401).json({ error: 'Invalid admin token' }); }
+  // Constant-time compare (see tokenMatches): a plain !== leaks how many leading bytes matched via response timing.
+  if (!tokenMatches(req)) { adminFails.fail(req.ip); return res.status(401).json({ error: 'Invalid admin token' }); }
   adminFails.ok(req.ip);
+  if (!adminSecondFactorOk(req)) return res.status(401).json({ error: 'Enter the 6-digit code from your authenticator app.', code: 'admin_2fa' });
   next();
 }
+// Trade the token and a current code for a session.
+app.post('/api/admin/2fa', (req, res) => {
+  if (!adminTokenConfigured()) return res.status(503).json({ error: 'ADMIN_TOKEN not configured on the server — set it in .env' });
+  if (adminFails.blocked(req.ip)) return res.status(429).json({ error: 'Too many wrong tokens. Try again in 15 minutes.' });
+  if (!tokenMatches(req)) { adminFails.fail(req.ip); return res.status(401).json({ error: 'Invalid admin token' }); }
+  if (!ADMIN_TOTP) return res.json({ ok: true, required: false });
+  if (adminCodeFails.blocked('all')) return res.status(429).json({ error: 'Too many wrong codes. Try again in 15 minutes.' });
+  const after = Number(store.getMeta('admin:totp_step') ?? -1);
+  const step = totp.verify(ADMIN_TOTP, req.body?.code, { afterStep: Number.isFinite(after) ? after : -1 });
+  if (step == null) { adminCodeFails.fail('all'); store.addEvent('admin', 'warn', 'A wrong admin code was entered.'); return res.status(401).json({ error: 'That code is not right, or was already used. Wait for the next one.', code: 'admin_2fa' }); }
+  adminCodeFails.ok('all'); store.setMeta('admin:totp_step', step);
+  const value = newToken(); adminSessions.set(sha(value), Date.now() + ADMIN_SESSION_MS);
+  if (adminSessions.size > 20) for (const [k, v] of adminSessions) if (v < Date.now()) adminSessions.delete(k);
+  res.set('Set-Cookie', `${ADMIN_COOKIE}=${value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${ADMIN_SESSION_MS / 1000}${isSecureReq(req) ? '; Secure' : ''}`);
+  store.addEvent('admin', 'info', 'Admin signed in with a code.');
+  res.json({ ok: true, required: true });
+});
+app.post('/api/admin/signout', (req, res) => {
+  const t = parseCookiesHeader(req.headers.cookie)[ADMIN_COOKIE]; if (typeof t === 'string') adminSessions.delete(sha(t));
+  res.set('Set-Cookie', `${ADMIN_COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0`);
+  res.json({ ok: true });
+});
 
 // Used internally by the analysis endpoints — a note matches if its team
 // (case-insensitive substring either direction) matches what's being
@@ -6930,7 +6962,7 @@ const dataCheckCtx = {
   runGrade: () => trackJob('grade', autoGradePendingPicks)(),
   creditBudget: currentCreditBudget,
   authStatus, billingStatus,
-  errorGroups: errorLog.groups, monitoring: () => ({ webhook: alerts.configured, heartbeat: heartbeatState() }),
+  adminTotpOn: !!ADMIN_TOTP, errorGroups: errorLog.groups, monitoring: () => ({ webhook: alerts.configured, heartbeat: heartbeatState() }),
 };
 let dataChecksRunning = null;
 function runDataChecks() {

@@ -174,3 +174,10 @@ test('errors: none is healthy; browser errors alone are fine; a crash or a repea
   const crash = await g([{ source: 'process', route: '', message: 'uncaughtException: x', count: 1 }]);
   assert.equal(crash.status, 'bad'); assert.match(crash.detail, /1 crash/);
 });
+
+test('admin 2FA: off is a fault only once people have accounts', async () => {
+  assert.equal((await ctx().run('admin-2fa')).status, 'ok');
+  const w = ctx(); w.c.store.createUser('a@example.com', new Date().toISOString(), new Date().toISOString(), { name: 'A', passwordHash: 'x' });
+  const r = await w.run('admin-2fa'); assert.equal(r.status, 'bad'); assert.match(r.detail, /make-admin-2fa/);
+  assert.equal((await ctx({ adminTotpOn: true }).run('admin-2fa')).status, 'ok');
+});

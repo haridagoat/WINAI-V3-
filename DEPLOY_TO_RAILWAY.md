@@ -199,3 +199,14 @@ Two settings tell you when something breaks. Both are free to set up, and the ad
 
 1. **Errors:** make a Discord or Slack channel webhook and put its address in `ADMIN_ALERT_WEBHOOK`. Every server error, crash and error in someone's browser is written to the admin page (grouped, with emails and tokens removed) and one message per new problem is sent to the webhook. At most 5 messages an hour, so a bad day never floods your phone.
 2. **Site down:** a site that is down cannot message you, so something outside has to notice the silence. Make a free check at healthchecks.io (period 5 minutes, grace 10), copy its ping URL into `HEARTBEAT_URL`, and add your phone or email as its alert channel. The app pings it every 5 minutes. As an alternative, point any uptime watcher (UptimeRobot, Better Stack) at `https://your-site/api/ping`, which answers `{"ok":true}` only when the database is working.
+
+## Protect the admin page with a code from your phone
+
+The admin page can read every account, so the admin token should not be its only lock. With a second factor on, the token alone opens nothing: signing in also needs the 6-digit code from an authenticator app, and the code can be used only once.
+
+1. On your own computer, in this project folder, run `node scripts/make-admin-2fa.js you@example.com`. It prints a secret and a setup key.
+2. In your authenticator app (Google Authenticator, 1Password, Authy), add an account by entering that setup key. Save the secret in your password manager as well: it is the way back in if you lose your phone.
+3. In Railway, add the variable `ADMIN_TOTP_SECRET` with the secret and redeploy.
+4. Open the admin page. Enter the token, then the code. You stay signed in for 8 hours, or until you press Lock.
+
+If you lose the phone and the saved secret, remove `ADMIN_TOTP_SECRET` from the server and set up a new one. After this is on, scripts that call admin routes with only the token stop working; that is the point.
