@@ -5272,7 +5272,8 @@ function siPwField(id, autocomplete, label) {
 function siGoogleBlock(hasG) {
   if (!hasG) return '';
   return `<div class="g-wrap" id="g-wrap"><button type="button" class="g-btn" id="g-btn" onclick="siGoogleTap()">${G_LOGO}<span>Continue with Google</span></button><div class="g-over" id="g-over"></div></div>
-    <label class="ck ${SI.errField === 'gage' ? 'bad' : ''}" id="si-gage" for="si-gage-box" ${SI.ageRow && !ageRemembered() ? '' : 'hidden'}><input id="si-gage-box" type="checkbox" ${SI.age ? 'checked' : ''} onchange="SI.age=this.checked;siAgeChanged()"><span>I am 21 or older and understand WIN AI is analytics, not betting advice.</span></label>`;
+    <label class="ck ${SI.errField === 'gage' ? 'bad' : ''}" id="si-gage" for="si-gage-box" ${SI.ageRow && !ageRemembered() ? '' : 'hidden'}><input id="si-gage-box" type="checkbox" ${SI.age ? 'checked' : ''} onchange="SI.age=this.checked;siAgeChanged()"><span>I am 21 or older and understand WIN AI is analytics, not betting advice.</span></label>
+    <div class="err" id="si-gerr" role="alert" hidden></div>`;
 }
 function siMini(save, pend, verdictWord) {
   return save ? `<div class="mini"><span class="acct-av">${escapeHtml(String(pend.player).split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase())}</span><span><b style="font-weight:600">${escapeHtml(pend.player)}</b> <span style="color:var(--muted)">${escapeHtml(verdictWord)} ${escapeHtml(String(pend.line))} ${escapeHtml(String(pend.propType || '').toUpperCase())}</span></span></div>` : '';
@@ -5392,8 +5393,11 @@ function renderSignin() {
 function siShowErr(field, msg) { SI.err = msg; SI.errField = field; siPaintErr(); }
 function siClearErr(field) { if (SI.errField === field && SI.err) { SI.err = ''; SI.errField = ''; SI.showReset = false; siPaintErr(); } }
 function siPaintErr() {
-  const box = document.getElementById('si-err');
-  if (box) {
+  const box = document.getElementById('si-err'), gbox = document.getElementById('si-gerr');
+  const toG = SI.errField === 'google' || SI.errField === 'gage';           // messages about the Google button appear right under it
+  if (gbox) { gbox.textContent = toG ? (SI.err || '') : ''; gbox.hidden = !(toG && SI.err); }
+  if (box && toG) { box.textContent = ''; box.hidden = true; }
+  else if (box) {
     box.textContent = SI.err || ''; box.hidden = !SI.err;
     if (SI.err && SI.showReset) { const b = document.createElement('button'); b.type = 'button'; b.className = 'si-link'; b.style.cssText = 'display:block;margin-top:8px;color:#ffd0d0'; b.textContent = 'Reset my password'; b.onclick = () => siGo('forgot'); box.appendChild(b); }
   }
@@ -5527,7 +5531,7 @@ async function onGoogleCredential(resp) {
     lsSet('winai_age_ok', '1');
     try { sessionStorage.setItem('winai_welcome', j.created ? 'new' : 'back'); } catch (_) {}
     SI.busy = false; await refreshMe(); siClose(); afterAuthLoaded();
-  } catch (e) { SI.busy = false; if (b) b.classList.remove('busy'); siShowErr(e.code === 'age_required' ? (SI.step === 'signup' ? 'age' : 'gage') : (SI.step === 'signup' ? 'password' : 'pw'), e.message); }
+  } catch (e) { SI.busy = false; if (b) b.classList.remove('busy'); siShowErr(e.code === 'age_required' ? (SI.step === 'signup' ? 'age' : 'gage') : 'google', e.message); }
 }
 
 async function acctResendConfirm() {
