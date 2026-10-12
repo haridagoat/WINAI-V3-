@@ -4292,14 +4292,6 @@ function paintToday() {
       <div class="td-bf"><button type="button" class="td-link" id="td-more" ${tdMoreState(board.total).hidden ? 'hidden' : ''}>${tdMoreState(board.total).text}</button><span class="td-note">⚠ = EV of ${EV_TRUST_LIMIT}% or more, treated as too good to trust</span></div></section>` : '';
 
   // side column
-  const c = D.clv?.summary?.autoCLV, tot = D.clv?.summary?.total, gr = D.clv?.summary?.graded;
-  const clvCard = c && c.captured ? `<div class="td-card"><div class="td-sh" style="margin-bottom:4px"><h3>Closing-line check</h3></div>
-      <p class="td-note" style="margin:0 0 8px;color:var(--muted)">Did the line move your way after each pick?</p>
-      <div class="td-stack"><i style="width:${c.beat / c.captured * 100}%;background:var(--pos)"></i><i style="width:${c.flat / c.captured * 100}%;background:var(--mid,#4a4a52)"></i><i style="width:${c.worse / c.captured * 100}%;background:var(--neg)"></i></div>
-      <div class="td-leg"><span><b class="pos">${c.beat}</b> better</span><span><b>${c.flat}</b> flat</span><span><b class="neg">${c.worse}</b> worse</span></div>
-      <div class="td-kv"><span>Average CLV</span><b class="num">${c.avg == null ? '—' : (c.avg > 0 ? '+' : c.avg < 0 ? '−' : '') + Math.abs(c.avg)} pts</b></div>
-      <div class="td-kv"><span>Picks tracked</span><b class="num">${tot}</b></div>
-      <div class="td-kv"><span>Graded so far</span><b class="num">${gr}</b></div></div>` : '';
   const injCard = nGames ? `<div class="td-card" id="td-inj"><h3 style="margin-bottom:6px">Injury watch</h3><div class="td-note">Checking tonight's rosters...</div></div>` : '';
   const slip = (typeof betslip !== 'undefined' && betslip) ? betslip : [];
   const slipCard = `<div class="td-card"><div class="td-sh" style="margin-bottom:6px"><h3>Prop List</h3>${slip.length ? `<button type="button" class="td-link" data-go="betslip">Open</button>` : ''}</div>${slip.length
@@ -4317,7 +4309,7 @@ function paintToday() {
       <div class="td-seg" id="td-seg">${[['nba', 'NBA'], ['wnba', 'WNBA'], ['both', 'Both']].map(([v, l]) => `<button type="button" data-lg="${v}" aria-pressed="${L === v}">${l}</button>`).join('')}</div></div>
     ${anyFb ? '<div class="td-banner">No live sportsbook lines right now. Picks below are model projections only, not line-based picks.</div>' : ''}
     <div class="td-body">${empty}${topSec}${gameSec}
-      <div class="td-cols"><div class="td-main">${boardSec}</div><aside class="td-side">${clvCard}${injCard}${slipCard}${recentCard}</aside></div>
+      <div class="td-cols"><div class="td-main">${boardSec}</div><aside class="td-side">${injCard}${slipCard}${recentCard}</aside></div>
       <p class="td-note">Confidence measures how reliable the inputs are, not win probability. All numbers are model estimates, not advice.</p></div>`;
   tdBindBoard();
 }
