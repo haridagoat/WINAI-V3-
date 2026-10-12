@@ -174,3 +174,21 @@ Stripe).
 **Before charging real money:** add Terms and a Privacy page, a "21+, analytics not advice, not a sportsbook"
 notice, and responsible-gambling help text. Check your state's rules on selling gambling-related picks and on
 advertising claims, and get a quick legal review. Refunds and disputes are handled in the Stripe dashboard.
+
+## Offsite backups
+
+The app already writes a daily copy of its database, but that copy lives on the same disk. If the disk is lost, both go. Offsite backups keep an **encrypted** copy somewhere else.
+
+1. Make a bucket at any S3-compatible service. Cloudflare R2 is the simplest (free tier, no download fees): Cloudflare dashboard, R2, Create bucket, then **Manage R2 API Tokens**, create a token with *Object Read & Write* on that bucket.
+2. In Railway, add these variables: `BACKUP_S3_ENDPOINT` (for R2: `https://<account-id>.r2.cloudflarestorage.com`), `BACKUP_S3_BUCKET`, `BACKUP_S3_KEY_ID`, `BACKUP_S3_SECRET`, and `BACKUP_PASSPHRASE` (a long phrase you make up, at least 12 characters).
+3. **Store the passphrase somewhere else too** (a password manager). The copies are encrypted with it. Without it nobody can open them, including you.
+4. Redeploy. Each night at 3:05 AM a copy is uploaded and the newest 14 are kept. Once a week the app downloads the newest copy, decrypts it, opens it as a database and checks it. The result shows on the admin page under Data checks, "Offsite backup". If a copy cannot be restored, it tells you that day.
+
+To restore after a disaster, on any computer with this project and the same five settings in `.env`:
+
+```
+node scripts/restore-backup.js list
+node scripts/restore-backup.js restore restored.db
+```
+
+Then stop the app, replace `winai.db` with `restored.db` (delete `winai.db-wal` and `winai.db-shm`), and start it again. The script never overwrites an existing file.

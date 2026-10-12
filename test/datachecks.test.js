@@ -130,3 +130,26 @@ test('runAll isolates a crashing check, records the result, and alerts once per 
   await D.runAll({ checks, store: k.c.store, alerts, now: () => NOW + 2 * HOUR });
   assert.ok(resolved.includes('datacheck:odds-credits'));                    // recovery re-arms the alert
 });
+
+// ── offsite backup ──
+test('offsite: not set up is a fault only once people have accounts', async () => {
+  assert.equal((await ctx().run('offsite')).status, 'ok');
+  const w = ctx(); w.c.store.createUser('a@example.com', new Date().toISOString(), new Date().toISOString(), { name: 'A', passwordHash: 'x' });
+  const r = await w.run('offsite'); assert.equal(r.status, 'bad'); assert.match(r.detail, /1 person has an account/);
+});
+test('offsite: uploads when the last copy is old, restore-tests weekly, and says what happened', async () => {
+  const calls = [];
+  const off = { configured: true };
+  const w = ctx({ offsite: off, offsiteUpload: async () => { calls.push('up'); return { bytes: 20480 }; }, offsiteVerify: async () => { calls.push('verify'); return { users: 3, picks: 98 }; } });
+  const first = await w.run('offsite');
+  assert.equal(first.status, 'fixed'); assert.deepEqual(calls, ['up', 'verify']); assert.match(first.detail, /Restore test passed: 3 accounts and 98 picks/);
+  const again = await w.run('offsite');                                                      // everything is recent now: nothing to do
+  assert.equal(again.status, 'ok'); assert.deepEqual(calls, ['up', 'verify']);
+});
+test('offsite: a failed upload or a failed restore test asks for you', async () => {
+  const mk = over => ctx({ offsite: { configured: true }, offsiteUpload: async () => ({ bytes: 1 }), offsiteVerify: async () => ({ users: 1, picks: 1 }), ...over });
+  const up = await mk({ offsiteUpload: async () => { throw new Error('403 bucket says no'); } }).run('offsite');
+  assert.equal(up.status, 'bad'); assert.match(up.detail, /uploading now failed: 403 bucket says no/);
+  const ver = await mk({ offsiteVerify: async () => { throw new Error('passphrase is wrong'); } }).run('offsite');
+  assert.equal(ver.status, 'bad'); assert.match(ver.detail, /restore test FAILED.*passphrase is wrong/);
+});

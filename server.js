@@ -26,6 +26,7 @@ const datachecks = require('./lib/datachecks');
 const billingLib = require('./lib/billing');
 const rg = require('./lib/rg');
 const freshness = require('./lib/freshness');
+const offsiteLib = require('./lib/offsite');
 const { createGoogleVerifier } = require('./lib/google');
 
 const CLV_FILE = 'clv_tracker.json';   // legacy file, imported into SQLite on first start
@@ -5642,6 +5643,7 @@ setTimeout(() => trackedClosing().catch(err => console.error('[Closing] failed:'
 // then score everything for the backtest report.
 cron.schedule('0 6 * * *', () => runDailyPipeline().catch(err => console.error('[Pipeline] failed:', err.message)));
 cron.schedule('0 3 * * *', () => trackJob('backup', async () => `wrote ${path.basename(store.backup(path.join(__dirname, 'backups')) || 'nothing (no file database)')}`)().catch(err => console.error('[Backup] failed:', err.message)));
+cron.schedule('5 3 * * *', () => trackJob('offsite-backup', async () => { const r = await uploadOffsite(); return `uploaded ${r.key} (${Math.round(r.bytes / 1024)} KB)`; })().catch(err => { console.error('[Offsite] failed:', err.message); }));
 cron.schedule('*/15 * * * *', () => runHealthCheck().catch(err => console.error('[Health] failed:', err.message)));
 setTimeout(() => initAdminJobs().catch(err => console.error('[Init] failed:', err.message)), 4000);
 
@@ -6887,7 +6889,23 @@ function runStatsScript(league) {
     });
   });
 }
+// Offsite backups: an encrypted copy in an S3-compatible bucket. The address must be https (or this computer, for tests).
+const offsite = (() => {
+  const endpoint = String(process.env.BACKUP_S3_ENDPOINT || '').trim();
+  const okUrl = /^https:\/\//.test(endpoint) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/.test(endpoint);
+  if (endpoint && !okUrl) console.warn('[Offsite] BACKUP_S3_ENDPOINT must start with https://, so offsite backups are off.');
+  return offsiteLib.createOffsite({ endpoint: okUrl ? endpoint : '', bucket: process.env.BACKUP_S3_BUCKET, accessKeyId: process.env.BACKUP_S3_KEY_ID, secretAccessKey: process.env.BACKUP_S3_SECRET,
+    region: process.env.BACKUP_S3_REGION || 'auto', prefix: process.env.BACKUP_S3_PREFIX || 'winai/', passphrase: process.env.BACKUP_PASSPHRASE });
+})();
+async function uploadOffsite() {
+  const file = store.backup(BACKUP_DIR);
+  if (!file) throw new Error('there is no file database to copy');
+  const r = await offsite.upload(file);
+  store.setMeta('offsite:last_upload', new Date().toISOString());
+  return r;
+}
 const dataCheckCtx = {
+  offsite, offsiteUpload: uploadOffsite, offsiteVerify: () => offsite.verifyLatest(),
   store, adminEmail: String(process.env.ADMIN_EMAIL || '').trim().toLowerCase() || null,
   today: getToday,
   daysAgo: n => { const d = new Date(); d.setDate(d.getDate() - n); return toLocalDateStr(d); },
