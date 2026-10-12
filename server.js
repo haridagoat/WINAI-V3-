@@ -16,7 +16,7 @@ const calibration = require('./lib/calibration');
 const { buildReport } = require('./lib/backtest');
 const { createAlerts } = require('./lib/alerts');
 const { evaluateHealth, creditBudget, envNum } = require('./lib/health');
-const { createAuth, sessionCookie, clearCookie, maskEmail, sha, newToken } = require('./lib/auth');
+const { createAuth, sessionCookie, clearCookie, maskEmail, sha, newToken, parseCookies: parseCookiesHeader } = require('./lib/auth');
 const { createMailer } = require('./lib/mailer');
 const datachecks = require('./lib/datachecks');
 const billingLib = require('./lib/billing');
@@ -5789,6 +5789,10 @@ const auth = createAuth({
 const GOOGLE_CLIENT_ID = /^[\w.-]+\.apps\.googleusercontent\.com$/.test(process.env.GOOGLE_CLIENT_ID || '') ? process.env.GOOGLE_CLIENT_ID : '';
 // Only a local stand-in may replace Google's key address (used by the tests).
 const GOOGLE_JWKS_URL = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//.test(process.env.GOOGLE_JWKS_URL || '') ? process.env.GOOGLE_JWKS_URL : 'https://www.googleapis.com/oauth2/v3/certs';
+// The redirect flow also needs the client SECRET (kept on the server only) to trade Google's one-time code for the signed note.
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
+// Only a local stand-in may replace Google's token address (used by the tests).
+const GOOGLE_TOKEN_URL = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//.test(process.env.GOOGLE_TOKEN_URL || '') ? process.env.GOOGLE_TOKEN_URL : 'https://oauth2.googleapis.com/token';
 const googleVerifier = GOOGLE_CLIENT_ID ? createGoogleVerifier({
   clientId: GOOGLE_CLIENT_ID,
   fetchJwks: async () => {
@@ -5799,12 +5803,14 @@ const googleVerifier = GOOGLE_CLIENT_ID ? createGoogleVerifier({
 function authStatus() {
   if (!store.supportsAccounts) return { enabled: false, methods: { password: false, google: false, mail: false }, mailReady: false, detail: 'Accounts need the SQLite database. This server is on the JSON fallback (use Node 22.13 or newer).' };
   const mail = mailer.configured ? !!PUBLIC_URL : mailer.devLinks;
-  const methods = { password: true, google: !!googleVerifier, mail };
+  const googleOn = !!(googleVerifier && GOOGLE_CLIENT_SECRET);
+  const methods = { password: true, google: googleOn, mail };
   const mailDetail = mailer.configured
     ? (PUBLIC_URL ? 'Confirmation and reset emails are set up.' : 'Set PUBLIC_URL to your site address (for example https://yourapp.up.railway.app) so the links in emails point to the right place. Until then confirmation and reset emails are NOT sent.')
     : mailer.devLinks ? 'Development mode: confirmation and reset links are printed in the server log, not emailed. Never use AUTH_DEV_LINKS on a public site.'
     : 'Email is not set up (add RESEND_API_KEY, MAIL_FROM and PUBLIC_URL). People can sign up, but nobody can confirm an address or reset a password.';
-  return { enabled: true, methods, mailReady: mail, detail: `Email and password sign-in is on${googleVerifier ? ', and so is Google' : ''}. ${mailDetail}` };
+  const googleDetail = googleOn ? ', and so is Google' : googleVerifier ? '. Google sign-in is NOT on: GOOGLE_CLIENT_SECRET is missing' : '';
+  return { enabled: true, methods, mailReady: mail, detail: `Email and password sign-in is on${googleDetail}. ${mailDetail}` };
 }
 // The address in a sign-in email must never come from the request, or a forged Host header could point a
 // victim's link at another site. In development (links printed, not emailed) only loopback requests may use it.
@@ -5831,7 +5837,7 @@ app.get('/api/auth/me', (req, res) => {
   res.set('Cache-Control', 'no-store');
   const on = paywallOn(), info = req.user ? planFor(req) : null;
   res.json({
-    enabled: authStatus().enabled, methods: { password: authStatus().methods.password, mail: authStatus().methods.mail, google: GOOGLE_CLIENT_ID || null },
+    enabled: authStatus().enabled, methods: { password: authStatus().methods.password, mail: authStatus().methods.mail, google: authStatus().methods.google },
     user: req.user ? { email: req.user.email, name: req.user.name || null, emailVerified: !!req.user.email_verified_at } : null, maxProps: USER_MAX_PROPS,
     paywall: on,
     ...(on && req.user ? {
@@ -5885,15 +5891,56 @@ app.post('/api/auth/resend-confirmation', requireUser, resendLimiter, async (req
 // The links in the emails open this page. It asks for one tap before it does anything, so mail scanners that
 // pre-open links cannot use up a one-time link before the person ever sees it.
 app.get(['/auth/confirm', '/auth/reset'], (req, res) => { res.set('Cache-Control', 'no-store'); res.sendFile(path.join(__dirname, 'public', 'auth-link.html')); });
-// Google hands the browser a signed token. It is checked here before anything is trusted.
-app.post('/api/auth/google', authVerifyLimiter, async (req, res) => {
-  if (!googleVerifier) return res.status(503).json({ error: 'Google sign-in is not set up on this server yet.' });
-  let g;
-  try { g = await googleVerifier.verify(req.body?.credential); }
-  catch (err) { console.error('[Auth] Google token refused:', err.message); return res.status(401).json({ error: 'Google sign-in could not be verified. Try again, or use email.' }); }
-  const r = auth.signInVerified({ email: g.email, name: g.name, ageConfirmed: req.body?.ageConfirmed === true });
-  if (r.error) return res.status(r.status).json({ error: r.error, ...(r.code ? { code: r.code } : {}) });
-  startSession(req, res, r);
+// ── Sign in with Google: the full-page flow ──
+// 1. The button sends the person to /auth/google/start, which sends them on to Google's own sign-in page.
+// 2. They sign in there. Google sends them back to /auth/google/callback with a one-time code.
+// 3. The server trades the code (plus its secret) for a signed note, checks it, makes or finds the account, signs the
+//    person in and sends them to the app. Their Google password never touches this site.
+// The `state` ties the return trip to the browser that started it, and the code is bound to a PKCE secret and a nonce, so a
+// code someone else obtained cannot be replayed here.
+const googleStates = new Map();                       // hash(state) -> { nonce, verifier, ageConfirmed, at }
+const GSTATE_COOKIE = 'winai_gstate', GSTATE_TTL_MS = 10 * 60 * 1000;
+const googleReturnBase = req => PUBLIC_URL || (isLoopback(req.ip) ? `${req.protocol}://${req.get('host')}` : null);
+const b64url = buf => Buffer.from(buf).toString('base64url');
+const backToApp = (res, qs) => { res.set('Cache-Control', 'no-store'); res.redirect(302, '/?' + new URLSearchParams(qs).toString()); };
+const gStateCookie = (value, req, maxAge) => `${GSTATE_COOKIE}=${value}; Path=/auth/google; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${isSecureReq(req) ? '; Secure' : ''}`;
+// Too many starts from one connection: come back to the app with a note, not a page of raw JSON.
+const googleStartLimit = security.createRateLimiter({ windowMs: 15 * 60 * 1000, max: 30, onBlock: noteBlock });
+const googleStartLimiter = (req, res, next) => googleStartLimit(req, { set() {}, status: () => ({ json: () => backToApp(res, { signin_error: 'busy' }) }) }, next);
+app.get('/auth/google/start', googleStartLimiter, (req, res) => {
+  const base = authStatus().methods.google ? googleReturnBase(req) : null;
+  if (!base) return backToApp(res, { signin_error: 'google_off' });
+  for (const [k, v] of googleStates) if (Date.now() - v.at > GSTATE_TTL_MS) googleStates.delete(k);
+  if (googleStates.size > 5000) return backToApp(res, { signin_error: 'failed' });
+  const state = newToken(), nonce = newToken(), verifier = b64url(crypto.randomBytes(48));
+  googleStates.set(sha(state), { nonce, verifier, ageConfirmed: req.query.age === '1', at: Date.now() });
+  const url = new URL(process.env.GOOGLE_AUTH_URL && /^http:\/\/(localhost|127\.0\.0\.1)/.test(process.env.GOOGLE_AUTH_URL) ? process.env.GOOGLE_AUTH_URL : 'https://accounts.google.com/o/oauth2/v2/auth');
+  url.search = new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID, redirect_uri: `${base}/auth/google/callback`, response_type: 'code', scope: 'openid email profile',
+    state, nonce, code_challenge: b64url(crypto.createHash('sha256').update(verifier).digest()), code_challenge_method: 'S256', prompt: 'select_account',
+  }).toString();
+  res.set({ 'Set-Cookie': gStateCookie(state, req, GSTATE_TTL_MS / 1000), 'Cache-Control': 'no-store' });
+  res.redirect(302, url.toString());
+});
+app.get('/auth/google/callback', async (req, res) => {      // needs the matching cookie and state, so it is bounded by the start limit
+  const cookies = parseCookiesHeader(req.headers.cookie), state = String(req.query.state || '');
+  res.append('Set-Cookie', gStateCookie('', req, 0));                                                // the state is single use either way
+  const rec = state && cookies[GSTATE_COOKIE] === state ? googleStates.get(sha(state)) : null;
+  if (rec) googleStates.delete(sha(state));
+  if (!rec || Date.now() - rec.at > GSTATE_TTL_MS) return backToApp(res, { signin_error: 'failed' });
+  if (req.query.error) return backToApp(res, { signin_error: req.query.error === 'access_denied' ? 'cancelled' : 'failed' });
+  const base = googleReturnBase(req);
+  if (!base || !googleVerifier || typeof req.query.code !== 'string' || req.query.code.length > 2048) return backToApp(res, { signin_error: 'failed' });
+  try {
+    const t = await axios.post(GOOGLE_TOKEN_URL, new URLSearchParams({ code: req.query.code, client_id: GOOGLE_CLIENT_ID, client_secret: GOOGLE_CLIENT_SECRET, redirect_uri: `${base}/auth/google/callback`, grant_type: 'authorization_code', code_verifier: rec.verifier }).toString(),
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 10000 });
+    const g = await googleVerifier.verify(t.data?.id_token);
+    if (g.nonce !== rec.nonce) throw new Error('nonce does not match');
+    const r = auth.signInVerified({ email: g.email, name: g.name, ageConfirmed: rec.ageConfirmed });
+    if (r.error) return backToApp(res, { signin_error: r.code === 'age_required' ? 'age_required' : r.status === 403 ? 'disabled' : 'failed' });
+    res.append('Set-Cookie', sessionCookie(r.sessionToken, { secure: isSecureReq(req) }));
+    backToApp(res, { welcome: r.created ? 'new' : 'back' });
+  } catch (err) { console.error('[Auth] Google sign-in failed:', err.response?.data?.error || err.message); backToApp(res, { signin_error: 'failed' }); }
 });
 app.post('/api/auth/logout', (req, res) => {
   auth.logout(req.headers.cookie);

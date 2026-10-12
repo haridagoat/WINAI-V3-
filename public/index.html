@@ -1338,8 +1338,6 @@
   .g-btn:hover{background:#f6f7f8}
   .g-btn svg{width:20px;height:20px;flex:none}
   .g-btn.busy{opacity:.6}
-  .g-over{position:absolute;inset:0;z-index:2;display:flex;align-items:center;justify-content:center;opacity:0;overflow:hidden}
-  .g-over>div{transform:scaleY(1.15);transform-origin:center}
   .or{display:flex;align-items:center;gap:12px;margin:18px 0 14px;color:var(--muted);font-family:var(--label);font-weight:600;font-size:11.5px;letter-spacing:.14em;text-transform:uppercase}
   .or::before,.or::after{content:"";flex:1;height:1px;background:var(--border2)}
   .si-hint{margin-top:8px;font-size:13.5px;color:var(--muted2)}
@@ -5271,7 +5269,7 @@ function siPwField(id, autocomplete, label) {
 }
 function siGoogleBlock(hasG) {
   if (!hasG) return '';
-  return `<div class="g-wrap" id="g-wrap"><button type="button" class="g-btn" id="g-btn" onclick="siGoogleTap()">${G_LOGO}<span>Continue with Google</span></button><div class="g-over" id="g-over"></div></div>
+  return `<div class="g-wrap" id="g-wrap"><button type="button" class="g-btn" id="g-btn" onclick="siGoogleTap()">${G_LOGO}<span>Continue with Google</span></button></div>
     <label class="ck ${SI.errField === 'gage' ? 'bad' : ''}" id="si-gage" for="si-gage-box" ${SI.ageRow && !ageRemembered() ? '' : 'hidden'}><input id="si-gage-box" type="checkbox" ${SI.age ? 'checked' : ''} onchange="SI.age=this.checked;siAgeChanged()"><span>I am 21 or older and understand WIN AI is analytics, not betting advice.</span></label>
     <div class="err" id="si-gerr" role="alert" hidden></div>`;
 }
@@ -5383,7 +5381,7 @@ function renderSignin() {
   wrap.innerHTML = `<div class="acct-sheet" role="dialog" aria-modal="true" aria-label="Sign in">${body}</div>`;
   wrap.addEventListener('mousedown', e => { if (e.target === wrap) siClose(); });
   document.body.appendChild(wrap);
-  if (['login', 'signup', 'forgot'].includes(SI.step)) { siPaintErr(); siAgeChanged(); if (SI.step === 'signup') { siTyping(); siPwTyping(); } if (SI.step !== 'forgot' && hasG) mountGoogle(); }
+  if (['login', 'signup', 'forgot'].includes(SI.step)) { siPaintErr(); siAgeChanged(); if (SI.step === 'signup') { siTyping(); siPwTyping(); } }
   if (SI.step === 'created') siStartCreatedTimers();
   const focusId = SI.step === 'signup' ? 'si-name' : (SI.step === 'login' && SI.email ? 'si-pw' : 'si-email');
   (document.getElementById(focusId) || wrap.querySelector('a.acct-go, button'))?.focus({ preventScroll: true });
@@ -5424,8 +5422,6 @@ function siPwTyping() {
 }
 function siAgeChanged() {
   if (SI.age && (SI.errField === 'age' || SI.errField === 'gage')) { SI.err = ''; SI.errField = ''; siPaintErr(); }
-  // Google's button is only live once the 21+ box is ticked, so the first tap explains instead of failing later.
-  const over = document.getElementById('g-over'); if (over) over.style.pointerEvents = (SI.age || ageRemembered()) ? 'auto' : 'none';
 }
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && SI.open) siClose(); });
 
@@ -5496,44 +5492,29 @@ function siStartCreatedTimers() {
 }
 
 // ── Google ──
-let _gis = null;
-function loadGis() {
-  if (window.google?.accounts?.id) return Promise.resolve(true);
-  if (_gis) return _gis;
-  _gis = new Promise(res => { const s = document.createElement('script'); s.src = 'https://accounts.google.com/gsi/client'; s.async = true; s.onload = () => res(true); s.onerror = () => { _gis = null; res(false); }; document.head.appendChild(s); });
-  return _gis;
+// The button sends the whole page to Google's own sign-in. Google sends the person back here, signed in, with the account made.
+function siGoogleTap() {
+  if (!AUTH.methods?.google) { siShowErr('google', "Google sign-in isn't set up on this site yet. Use your email and a password for now."); return; }
+  siStashPending();                                              // a prop they were saving is saved when they come back
+  location.href = '/auth/google/start?age=' + ((SI.age || ageRemembered()) ? '1' : '0');
 }
-// The white button is ours. Google's own (invisible) button sits exactly on top of it, so a tap runs Google's
-// official sign-in. Google then hands back a signed token that the server checks.
-async function mountGoogle() {
-  const over = document.getElementById('g-over'), wrap = document.getElementById('g-wrap'); if (!over || !AUTH.methods?.google) return;
-  if (!(await loadGis())) { SI.gFailed = true; return; }
-  if (!document.getElementById('g-over')) return;                      // the sheet changed while the script loaded
-  if (!SI.gInit) { google.accounts.id.initialize({ client_id: AUTH.methods.google, callback: onGoogleCredential, auto_select: false, cancel_on_tap_outside: true }); SI.gInit = true; }
-  google.accounts.id.renderButton(document.getElementById('g-over'), { type: 'standard', theme: 'outline', size: 'large', text: 'continue_with', shape: 'rectangular', width: Math.min(400, Math.round(wrap.getBoundingClientRect().width)) });
-  SI.gReady = true;
+// Coming back from Google: the address carries either ?welcome=new|back (it worked) or ?signin_error=... (it did not).
+let _googleError = null;
+function captureGoogleReturn() {
+  const q = new URLSearchParams(location.search), w = q.get('welcome'), e = q.get('signin_error');
+  if (!w && !e) return;
+  if (w === 'new' || w === 'back') { try { sessionStorage.setItem('winai_welcome', w); } catch (_) {} if (w === 'new') lsSet('winai_age_ok', '1'); }
+  _googleError = e;
+  try { history.replaceState(null, '', location.pathname); } catch (_) {}
 }
-function siGoogleTap() {   // only reached when Google's own button is not on top: not set up, not ticked yet, or not loaded
-  if (!AUTH.methods?.google) { siShowErr(SI.step === 'signup' ? 'google' : 'google', "Google sign-in isn't set up on this site yet. Use your email and a password for now."); return; }
-  if (!(SI.age || ageRemembered())) {
-    SI.ageRow = true; const row = document.getElementById('si-gage'); if (row) row.hidden = false;
-    const onSignup = SI.step === 'signup';
-    siShowErr(onSignup ? 'age' : 'gage', 'Tick the box to confirm you are 21 or older, then tap Google.'); return;
-  }
-  siShowErr('google', SI.gFailed ? "Google sign-in couldn't load. Check your connection or use email instead." : 'Google sign-in is still loading. Try again in a moment.');
+function showGoogleError() {
+  const code = _googleError; _googleError = null; if (!code) return;
+  openSignin('signin');
+  if (code === 'age_required') { SI.ageRow = true; renderSignin(); siShowErr('gage', 'Welcome! New here? Tick the box to confirm you are 21 or older, then tap Google again.'); return; }
+  const msg = { cancelled: 'Google sign-in was cancelled.', busy: 'Too many tries. Wait a few minutes and try again.', disabled: 'This account is turned off.', google_off: "Google sign-in isn't set up on this site yet. Use your email and a password for now." }[code]
+    || 'Google sign-in could not be completed. Try again, or use your email.';
+  siShowErr('google', msg);
 }
-async function onGoogleCredential(resp) {
-  if (SI.busy) return;
-  SI.busy = true; SI.err = ''; const b = document.getElementById('g-btn'); if (b) b.classList.add('busy');
-  try {
-    siStashPending();
-    const j = await apiPost('/api/auth/google', { credential: resp.credential, ageConfirmed: SI.age || ageRemembered() });
-    lsSet('winai_age_ok', '1');
-    try { sessionStorage.setItem('winai_welcome', j.created ? 'new' : 'back'); } catch (_) {}
-    SI.busy = false; await refreshMe(); siClose(); afterAuthLoaded();
-  } catch (e) { SI.busy = false; if (b) b.classList.remove('busy'); siShowErr(e.code === 'age_required' ? (SI.step === 'signup' ? 'age' : 'gage') : 'google', e.message); }
-}
-
 async function acctResendConfirm() {
   try { const x = await postJson('/api/auth/resend-confirmation', {}); acctToast(x.ok ? (x.j.alreadyConfirmed ? 'Your email is already confirmed' : 'Confirmation email sent') : (x.j.error || 'Could not send it. Try again.')); }
   catch (_) { acctToast('Could not reach the server.'); }
@@ -5661,9 +5642,11 @@ async function loadAuth() {
   try {
     applyMe(await fetch('/api/auth/me', { cache: 'no-store' }).then(r => r.json()));
   } catch (_) { /* stay a guest */ }
+  captureGoogleReturn();
   AUTH.loaded = true; _authResolve(); paintAccount(); paintQuota();
   afterAuthLoaded();
   handleReturn();
+  showGoogleError();
 }
 loadAuth();
 

@@ -90,7 +90,7 @@ Set these in the host's variables (the first three turn on the confirmation and 
 | `RESEND_API_KEY` | Key from resend.com, used to send the confirmation and reset emails. |
 | `MAIL_FROM` | The sender, on a domain you verified at Resend, for example `WIN AI <login@yourdomain.com>`. |
 | `PUBLIC_URL` | Your site address, for example `https://yourapp.up.railway.app`. Links in emails are built from this, never from the request. |
-| `GOOGLE_CLIENT_ID` | Optional. Makes the white Continue with Google button work (steps below). The button always shows. |
+| `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` | Optional. Make the white Continue with Google button work (steps below). The button always shows. |
 | `ADMIN_EMAIL` | Your own email. Props saved before accounts existed move to this account the first time it signs in. |
 | `USER_MAX_PROPS` | Optional. Props one account can save (default 300). |
 | `BLOCKED_EMAIL_DOMAINS` | Optional. Extra throwaway email domains to refuse, comma separated. |
@@ -98,18 +98,22 @@ Set these in the host's variables (the first three turn on the confirmation and 
 Without the email variables, people can still sign up and sign in, but nobody can confirm an address or reset a
 password, so the Data checks tab flags it and the paywall stays off. Set them before you go live.
 
-**Sign in with Google (optional, recommended).** It needs only a public client id. There is no Google secret to store.
+**Sign in with Google (recommended).** The white button sends the whole page to Google's own sign-in, then back to WIN AI
+signed in, with the account made. The button always shows; until Google is set up, tapping it says so. To turn it on:
 1. console.cloud.google.com: create a project, then APIs & Services > OAuth consent screen (External, add your app
-   name and support email).
-2. Credentials > Create credentials > OAuth client ID > **Web application**. Under **Authorized JavaScript origins**
-   add your site (`https://yourapp.up.railway.app`, and `http://localhost:3001` for local testing). Leave redirect URIs empty.
-3. Copy the client id (`...apps.googleusercontent.com`) into **`GOOGLE_CLIENT_ID`**. The white "Continue with Google"
-   button then works. The button always shows; until the variable is set, tapping it tells the person Google isn't set up yet.
+   name and support email, and publish it so anyone can sign in, not just test users).
+2. Credentials > Create credentials > OAuth client ID > **Web application**. Under **Authorized redirect URIs** add
+   `https://yourapp.up.railway.app/auth/google/callback` (your `PUBLIC_URL` plus `/auth/google/callback`). For local testing also add
+   `http://localhost:3001/auth/google/callback`. It has to match exactly.
+3. Copy the **Client ID** into `GOOGLE_CLIENT_ID` and the **Client secret** into `GOOGLE_CLIENT_SECRET`. The secret stays on
+   the server and is never sent to the browser. If only one of the two is set, Google sign-in stays off and the Data
+   checks tab says which is missing.
 
-The server checks Google's signed token itself (signature, your client id, expiry, and that Google verified the email).
-A Google sign-in and a password sign-in with the same address reach the same account. New accounts still confirm 21+.
-If a stranger had signed up with someone's address before they confirmed it, signing in with Google (or resetting the
-password) throws away the stranger's password and sessions.
+The server asks Google for the person's name and email only. It trades Google's one-time code for a signed note and
+checks it (signature, your client id, expiry, verified email, and a one-time nonce) before trusting it. A Google sign-in
+and a password sign-in with the same address reach the same account. New accounts still confirm 21+: a brand-new
+person is sent back to tick the box and tap Google again. If a stranger had signed up with someone's address before they
+confirmed it, signing in with Google (or resetting the password) throws away the stranger's password and sessions.
 
 **On your own computer** you can skip email: set `AUTH_DEV_LINKS=1` in `.env`. The confirmation and reset links are then
 shown on screen and printed in the server log instead of being emailed. It only works for requests from the same machine and

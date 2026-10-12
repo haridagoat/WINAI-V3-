@@ -99,3 +99,9 @@ test('the admin account claims the older props through Google too', () => {
   store.writePick({ id: 1, player: 'old' });
   assert.equal(auth.signInVerified({ email: 'admin@gmail.com', ageConfirmed: true }).claimed, 1);
 });
+
+test('the verifier hands back the nonce so the redirect flow can tie the note to the sign-in that asked for it', async () => {
+  const g = await verifier().v.verify(mint({ nonce: 'abc123' }));
+  assert.equal(g.nonce, 'abc123');
+  assert.equal((await verifier().v.verify(mint({}))).nonce, null);
+});
