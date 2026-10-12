@@ -5283,7 +5283,7 @@ function renderSignin() {
   if (!SI.open) { siStopTimers(); return; }
   const pend = SI.pending, save = SI.reason === 'save' && pend;
   const verdictWord = pend ? String(pend.verdict || '').replace('_', ' ').replace(/^LEAN /, '') : '';
-  const M = AUTH.methods || {}, hasG = !!M.google;
+  const M = AUTH.methods || {}, hasG = true;     // the Google button always shows; tapping it explains if Google is not set up yet
   let body;
   if (SI.step !== 'created') siStopTimers();
   if (SI.step === 'off') {
@@ -5509,7 +5509,8 @@ async function mountGoogle() {
   google.accounts.id.renderButton(document.getElementById('g-over'), { type: 'standard', theme: 'outline', size: 'large', text: 'continue_with', shape: 'rectangular', width: Math.min(400, Math.round(wrap.getBoundingClientRect().width)) });
   SI.gReady = true;
 }
-function siGoogleTap() {   // only reached when Google's own button is not on top: not ticked yet, or not loaded
+function siGoogleTap() {   // only reached when Google's own button is not on top: not set up, not ticked yet, or not loaded
+  if (!AUTH.methods?.google) { siShowErr(SI.step === 'signup' ? 'google' : 'google', "Google sign-in isn't set up on this site yet. Use your email and a password for now."); return; }
   if (!(SI.age || ageRemembered())) {
     SI.ageRow = true; const row = document.getElementById('si-gage'); if (row) row.hidden = false;
     const onSignup = SI.step === 'signup';

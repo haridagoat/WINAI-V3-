@@ -90,7 +90,7 @@ Set these in the host's variables (the first three turn on the confirmation and 
 | `RESEND_API_KEY` | Key from resend.com, used to send the confirmation and reset emails. |
 | `MAIL_FROM` | The sender, on a domain you verified at Resend, for example `WIN AI <login@yourdomain.com>`. |
 | `PUBLIC_URL` | Your site address, for example `https://yourapp.up.railway.app`. Links in emails are built from this, never from the request. |
-| `GOOGLE_CLIENT_ID` | Optional. Turns on the white Continue with Google button (steps below). |
+| `GOOGLE_CLIENT_ID` | Optional. Makes the white Continue with Google button work (steps below). The button always shows. |
 | `ADMIN_EMAIL` | Your own email. Props saved before accounts existed move to this account the first time it signs in. |
 | `USER_MAX_PROPS` | Optional. Props one account can save (default 300). |
 | `BLOCKED_EMAIL_DOMAINS` | Optional. Extra throwaway email domains to refuse, comma separated. |
@@ -104,7 +104,7 @@ password, so the Data checks tab flags it and the paywall stays off. Set them be
 2. Credentials > Create credentials > OAuth client ID > **Web application**. Under **Authorized JavaScript origins**
    add your site (`https://yourapp.up.railway.app`, and `http://localhost:3001` for local testing). Leave redirect URIs empty.
 3. Copy the client id (`...apps.googleusercontent.com`) into **`GOOGLE_CLIENT_ID`**. The white "Continue with Google"
-   button then appears. With the variable unset, the button is hidden.
+   button then works. The button always shows; until the variable is set, tapping it tells the person Google isn't set up yet.
 
 The server checks Google's signed token itself (signature, your client id, expiry, and that Google verified the email).
 A Google sign-in and a password sign-in with the same address reach the same account. New accounts still confirm 21+.
