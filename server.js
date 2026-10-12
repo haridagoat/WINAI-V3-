@@ -5778,7 +5778,16 @@ const USER_MAX_PROPS = envNum(process.env.USER_MAX_PROPS, 300);
 const isLoopback = ip => /^(::1|127\.0\.0\.1|::ffff:127\.0\.0\.1)$/.test(String(ip || ''));
 const mailer = createMailer({
   apiKey: process.env.RESEND_API_KEY, from: process.env.MAIL_FROM,
-  post: (url, body, cfg) => axios.post(url, body, { timeout: 10000, ...cfg }),
+  // Resend explains a refusal in its reply (an unverified domain, a test sender used for someone else, a bad key).
+  // That reason is logged and shown to the admin, so a failed email is never a mystery.
+  post: async (url, body, cfg) => {
+    try { const r = await axios.post(url, body, { timeout: 10000, ...cfg }); store.setMeta('mail:last_error', ''); return r; }
+    catch (err) {
+      const why = `${err.response?.status || ''} ${err.response?.data?.message || err.response?.data?.error || err.message}`.trim().slice(0, 300);
+      store.setMeta('mail:last_error', JSON.stringify({ at: new Date().toISOString(), why }));
+      throw new Error(`Resend refused it: ${why}`);
+    }
+  },
   log: m => console.log(m), devLinks: process.env.AUTH_DEV_LINKS === '1' && process.env.NODE_ENV !== 'production',
 });
 const auth = createAuth({
@@ -5810,7 +5819,9 @@ function authStatus() {
     : mailer.devLinks ? 'Development mode: confirmation and reset links are printed in the server log, not emailed. Never use AUTH_DEV_LINKS on a public site.'
     : 'Email is not set up (add RESEND_API_KEY, MAIL_FROM and PUBLIC_URL). People can sign up, but nobody can confirm an address or reset a password.';
   const googleDetail = googleOn ? ', and so is Google' : googleVerifier ? '. Google sign-in is NOT on: GOOGLE_CLIENT_SECRET is missing' : '';
-  return { enabled: true, methods, mailReady: mail, detail: `Email and password sign-in is on${googleDetail}. ${mailDetail}` };
+  let lastMailError = null;
+  try { const e = JSON.parse(store.getMeta('mail:last_error') || 'null'); if (e && Date.now() - new Date(e.at).getTime() < 24 * 3600e3) lastMailError = e.why; } catch (_) {}
+  return { enabled: true, methods, mailReady: mail && !lastMailError, lastMailError, detail: `Email and password sign-in is on${googleDetail}. ${lastMailError ? `The last email could not be sent: ${lastMailError}` : mailDetail}` };
 }
 // The address in a sign-in email must never come from the request, or a forged Host header could point a
 // victim's link at another site. In development (links printed, not emailed) only loopback requests may use it.
