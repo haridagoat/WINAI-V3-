@@ -71,23 +71,32 @@ Open that from any phone, laptop, or device — WIN AI is live 24/7.
 
 ## Accounts and data checks
 
-Visitors can browse everything as guests. An account is only asked for when someone saves a prop, and every
-saved prop belongs to the account that saved it. Sign-in is by emailed link, so there are no passwords.
+Visitors can browse everything as guests. An account is only asked for when someone saves a prop, and every saved
+prop belongs to the account that saved it. People sign in with **email and password**, or with **Google**.
 
-Set these in the host's variables:
+- **Sign up** asks for a first name, an email, a password (at least 10 characters, not a common one, not containing
+  their email name or first name) and the 21+ box. They are signed in straight away.
+- **Nothing is emailed until someone signs up.** Then one email confirms the address. A reset email goes out only when
+  someone asks for it. Subscribing needs a confirmed address.
+- **Passwords** are stored only as salted scrypt hashes. Nobody, including you, can read one. Five wrong tries on an
+  address pause it for 15 minutes (the screen offers a reset). A wrong email and a wrong password give the same answer.
+- If an address is already in use, sign up says **"Email is already taken"**.
+- Older accounts made with email links or Google keep working. They can add a password with "Forgot password".
+
+Set these in the host's variables (the first three turn on the confirmation and reset emails):
 
 | Variable | What it does |
 |---|---|
-| `RESEND_API_KEY` | Key from resend.com, used to send the sign-in email. |
+| `RESEND_API_KEY` | Key from resend.com, used to send the confirmation and reset emails. |
 | `MAIL_FROM` | The sender, on a domain you verified at Resend, for example `WIN AI <login@yourdomain.com>`. |
-| `PUBLIC_URL` | Your site address, for example `https://yourapp.up.railway.app`. Sign-in links are built from this, never from the request. |
+| `PUBLIC_URL` | Your site address, for example `https://yourapp.up.railway.app`. Links in emails are built from this, never from the request. |
 | `GOOGLE_CLIENT_ID` | Optional. Turns on the white Continue with Google button (steps below). |
 | `ADMIN_EMAIL` | Your own email. Props saved before accounts existed move to this account the first time it signs in. |
 | `USER_MAX_PROPS` | Optional. Props one account can save (default 300). |
 | `BLOCKED_EMAIL_DOMAINS` | Optional. Extra throwaway email domains to refuse, comma separated. |
 
-Until `RESEND_API_KEY`, `MAIL_FROM` and `PUBLIC_URL` are all set, sign-in is switched off and visitors see
-"Sign-in is not ready" when they try to save.
+Without the email variables, people can still sign up and sign in, but nobody can confirm an address or reset a
+password, so the Data checks tab flags it and the paywall stays off. Set them before you go live.
 
 **Sign in with Google (optional, recommended).** It needs only a public client id. There is no Google secret to store.
 1. console.cloud.google.com: create a project, then APIs & Services > OAuth consent screen (External, add your app
@@ -98,11 +107,12 @@ Until `RESEND_API_KEY`, `MAIL_FROM` and `PUBLIC_URL` are all set, sign-in is swi
    button then appears. With the variable unset, the button is hidden.
 
 The server checks Google's signed token itself (signature, your client id, expiry, and that Google verified the email).
-A Google sign-in and an email sign-in with the same address reach the same account. New accounts still confirm 21+.
-You can run with Google only: email sign-in turns itself off until `RESEND_API_KEY`, `MAIL_FROM` and `PUBLIC_URL` are set.
+A Google sign-in and a password sign-in with the same address reach the same account. New accounts still confirm 21+.
+If a stranger had signed up with someone's address before they confirmed it, signing in with Google (or resetting the
+password) throws away the stranger's password and sessions.
 
-**On your own computer** you can skip email: set `AUTH_DEV_LINKS=1` in `.env`. The sign-in link is then shown on
-screen and printed in the server log instead of being emailed. It only works for requests from the same machine and
+**On your own computer** you can skip email: set `AUTH_DEV_LINKS=1` in `.env`. The confirmation and reset links are then
+shown on screen and printed in the server log instead of being emailed. It only works for requests from the same machine and
 is ignored when `NODE_ENV=production`. Never set it on a public site.
 
 **Admin only:** the Users and Data checks tabs on `/admin.html` need the admin token. No public page shows user counts

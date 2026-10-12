@@ -5769,7 +5769,7 @@ function getWNBARanksFromFields(oppAdvanced, oppShooting, oppFourFact, oppMiscNo
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// ACCOUNTS — sign in by emailed link (lib/auth.js). Visitors browse as guests; an account is only
+// ACCOUNTS — email and password, plus Google (lib/auth.js). Visitors browse as guests; an account is only
 // needed to save props, and every saved prop belongs to the account that saved it. Picks the system
 // logs itself (source 'auto') have no owner: everyone can read them, only the admin can change them.
 // ═══════════════════════════════════════════════════════════════════
@@ -5797,15 +5797,14 @@ const googleVerifier = GOOGLE_CLIENT_ID ? createGoogleVerifier({
   },
 }) : null;
 function authStatus() {
-  if (!store.supportsAccounts) return { enabled: false, methods: { email: false, google: false }, detail: 'Accounts need the SQLite database. This server is on the JSON fallback (use Node 22.13 or newer).' };
-  const google = !!googleVerifier;
-  const email = mailer.configured ? !!PUBLIC_URL : mailer.devLinks;
-  const methods = { email, google };
-  if (email && mailer.configured) return { enabled: true, methods, detail: `Sign-in by email${google ? ' and Google' : ''} is set up.` };
-  if (email) return { enabled: true, methods, dev: true, detail: `Development mode: email sign-in links are printed in the server log and are not emailed${google ? '. Google sign-in is on.' : '.'} Never use AUTH_DEV_LINKS on a public site.` };
-  if (google) return { enabled: true, methods, detail: mailer.configured ? 'Google sign-in is set up. Email sign-in is off until PUBLIC_URL is set.' : 'Google sign-in is set up. Email sign-in is off (add RESEND_API_KEY, MAIL_FROM and PUBLIC_URL to turn it on).' };
-  if (mailer.configured && !PUBLIC_URL) return { enabled: false, methods, detail: 'Set PUBLIC_URL to your site address (for example https://yourapp.up.railway.app) so sign-in emails link to the right place.' };
-  return { enabled: false, methods, detail: 'Sign-in is not set up. Add RESEND_API_KEY, MAIL_FROM and PUBLIC_URL for email, and/or GOOGLE_CLIENT_ID for Google.' };
+  if (!store.supportsAccounts) return { enabled: false, methods: { password: false, google: false, mail: false }, mailReady: false, detail: 'Accounts need the SQLite database. This server is on the JSON fallback (use Node 22.13 or newer).' };
+  const mail = mailer.configured ? !!PUBLIC_URL : mailer.devLinks;
+  const methods = { password: true, google: !!googleVerifier, mail };
+  const mailDetail = mailer.configured
+    ? (PUBLIC_URL ? 'Confirmation and reset emails are set up.' : 'Set PUBLIC_URL to your site address (for example https://yourapp.up.railway.app) so the links in emails point to the right place. Until then confirmation and reset emails are NOT sent.')
+    : mailer.devLinks ? 'Development mode: confirmation and reset links are printed in the server log, not emailed. Never use AUTH_DEV_LINKS on a public site.'
+    : 'Email is not set up (add RESEND_API_KEY, MAIL_FROM and PUBLIC_URL). People can sign up, but nobody can confirm an address or reset a password.';
+  return { enabled: true, methods, mailReady: mail, detail: `Email and password sign-in is on${googleVerifier ? ', and so is Google' : ''}. ${mailDetail}` };
 }
 // The address in a sign-in email must never come from the request, or a forged Host header could point a
 // victim's link at another site. In development (links printed, not emailed) only loopback requests may use it.
@@ -5816,7 +5815,9 @@ function authBaseUrl(req) {
 const isSecureReq = req => !!req.secure || PUBLIC_URL.startsWith('https://');
 const authBlocks = [];   // when a sign-in limit blocked someone, for the admin Users tab
 const noteBlock = () => { authBlocks.push(Date.now()); if (authBlocks.length > 2000) authBlocks.splice(0, 1000); };
-const authRequestLimiter = security.createRateLimiter({ windowMs: 15 * 60 * 1000, max: 10, onBlock: noteBlock, message: 'Too many sign-in attempts. Try again in a few minutes.' });
+const authLoginLimiter = security.createRateLimiter({ windowMs: 15 * 60 * 1000, max: 30, onBlock: noteBlock, message: 'Too many sign-in attempts. Try again in a few minutes.' });
+const authSignupLimiter = security.createRateLimiter({ windowMs: 60 * 60 * 1000, max: 20, onBlock: noteBlock, message: 'Too many accounts created from this connection. Try again later.' });
+const authForgotLimiter = security.createRateLimiter({ windowMs: 15 * 60 * 1000, max: 10, onBlock: noteBlock, message: 'Too many reset requests. Try again in a few minutes.' });
 const authVerifyLimiter = security.createRateLimiter({ windowMs: 15 * 60 * 1000, max: 30, onBlock: noteBlock, message: 'Too many attempts. Try again in a few minutes.' });
 
 app.use(['/api/auth', '/api/account', '/api/clv', '/api/billing', '/api/analysis'], (req, res, next) => (req.method === 'GET' || req.method === 'HEAD') ? next() : security.sameOrigin(req, res, next));
@@ -5830,8 +5831,8 @@ app.get('/api/auth/me', (req, res) => {
   res.set('Cache-Control', 'no-store');
   const on = paywallOn(), info = req.user ? planFor(req) : null;
   res.json({
-    enabled: authStatus().enabled, methods: { email: authStatus().methods.email, google: GOOGLE_CLIENT_ID || null },
-    user: req.user ? { email: req.user.email } : null, maxProps: USER_MAX_PROPS,
+    enabled: authStatus().enabled, methods: { password: authStatus().methods.password, mail: authStatus().methods.mail, google: GOOGLE_CLIENT_ID || null },
+    user: req.user ? { email: req.user.email, name: req.user.name || null, emailVerified: !!req.user.email_verified_at } : null, maxProps: USER_MAX_PROPS,
     paywall: on,
     ...(on && req.user ? {
       plan: info.plan,
@@ -5840,33 +5841,59 @@ app.get('/api/auth/me', (req, res) => {
     } : {}),
   });
 });
-app.post('/api/auth/request', authRequestLimiter, async (req, res) => {
-  const base = authStatus().methods.email ? authBaseUrl(req) : null;
-  if (!base) return res.status(503).json({ error: 'Sign-in by email is not set up on this server yet.' });
-  const r = await auth.requestLink({ email: req.body?.email, ageConfirmed: req.body?.ageConfirmed === true, ip: req.ip, baseUrl: base });
-  const out = r.error ? { error: r.error } : { ok: true };
-  if (r.devLink && isLoopback(req.ip)) out.devLink = r.devLink;
-  res.status(r.status).json(out);
-});
-// The link in the email opens this page, which asks for one tap before signing in. Mail scanners that
-// pre-open links would otherwise use up the one-time link before the person ever saw it.
-app.get('/auth/verify', (req, res) => { res.set('Cache-Control', 'no-store'); res.sendFile(path.join(__dirname, 'public', 'signin.html')); });
-app.post('/api/auth/verify', authVerifyLimiter, (req, res) => {
-  const r = auth.verifyLink(req.body?.token);
-  if (r.error) return res.status(r.status).json({ error: r.error });
+const mailBase = req => (authStatus().methods.mail ? authBaseUrl(req) : null);
+const authFail = (res, r) => res.status(r.status).json({ error: r.error, ...(r.field ? { field: r.field } : {}), ...(r.code ? { code: r.code } : {}), ...(r.locked ? { locked: true } : {}), ...(r.problems ? { problems: r.problems } : {}) });
+const startSession = (req, res, r, extra = {}) => {
   res.set('Set-Cookie', sessionCookie(r.sessionToken, { secure: isSecureReq(req) }));
-  res.json({ ok: true, email: r.user.email, created: r.created, claimed: r.claimed });
+  res.json({ ok: true, email: r.user.email, name: r.user.name || null, emailVerified: !!r.user.email_verified_at, created: r.created, claimed: r.claimed, ...extra });
+};
+const devOnly = (req, r) => (r.devLink && isLoopback(req.ip) ? { devLink: r.devLink } : {});
+// Sign up: the account is made and the person is signed in. The confirmation email goes out only now, after sign-up.
+app.post('/api/auth/signup', authSignupLimiter, async (req, res) => {
+  const b = req.body || {};
+  const r = await auth.signUp({ name: b.name, email: b.email, password: b.password, ageConfirmed: b.ageConfirmed === true, baseUrl: mailBase(req), ip: req.ip });
+  if (r.error) return authFail(res, r);
+  startSession(req, res, r, { emailSent: r.emailSent, ...devOnly(req, r) });
 });
+app.post('/api/auth/login', authLoginLimiter, async (req, res) => {
+  const r = await auth.signIn({ email: req.body?.email, password: req.body?.password });
+  if (r.error) return authFail(res, r);
+  startSession(req, res, r);
+});
+// Always answers the same, whether or not the address has an account.
+app.post('/api/auth/forgot', authForgotLimiter, async (req, res) => {
+  const r = await auth.requestReset({ email: req.body?.email, baseUrl: mailBase(req), ip: req.ip });
+  if (r.error) return authFail(res, r);
+  res.json({ ok: true, ...devOnly(req, r) });
+});
+app.post('/api/auth/reset', authVerifyLimiter, async (req, res) => {
+  const r = await auth.resetPassword({ token: req.body?.token, password: req.body?.password });
+  if (r.error) return authFail(res, r);
+  startSession(req, res, r);
+});
+app.post('/api/auth/confirm', authVerifyLimiter, (req, res) => {
+  const r = auth.confirmEmail({ token: req.body?.token });
+  if (r.error) return authFail(res, r);
+  res.json({ ok: true, email: r.email, signedIn: !!req.user && req.user.email === r.email });
+});
+const resendLimiter = security.createRateLimiter({ windowMs: 15 * 60 * 1000, max: 10, message: 'Too many attempts. Try again in a few minutes.' });
+app.post('/api/auth/resend-confirmation', requireUser, resendLimiter, async (req, res) => {
+  const r = await auth.resendConfirmation(req.user, { baseUrl: mailBase(req), ip: req.ip });
+  if (r.error) return authFail(res, r);
+  res.json({ ok: true, alreadyConfirmed: !!r.alreadyConfirmed, ...devOnly(req, r) });
+});
+// The links in the emails open this page. It asks for one tap before it does anything, so mail scanners that
+// pre-open links cannot use up a one-time link before the person ever sees it.
+app.get(['/auth/confirm', '/auth/reset'], (req, res) => { res.set('Cache-Control', 'no-store'); res.sendFile(path.join(__dirname, 'public', 'auth-link.html')); });
 // Google hands the browser a signed token. It is checked here before anything is trusted.
 app.post('/api/auth/google', authVerifyLimiter, async (req, res) => {
   if (!googleVerifier) return res.status(503).json({ error: 'Google sign-in is not set up on this server yet.' });
   let g;
   try { g = await googleVerifier.verify(req.body?.credential); }
   catch (err) { console.error('[Auth] Google token refused:', err.message); return res.status(401).json({ error: 'Google sign-in could not be verified. Try again, or use email.' }); }
-  const r = auth.signInVerified({ email: g.email, ageConfirmed: req.body?.ageConfirmed === true });
+  const r = auth.signInVerified({ email: g.email, name: g.name, ageConfirmed: req.body?.ageConfirmed === true });
   if (r.error) return res.status(r.status).json({ error: r.error, ...(r.code ? { code: r.code } : {}) });
-  res.set('Set-Cookie', sessionCookie(r.sessionToken, { secure: isSecureReq(req) }));
-  res.json({ ok: true, email: r.user.email, created: r.created, claimed: r.claimed });
+  startSession(req, res, r);
 });
 app.post('/api/auth/logout', (req, res) => {
   auth.logout(req.headers.cookie);
@@ -5876,7 +5903,7 @@ app.post('/api/auth/logout', (req, res) => {
 // Everything the account holds, as a file.
 app.get('/api/account/export', requireUser, (req, res) => {
   res.set({ 'Content-Disposition': 'attachment; filename="winai-my-data.json"', 'Cache-Control': 'no-store' });
-  res.json({ email: req.user.email, createdAt: req.user.created_at, exportedAt: new Date().toISOString(), props: store.picksForUser(req.user.id) });
+  res.json({ email: req.user.email, name: req.user.name || null, emailConfirmed: !!req.user.email_verified_at, createdAt: req.user.created_at, exportedAt: new Date().toISOString(), props: store.picksForUser(req.user.id) });
 });
 // Deletes the account and every prop it saved. There is no undo and nothing is kept.
 app.post('/api/account/delete', requireUser, async (req, res) => {
@@ -5922,7 +5949,7 @@ function billingStatus() {
   if (!STRIPE_WEBHOOK_SECRET) missing.push('STRIPE_WEBHOOK_SECRET');
   if (!STRIPE_PRICE) missing.push('STRIPE_PRICE_ID');
   const requested = process.env.PAYWALL === 'on';
-  return { requested, configured: !missing.length, missing, on: requested && !missing.length && authStatus().enabled,
+  return { requested, configured: !missing.length, missing, on: requested && !missing.length && authStatus().enabled && authStatus().methods.mail,
     mode: STRIPE_KEY ? (/^(sk|rk)_test_/.test(STRIPE_KEY) ? 'test' : 'live') : null, lastWebhookAt: store.getMeta('stripe:last_event_at') };
 }
 const paywallOn = () => billingStatus().on;
@@ -5997,6 +6024,7 @@ app.post('/api/billing/checkout', requireUser, checkoutLimiter, async (req, res)
   const base = returnBase(req);
   if (!base) return res.status(503).json({ error: 'The site address is not set up for payments yet.' });
   const info = planFor(req);
+  if (!req.user.email_verified_at && !info.owner) return res.status(403).json({ error: 'Confirm your email first. We sent a link when you signed up.', code: 'email_unverified' });
   try {
     let customer = store.getBilling(req.user.id)?.customer_id;
     if (info.plan === 'pro' && !info.comped && !info.owner && customer) {          // already subscribed: send them to manage it
@@ -6670,7 +6698,7 @@ app.get('/api/admin/users', requireAdmin, (req, res) => {
       unclaimedProps: store.supportsAccounts ? store.countUnclaimedPicks() : 0,
       signInsBlocked24h: authBlocks.filter(x => x > day).length,
     },
-    users: users.map(u => ({ id: u.id, email: maskEmail(u.email), joined: u.created_at, lastSeen: u.last_seen, props: u.props, disabled: !!u.disabled, ...planOf(u) })),
+    users: users.map(u => ({ id: u.id, email: maskEmail(u.email), joined: u.created_at, lastSeen: u.last_seen, props: u.props, disabled: !!u.disabled, confirmed: !!u.email_verified_at, ...planOf(u) })),
     billing: { ...(({ requested, configured, missing, on, mode, lastWebhookAt }) => ({ requested, configured, missing, on, mode, lastWebhookAt }))(billingStatus()), plans: planTotals(users) },
   });
 });

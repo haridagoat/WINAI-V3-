@@ -1301,7 +1301,7 @@
   .acct-sheet .ck{display:flex;gap:10px;align-items:flex-start;margin-top:16px;font-size:13.5px;color:var(--muted2);cursor:pointer}
   .acct-sheet .ck input{margin-top:3px;width:17px;height:17px;accent-color:#e6e6ea;flex:none}
   .acct-sheet .mini{display:flex;align-items:center;gap:10px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:9px 12px;margin-top:12px;font-size:14px}
-  .acct-sheet .err{background:#2a1414;border:1px solid #7a2f2f;color:#ffd0d0;border-radius:10px;padding:10px 12px;margin-top:14px;font-size:13.5px}
+  .acct-sheet .err{background:#2a1414;border:1px solid #7a2f2f;color:#ff7a7a;font-weight:500;border-radius:10px;padding:10px 12px;margin-top:14px;font-size:13.5px}
   .acct-sheet .note{font-size:13px;color:var(--muted);margin-top:8px}
   .acct-go,.acct-alt{display:block;width:100%;margin-top:14px;border-radius:9px;padding:12px 18px;font-family:var(--label);font-weight:700;font-size:13.5px;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;text-align:center}
   .acct-go{background:#e6e6ea;border:1px solid #e6e6ea;color:#0a0a0b}
@@ -1310,7 +1310,26 @@
   .acct-go.danger{background:#2a1414;border-color:#7a2f2f;color:#ffb3b3}
   .acct-alt{margin-top:8px;background:var(--surface2);border:1px solid var(--border2);color:var(--muted2)}
   .acct-alt:hover{background:var(--surface3);color:var(--text)}
-  .acct-sheet .err[hidden],.si-hint[hidden]{display:none}
+  .acct-sheet .err[hidden],.si-hint[hidden],.acct-sheet [hidden]{display:none}
+  .acct-sheet input[type=password],.acct-sheet input[type=text]{width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:9px;padding:12px 13px;font-size:16px;color:var(--text);font-family:var(--body)}
+  .acct-sheet input[type=password].bad,.acct-sheet input[type=text].bad{border-color:#7a2f2f;box-shadow:0 0 0 3px rgba(255,93,93,.12)}
+  .acct-sheet .pw{position:relative}
+  .acct-sheet .pw input{padding-right:64px}
+  .acct-sheet .eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:0;padding:6px 8px;font-family:var(--label);font-weight:700;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted2);cursor:pointer}
+  .acct-sheet .fieldrow{display:flex;justify-content:space-between;align-items:baseline}
+  .acct-sheet .fieldrow .si-link{margin-top:16px;margin-bottom:6px}
+  .acct-sheet .meter{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-top:10px}
+  .acct-sheet .meter i{height:4px;border-radius:2px;background:var(--surface3)}
+  .acct-sheet .meter[data-s="1"] i:nth-child(-n+1){background:#ff5d5d}
+  .acct-sheet .meter[data-s="2"] i:nth-child(-n+2){background:#e6c35a}
+  .acct-sheet .meter[data-s="3"] i:nth-child(-n+3){background:#4cb47e}
+  .acct-sheet .meter[data-s="4"] i{background:#4cb47e}
+  .acct-sheet .rules{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:3px;font-size:13px;color:var(--muted)}
+  .acct-sheet .rules li::before{content:"○";margin-right:8px;color:var(--dim)}
+  .acct-sheet .rules li.ok{color:var(--muted2)}
+  .acct-sheet .rules li.ok::before{content:"✓";color:#4cb47e}
+  .acct-sheet .mail{display:flex;gap:12px;align-items:flex-start;background:var(--surface2);border:1px solid var(--border2);border-radius:10px;padding:13px;margin-top:16px}
+  .acct-sheet .signedin{display:flex;gap:10px;align-items:center;margin-top:16px;background:var(--surface2);border:1px solid var(--border2);border-radius:10px;padding:12px}
   .acct-sheet input[type=email].bad{border-color:#7a2f2f;box-shadow:0 0 0 3px rgba(255,93,93,.12)}
   .acct-sheet .ck.bad{color:#ffd0d0;outline:1px solid #7a2f2f;outline-offset:6px;border-radius:6px}
   a.acct-go{text-decoration:none;box-sizing:border-box}
@@ -5153,9 +5172,9 @@ async function clearBetslip() {
 // ACCOUNTS — sign in by emailed link. Visitors browse as guests; an account is only asked for when
 // they save a prop. Saved props are private to the account that saved them.
 // ══════════════════════════════════════════════════════
-const AUTH = { enabled: false, methods: { email: true, google: null }, user: null, loaded: false, maxProps: 300, paywall: false, plan: null, billing: null, quota: null };
+const AUTH = { enabled: false, methods: { password: true, mail: false, google: null }, user: null, loaded: false, maxProps: 300, paywall: false, plan: null, billing: null, quota: null };
 let _authResolve; const authReady = new Promise(r => { _authResolve = r; });
-const SI = { open: false, step: 'form', reason: 'signin', pending: null, email: '', age: false, busy: false, err: '', errField: '', devLink: null, poll: null, tick: null, resendAt: 0, sentAt: 0, gInit: false, gReady: false, gFailed: false };
+const SI = { open: false, step: 'login', reason: 'signin', pending: null, email: '', age: false, busy: false, err: '', errField: '', devLink: null, poll: null, tick: null, resendAt: 0, sentAt: 0, gInit: false, gReady: false, gFailed: false };
 
 function acctToast(msg) {
   document.getElementById('acct-toast')?.remove();
@@ -5176,13 +5195,15 @@ function paintAccount() {
   const planRow = !AUTH.paywall ? '' : AUTH.plan === 'pro'
     ? `<div class="plan-row"><span class="plan-pill pro">${b.comped ? 'Pro · complimentary' : 'Pro'}</span>${!b.comped && b.renewsAt ? `<small>${b.cancelAtPeriodEnd ? 'Ends' : 'Renews'} ${escapeHtml(fd(b.renewsAt))}</small>` : ''}</div>`
     : '<div class="plan-row"><span class="plan-pill">Free</span></div>';
+  const unconfirmed = AUTH.user && AUTH.user.emailVerified === false && AUTH.methods?.mail
+    ? '<div class="plan-row"><span class="plan-pill">Email not confirmed</span></div><button type="button" role="menuitem" onclick="closeAcctMenu();acctResendConfirm()">Send confirmation email</button>' : '';
   const planBtn = !AUTH.paywall ? '' : AUTH.plan === 'pro'
     ? (b.canManage ? '<button type="button" role="menuitem" onclick="closeAcctMenu();openPortal()">Manage subscription</button>' : '')
     : '<button type="button" role="menuitem" onclick="closeAcctMenu();openUpgrade(\'general\')">Upgrade to Pro</button>';
   el.innerHTML = `<button type="button" class="acct-btn in" id="acct-btn" aria-haspopup="menu" aria-expanded="false" onclick="toggleAcctMenu()"><span class="acct-av">${escapeHtml(AUTH.user.email[0].toUpperCase())}</span><span class="acct-em">${em}</span></button>
     <div class="acct-menu" id="acct-menu" role="menu" hidden>
       <div class="who">${em}</div>
-      ${planRow}${planBtn}
+      ${unconfirmed}${planRow}${planBtn}
       <button type="button" role="menuitem" onclick="closeAcctMenu();switchTab('betslip')">My Prop List</button>
       <button type="button" role="menuitem" onclick="closeAcctMenu();acctExport()">Export my data</button>
       <button type="button" role="menuitem" onclick="closeAcctMenu();acctSignOut()">Sign out</button>
@@ -5196,13 +5217,12 @@ function toggleAcctMenu() {
 function closeAcctMenu() { const m = document.getElementById('acct-menu'); if (m) { m.hidden = true; document.getElementById('acct-btn')?.setAttribute('aria-expanded', 'false'); } }
 document.addEventListener('click', e => { if (!e.target.closest('.acct-slot')) closeAcctMenu(); });
 
-// ── sign-in sheet ──
 const G_LOGO = '<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>';
 const lsGet = k => { try { return localStorage.getItem(k); } catch (_) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (_) {} };
 const ageRemembered = () => lsGet('winai_age_ok') === '1';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-// Common typos, caught before a link is sent to an address nobody owns.
+// Common typos, caught before an account is made for an address nobody owns.
 const DOMAIN_FIX = { 'gmial.com': 'gmail.com', 'gmai.com': 'gmail.com', 'gamil.com': 'gmail.com', 'gmal.com': 'gmail.com', 'gmail.con': 'gmail.com', 'gmail.cm': 'gmail.com', 'gmail.co': 'gmail.com', 'gmaill.com': 'gmail.com',
   'hotnail.com': 'hotmail.com', 'hotmial.com': 'hotmail.com', 'hotmail.con': 'hotmail.com', 'yaho.com': 'yahoo.com', 'yahooo.com': 'yahoo.com', 'yahoo.con': 'yahoo.com', 'yhoo.com': 'yahoo.com',
   'outlok.com': 'outlook.com', 'outlook.con': 'outlook.com', 'iclod.com': 'icloud.com', 'icoud.com': 'icloud.com', 'icloud.con': 'icloud.com' };
@@ -5216,37 +5236,119 @@ function mailProvider(email) {
   if (/^(proton\.me|protonmail\.com)$/.test(d)) return { name: 'Proton Mail', url: 'https://mail.proton.me/' };
   return null;
 }
+// The same password rules the server enforces (the server is the one that counts; this just helps while typing).
+const PW_COMMON = ['password', 'passw0rd', 'password1', 'password12', 'password123', 'password1234', 'qwertyuiop', 'qwerty123', '1234567890', '12345678910', '1111111111', 'iloveyou123', 'letmein123', 'welcome123', 'admin12345', 'abcdefghij', 'basketball'];
+function pwRules(pw, email, name) {
+  const lower = String(pw).toLowerCase(), local = String(email || '').split('@')[0].toLowerCase(), first = String(name || '').trim().toLowerCase();
+  return [
+    ['At least 10 characters', pw.length >= 10],
+    ['Not a commonly used password', pw.length > 0 && !PW_COMMON.includes(lower) && !/^(.)\1+$/.test(pw)],
+    ['Does not contain your email name or first name', pw.length > 0 && !(local.length >= 3 && lower.includes(local)) && !(first.length >= 4 && lower.includes(first))],
+  ];
+}
+function pwStrength(pw, email, name) {
+  if (!pw) return 0; const r = pwRules(pw, email, name); if (!r.every(x => x[1])) return 1;
+  let n = 2; if (pw.length >= 14) n++; if ((/[a-z]/.test(pw) && /[A-Z]/.test(pw) && /\d/.test(pw)) || (/[^A-Za-z0-9 ]/.test(pw) && pw.length >= 12)) n++; return Math.min(4, n);
+}
+async function postJson(path, body) {
+  const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  return { ok: r.ok, status: r.status, j: await r.json().catch(() => ({})) };
+}
 
-function openSignin(reason, pending) {
-  Object.assign(SI, { open: true, step: AUTH.enabled ? 'form' : 'off', reason: reason || 'signin', pending: pending || null, err: '', errField: '', busy: false, devLink: null,
-    email: SI.email || lsGet('winai_last_email') || '', age: SI.age || ageRemembered() });
+// view: 'login' (default) or 'signup'
+function openSignin(reason, pending, view) {
+  Object.assign(SI, { open: true, step: AUTH.enabled ? (view || 'login') : 'off', reason: reason || 'signin', pending: pending || null, err: '', errField: '', busy: false, showReset: false, ageRow: false,
+    email: SI.email || lsGet('winai_last_email') || '', age: SI.age || ageRemembered(), pw: '', show: false });
   renderSignin();
 }
 function openDeleteAccount() { Object.assign(SI, { open: true, step: 'delete', err: '', busy: false }); renderSignin(); }
+function siGo(step) { Object.assign(SI, { step, err: '', errField: '', showReset: false, pw: step === 'forgot' || step === 'forgot_sent' ? '' : SI.pw }); renderSignin(); }
 function siClose() { siStopTimers(); SI.open = false; document.getElementById('acct-modal')?.remove(); }
 function siStopTimers() { clearInterval(SI.poll); clearInterval(SI.tick); SI.poll = SI.tick = null; }
+
+function siPwField(id, autocomplete, label) {
+  return `<div class="pw"><input id="${id}" type="${SI.show ? 'text' : 'password'}" autocomplete="${autocomplete}" autocapitalize="off" spellcheck="false" value="${escapeHtml(SI.pw)}" aria-label="${label}" oninput="SI.pw=this.value;siPwTyping()" onkeydown="if(event.key==='Enter'){event.preventDefault();siSubmit()}"><button type="button" class="eye" onclick="siToggleShow()" aria-label="${SI.show ? 'Hide' : 'Show'} password">${SI.show ? 'Hide' : 'Show'}</button></div>`;
+}
+function siGoogleBlock(hasG) {
+  if (!hasG) return '';
+  return `<div class="g-wrap" id="g-wrap"><button type="button" class="g-btn" id="g-btn" onclick="siGoogleTap()">${G_LOGO}<span>Continue with Google</span></button><div class="g-over" id="g-over"></div></div>
+    <label class="ck ${SI.errField === 'gage' ? 'bad' : ''}" id="si-gage" for="si-gage-box" ${SI.ageRow && !ageRemembered() ? '' : 'hidden'}><input id="si-gage-box" type="checkbox" ${SI.age ? 'checked' : ''} onchange="SI.age=this.checked;siAgeChanged()"><span>I am 21 or older and understand WIN AI is analytics, not betting advice.</span></label>`;
+}
+function siMini(save, pend, verdictWord) {
+  return save ? `<div class="mini"><span class="acct-av">${escapeHtml(String(pend.player).split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase())}</span><span><b style="font-weight:600">${escapeHtml(pend.player)}</b> <span style="color:var(--muted)">${escapeHtml(verdictWord)} ${escapeHtml(String(pend.line))} ${escapeHtml(String(pend.propType || '').toUpperCase())}</span></span></div>` : '';
+}
 
 function renderSignin() {
   document.getElementById('acct-modal')?.remove();
   if (!SI.open) { siStopTimers(); return; }
-  const pend = SI.pending;
+  const pend = SI.pending, save = SI.reason === 'save' && pend;
   const verdictWord = pend ? String(pend.verdict || '').replace('_', ' ').replace(/^LEAN /, '') : '';
-  const M = AUTH.methods || {}, hasG = !!M.google, hasE = M.email !== false;
+  const M = AUTH.methods || {}, hasG = !!M.google;
   let body;
-  if (SI.step !== 'sent') siStopTimers();
+  if (SI.step !== 'created') siStopTimers();
   if (SI.step === 'off') {
     body = `<h2>Sign-in is not ready</h2><p>This server has not been set up for sign-in yet, so saving props is not available.</p><button type="button" class="acct-alt" onclick="siClose()">Close</button>`;
-  } else if (SI.step === 'sent') {
-    const prov = mailProvider(SI.email.trim());
-    body = `<h2>Check your inbox</h2>
-      <p>We sent a sign-in link to <b style="color:var(--text)">${escapeHtml(SI.email.trim())}</b>. Tap it to finish. It works once and expires in 15 minutes.</p>
-      ${pend ? `<p>${escapeHtml(pend.player)} is saved to your list as soon as you are signed in.</p>` : ''}
-      ${prov ? `<a class="acct-go" href="${escapeHtml(prov.url)}" target="_blank" rel="noopener">Open ${escapeHtml(prov.name)}</a>` : ''}
-      ${SI.devLink ? `<a class="acct-go" href="${escapeHtml(SI.devLink)}" style="${prov ? 'background:var(--surface2);border-color:var(--border2);color:var(--muted2)' : ''}">Open the link (development only)</a>` : ''}
-      <div class="si-wait"><span class="spin" aria-hidden="true"></span><span>Waiting for you to tap the link. This screen signs you in by itself.</span></div>
-      <button type="button" class="acct-alt" id="si-resend" onclick="siResend()" disabled>Send again</button>
-      <div class="si-links"><button type="button" class="si-link" onclick="SI.step='form';renderSignin()">Wrong email? Change it</button><span aria-hidden="true">·</span><button type="button" class="si-link" onclick="siClose()">Close</button></div>
-      <p class="note">Can't find it? Check your spam or promotions folder.</p>`;
+  } else if (SI.step === 'login') {
+    body = `<h2>Sign in</h2><p>${save ? 'Sign in to save this prop to your list.' : 'Welcome back. Browsing needs no account.'}</p>
+      ${siMini(save, pend, verdictWord)}
+      <label class="f" for="si-email">Email</label>
+      <input id="si-email" type="email" inputmode="email" enterkeyhint="next" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" value="${escapeHtml(SI.email)}" placeholder="you@example.com" oninput="SI.email=this.value;siClearErr('email')" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('si-pw')?.focus()}">
+      <div class="fieldrow"><label class="f" for="si-pw">Password</label><button type="button" class="si-link" onclick="siGo('forgot')">Forgot password?</button></div>
+      ${siPwField('si-pw', 'current-password', 'Password')}
+      <div class="err" id="si-err" role="alert" hidden></div>
+      <button type="button" class="acct-go" id="si-go" onclick="siSubmit()">${SI.busy ? 'Signing in…' : 'Sign in'}</button>
+      <div class="or"><span>or</span></div>
+      <button type="button" class="acct-alt" style="margin-top:12px" onclick="siGo('signup')">Sign up with email</button>
+      ${siGoogleBlock(hasG)}
+      <p class="note" style="text-align:center">New accounts choose a password right here. No email is sent until you sign up.</p>
+      <div class="si-links"><button type="button" class="si-link" onclick="siClose()">${save ? 'Keep browsing' : 'Cancel'}</button></div>`;
+  } else if (SI.step === 'signup') {
+    const rem = ageRemembered();
+    body = `<h2>Create your account</h2><p>${save ? 'Create an account to save this prop. You will be signed in straight away.' : 'Choose a password. You will be signed in straight away.'}</p>
+      ${siMini(save, pend, verdictWord)}
+      <label class="f" for="si-name">First name</label>
+      <input id="si-name" type="text" autocomplete="given-name" autocapitalize="words" maxlength="40" value="${escapeHtml(SI.name || '')}" placeholder="Maya" oninput="SI.name=this.value;siClearErr('name');siPwTyping()" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('si-email')?.focus()}">
+      <label class="f" for="si-email">Email</label>
+      <input id="si-email" type="email" inputmode="email" enterkeyhint="next" autocomplete="email" autocapitalize="off" autocorrect="off" spellcheck="false" value="${escapeHtml(SI.email)}" placeholder="you@example.com" oninput="SI.email=this.value;siClearErr('email');siTyping();siPwTyping()" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('si-pw')?.focus()}">
+      <div class="si-hint" id="si-hint" hidden></div>
+      <label class="f" for="si-pw">Password</label>
+      ${siPwField('si-pw', 'new-password', 'Password')}
+      <div class="meter" id="si-meter" data-s="0" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      <ul class="rules" id="si-rules"></ul>
+      ${rem ? '<div class="si-ok" id="si-age-row"><span aria-hidden="true">✓</span> You confirmed you are 21 or older on this device.</div>'
+        : `<label class="ck" id="si-age-row" for="si-age"><input id="si-age" type="checkbox" ${SI.age ? 'checked' : ''} onchange="SI.age=this.checked;siAgeChanged()"><span>I am 21 or older and understand WIN AI is analytics, not betting advice.</span></label>`}
+      <div class="err" id="si-err" role="alert" hidden></div>
+      <button type="button" class="acct-go" id="si-go" onclick="siSubmit()">${SI.busy ? 'Creating…' : 'Create account'}</button>
+      <p class="note">We email you <b style="color:var(--muted2)">after</b> you sign up, to confirm your address. Nothing is sent before.</p>
+      <div class="or"><span>or</span></div>
+      ${siGoogleBlock(hasG)}
+      <div class="si-links" style="margin-top:14px"><span class="note" style="margin:0">Already have an account?</span><button type="button" class="si-link" onclick="siGo('login')">Sign in</button></div>`;
+  } else if (SI.step === 'created') {
+    const prov = mailProvider(SI.email.trim()), u = AUTH.user;
+    const confirmed = !!u?.emailVerified, mailOn = !!M.mail;
+    body = `<h2>You're in</h2><p>Your account is ready and you're signed in.</p>
+      <div class="signedin"><span class="acct-av">${escapeHtml((SI.email.trim()[0] || 'U').toUpperCase())}</span><div style="min-width:0"><b style="font-weight:600;display:block;overflow:hidden;text-overflow:ellipsis">${escapeHtml(SI.email.trim())}</b><span class="note" style="margin:0" id="si-conf-state">${confirmed ? '<span style="color:#9ee0bd">✓ Email confirmed</span>' : 'Email not confirmed yet'}</span></div></div>
+      ${confirmed ? '' : !mailOn ? '<div class="mail"><div><b>Email is not set up on this server yet</b><div class="note" style="margin-top:2px">You can use WIN AI now. Confirming your address will be possible once email is set up.</div></div></div>'
+        : `<div class="mail"><div><b>${SI.emailSent ? 'We just sent a confirmation link' : "We couldn't send the confirmation email"}</b><div class="note" style="margin-top:2px">${SI.emailSent ? 'Tap it to confirm this address. You need a confirmed email to subscribe and to reset a password.' : 'Tap Send it again, or try later from your account menu.'}</div></div></div>
+        ${prov && SI.emailSent ? `<a class="acct-go" href="${escapeHtml(prov.url)}" target="_blank" rel="noopener">Open ${escapeHtml(prov.name)}</a>` : ''}
+        ${SI.devLink ? `<a class="acct-go" href="${escapeHtml(SI.devLink)}" target="_blank" rel="noopener" style="background:var(--surface2);border-color:var(--border2);color:var(--muted2)">Open the confirmation link (development only)</a>` : ''}
+        <button type="button" class="acct-alt" id="si-resend" onclick="siResendConfirm()" disabled>Send it again</button>`}
+      <button type="button" class="acct-${confirmed || !mailOn ? 'go' : 'alt'}" onclick="siFinishCreated()">Continue to WIN AI</button>
+      ${confirmed || !mailOn ? '' : '<p class="note" style="text-align:center">Can\'t find it? Check your spam or promotions folder.</p>'}`;
+  } else if (SI.step === 'forgot') {
+    body = `<h2>Reset password</h2><p>Enter your email and we'll send a link to choose a new password.</p>
+      <label class="f" for="si-email">Email</label>
+      <input id="si-email" type="email" inputmode="email" enterkeyhint="send" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" value="${escapeHtml(SI.email)}" placeholder="you@example.com" oninput="SI.email=this.value;siClearErr('email')" onkeydown="if(event.key==='Enter'){event.preventDefault();siSubmit()}">
+      <div class="err" id="si-err" role="alert" hidden></div>
+      <button type="button" class="acct-go" id="si-go" onclick="siSubmit()">${SI.busy ? 'Sending…' : 'Email me a reset link'}</button>
+      <button type="button" class="acct-alt" onclick="siGo('login')">Back to sign in</button>`;
+  } else if (SI.step === 'forgot_sent') {
+    const mailOn = !!M.mail;
+    body = `<h2>Check your email</h2>
+      <p>${mailOn ? `If an account uses <b style="color:var(--text)">${escapeHtml(SI.email.trim())}</b>, we sent a link to choose a new password. It works once and expires in 30 minutes.` : 'Email is not set up on this server yet, so a reset link cannot be sent.'}</p>
+      ${mailOn ? '<div class="mail"><div><b>Nothing arrived?</b><div class="note" style="margin-top:2px">Check spam, and make sure it is the address you signed up with.</div></div></div>' : ''}
+      ${SI.devLink ? `<a class="acct-go" href="${escapeHtml(SI.devLink)}" target="_blank" rel="noopener">Open the reset link (development only)</a>` : ''}
+      <button type="button" class="acct-alt" onclick="siGo('login')">Back to sign in</button>`;
   } else if (SI.step === 'upgrade') {
     const P = _plans || {}, price = P.price?.label;
     const head = { analyzer: 'Run unlimited analyses', prop_list: 'Save props to your Prop List', prop_board: 'See every prop on the board', general: 'Go Pro' }[SI.upFeature] || 'Go Pro';
@@ -5258,7 +5360,7 @@ function renderSignin() {
         <li>The full Prop Board, every prop and not only the top ones</li>
         <li>New Pro tools as they ship</li></ul>
       ${price ? `<div class="up-price">${escapeHtml(price.split(' / ')[0])}<small>per ${escapeHtml(price.split(' / ')[1] || 'month')}</small></div>` : ''}
-      ${SI.err ? `<div class="err">${escapeHtml(SI.err)}</div>` : ''}
+      ${SI.err ? `<div class="err">${escapeHtml(SI.err)}${SI.needConfirm ? '<button type="button" class="si-link" style="display:block;margin-top:8px;color:#ffd0d0" onclick="acctResendConfirm()">Send the confirmation email again</button>' : ''}</div>` : ''}
       <button type="button" class="acct-go" onclick="upCheckout()">${SI.busy ? 'Opening checkout…' : 'Continue to checkout'}</button>
       <button type="button" class="acct-alt" onclick="siClose()">Not now</button>
       <p class="note">Secure checkout by Stripe. Cancel any time from Manage subscription.</p>`;
@@ -5274,101 +5376,119 @@ function renderSignin() {
       ${SI.err ? `<div class="err">${escapeHtml(SI.err)}</div>` : ''}
       <button type="button" class="acct-go danger" id="si-del" onclick="acctDelete()">${SI.busy ? 'Deleting…' : 'Yes, delete everything'}</button>
       <button type="button" class="acct-alt" onclick="siClose()">Keep my account</button>`;
-  } else {
-    const save = SI.reason === 'save' && pend;
-    const remembered = ageRemembered();
-    body = `<h2>${save ? 'Save this prop' : 'Sign in'}</h2>
-      <p>${save ? 'Sign in once and your saved props stay with you on any device.' : 'Browsing needs no account. Sign in to keep a Prop List of your own.'}</p>
-      ${save ? `<div class="mini"><span class="acct-av">${escapeHtml(String(pend.player).split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase())}</span><span><b style="font-weight:600">${escapeHtml(pend.player)}</b> <span style="color:var(--muted)">${escapeHtml(verdictWord)} ${escapeHtml(String(pend.line))} ${escapeHtml(String(pend.propType || '').toUpperCase())}</span></span></div>` : ''}
-      ${hasG ? `<div class="g-wrap" id="g-wrap"><button type="button" class="g-btn" id="g-btn" onclick="siGoogleTap()">${G_LOGO}<span>Continue with Google</span></button><div class="g-over" id="g-over"></div></div>` : ''}
-      ${hasG && hasE ? '<div class="or"><span>or use your email</span></div>' : ''}
-      ${hasE ? `<label class="f" for="si-email" ${hasG ? 'style="margin-top:0"' : ''}>Email</label>
-      <input id="si-email" type="email" inputmode="email" enterkeyhint="send" autocomplete="email" autocapitalize="off" autocorrect="off" spellcheck="false" value="${escapeHtml(SI.email)}" placeholder="you@example.com" oninput="SI.email=this.value;siTyping()" onkeydown="if(event.key==='Enter'){event.preventDefault();siSubmit()}">
-      <div class="si-hint" id="si-hint" hidden></div>` : ''}
-      ${remembered ? '<div class="si-ok" id="si-age-row"><span aria-hidden="true">✓</span> You confirmed you are 21 or older on this device.</div>'
-        : `<label class="ck" id="si-age-row" for="si-age"><input id="si-age" type="checkbox" ${SI.age ? 'checked' : ''} onchange="SI.age=this.checked;siAgeChanged()"><span>I am 21 or older and understand WIN AI is analytics, not betting advice.</span></label>`}
-      <div class="err" id="si-err" role="alert" hidden></div>
-      ${hasE ? `<button type="button" class="acct-go" id="si-go" onclick="siSubmit()">${SI.busy ? 'Sending…' : 'Email me a sign-in link'}</button>` : ''}
-      <button type="button" class="acct-alt" onclick="siClose()">${save ? 'Keep browsing' : 'Cancel'}</button>
-      <p class="note">${hasE ? 'No password. ' : ''}We only use your email to sign you in.</p>`;
   }
   const wrap = document.createElement('div');
   wrap.id = 'acct-modal'; wrap.className = 'acct-scrim';
   wrap.innerHTML = `<div class="acct-sheet" role="dialog" aria-modal="true" aria-label="Sign in">${body}</div>`;
   wrap.addEventListener('mousedown', e => { if (e.target === wrap) siClose(); });
   document.body.appendChild(wrap);
-  if (SI.step === 'form' || !SI.step) { siPaintErr(); siTyping(true); siAgeChanged(); if (hasG) mountGoogle(); }
-  if (SI.step === 'sent') { siStartTimers(); }
-  (document.getElementById('si-email') || wrap.querySelector('a.acct-go, button'))?.focus({ preventScroll: true });
+  if (['login', 'signup', 'forgot'].includes(SI.step)) { siPaintErr(); siAgeChanged(); if (SI.step === 'signup') { siTyping(); siPwTyping(); } if (SI.step !== 'forgot' && hasG) mountGoogle(); }
+  if (SI.step === 'created') siStartCreatedTimers();
+  const focusId = SI.step === 'signup' ? 'si-name' : (SI.step === 'login' && SI.email ? 'si-pw' : 'si-email');
+  (document.getElementById(focusId) || wrap.querySelector('a.acct-go, button'))?.focus({ preventScroll: true });
 }
 
 // An inline message under the field that needs attention, instead of a button that silently does nothing.
 function siShowErr(field, msg) { SI.err = msg; SI.errField = field; siPaintErr(); }
+function siClearErr(field) { if (SI.errField === field && SI.err) { SI.err = ''; SI.errField = ''; SI.showReset = false; siPaintErr(); } }
 function siPaintErr() {
-  const box = document.getElementById('si-err'); if (!box) return;
-  box.textContent = SI.err || ''; box.hidden = !SI.err;
-  document.getElementById('si-email')?.classList.toggle('bad', SI.errField === 'email' && !!SI.err);
-  document.getElementById('si-age-row')?.classList.toggle('bad', SI.errField === 'age' && !!SI.err);
+  const box = document.getElementById('si-err');
+  if (box) {
+    box.textContent = SI.err || ''; box.hidden = !SI.err;
+    if (SI.err && SI.showReset) { const b = document.createElement('button'); b.type = 'button'; b.className = 'si-link'; b.style.cssText = 'display:block;margin-top:8px;color:#ffd0d0'; b.textContent = 'Reset my password'; b.onclick = () => siGo('forgot'); box.appendChild(b); }
+  }
+  const f = SI.errField;
+  document.getElementById('si-name')?.classList.toggle('bad', f === 'name' && !!SI.err);
+  document.getElementById('si-email')?.classList.toggle('bad', f === 'email' && !!SI.err);
+  document.getElementById('si-pw')?.classList.toggle('bad', (f === 'password' || f === 'pw') && !!SI.err);
+  document.getElementById('si-age-row')?.classList.toggle('bad', f === 'age' && !!SI.err);
+  document.getElementById('si-gage')?.classList.toggle('bad', f === 'gage' && !!SI.err);
 }
-function siTyping(quiet) {
-  if (!quiet && SI.errField === 'email') { SI.err = ''; SI.errField = ''; siPaintErr(); }
+function siToggleShow() { SI.show = !SI.show; const i = document.getElementById('si-pw'), b = document.querySelector('.acct-sheet .eye'); if (i) i.type = SI.show ? 'text' : 'password'; if (b) { b.textContent = SI.show ? 'Hide' : 'Show'; b.setAttribute('aria-label', (SI.show ? 'Hide' : 'Show') + ' password'); } i?.focus(); }
+function siTyping() {
   const hint = document.getElementById('si-hint'); if (!hint) return;
   const fix = typoFix(SI.email);
-  hint.hidden = !fix;
-  hint.innerHTML = fix ? `Did you mean <button type="button" class="si-fix" onclick="siUseFix()">${escapeHtml(fix)}</button>?` : '';
+  hint.hidden = !fix; hint.innerHTML = fix ? `Did you mean <button type="button" class="si-fix" onclick="siUseFix()">${escapeHtml(fix)}</button>?` : '';
 }
-function siUseFix() { const f = typoFix(SI.email); if (!f) return; SI.email = f; const i = document.getElementById('si-email'); if (i) { i.value = f; i.focus(); } siTyping(); }
+function siUseFix() { const f = typoFix(SI.email); if (!f) return; SI.email = f; const i = document.getElementById('si-email'); if (i) { i.value = f; i.focus(); } siTyping(); siPwTyping(); }
+function siPwTyping() {
+  if (SI.errField === 'password' || SI.errField === 'pw') { SI.err = ''; SI.errField = ''; SI.showReset = false; siPaintErr(); }
+  const ul = document.getElementById('si-rules'); if (!ul) return;
+  const r = pwRules(SI.pw, SI.email, SI.name);
+  ul.innerHTML = r.map(([t, ok]) => `<li class="${ok ? 'ok' : ''}">${t}</li>`).join('');
+  document.getElementById('si-meter')?.setAttribute('data-s', pwStrength(SI.pw, SI.email, SI.name));
+}
 function siAgeChanged() {
-  if (SI.age && SI.errField === 'age') { SI.err = ''; SI.errField = ''; siPaintErr(); }
+  if (SI.age && (SI.errField === 'age' || SI.errField === 'gage')) { SI.err = ''; SI.errField = ''; siPaintErr(); }
   // Google's button is only live once the 21+ box is ticked, so the first tap explains instead of failing later.
   const over = document.getElementById('g-over'); if (over) over.style.pointerEvents = (SI.age || ageRemembered()) ? 'auto' : 'none';
 }
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && SI.open) siClose(); });
 
-async function siRequestLink() {
-  const r = await fetch('/api/auth/request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: SI.email.trim(), ageConfirmed: SI.age || ageRemembered() }) });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) { const e = new Error(j.error || 'Could not send the link. Try again.'); e.code = j.code; throw e; }
-  return j;
-}
-function siStashPending() { if (SI.pending) lsSet('winai_pending_save', JSON.stringify({ p: SI.pending, t: Date.now() })); }
 async function siSubmit() {
   if (SI.busy) return;
   const email = SI.email.trim();
-  if (!EMAIL_RE.test(email)) { siShowErr('email', 'Enter a valid email address, like you@example.com.'); document.getElementById('si-email')?.focus(); return; }
-  if (!(SI.age || ageRemembered())) { siShowErr('age', 'Please confirm you are 21 or older to continue.'); return; }
-  SI.busy = true; SI.err = ''; SI.errField = ''; const go = document.getElementById('si-go'); if (go) { go.textContent = 'Sending…'; go.disabled = true; }
-  try {
-    const j = await siRequestLink();
-    lsSet('winai_last_email', email); lsSet('winai_age_ok', '1'); siStashPending();
-    Object.assign(SI, { step: 'sent', devLink: j.devLink || null, resendAt: Date.now() + 30000, sentAt: Date.now() });
-  } catch (e) { SI.busy = false; if (go) { go.textContent = 'Email me a sign-in link'; go.disabled = false; } siShowErr(e.code === 'age_required' ? 'age' : 'email', e.message); return; }
-  SI.busy = false; renderSignin();
+  if (SI.step === 'forgot') {
+    if (!EMAIL_RE.test(email)) return siShowErr('email', 'Enter your email address, like you@example.com.');
+    return siRun(async () => {
+      const x = await postJson('/api/auth/forgot', { email });
+      if (!x.ok) return siShowErr('email', x.j.error || 'Could not send the link. Try again.');
+      lsSet('winai_last_email', email); Object.assign(SI, { step: 'forgot_sent', devLink: x.j.devLink || null }); renderSignin();
+    }, 'si-go', 'Sending…', 'Email me a reset link');
+  }
+  if (SI.step === 'login') {
+    if (!EMAIL_RE.test(email)) { siShowErr('email', 'Enter your email address, like you@example.com.'); return document.getElementById('si-email')?.focus(); }
+    if (!SI.pw) { siShowErr('pw', 'Enter your password.'); return document.getElementById('si-pw')?.focus(); }
+    return siRun(async () => {
+      const x = await postJson('/api/auth/login', { email, password: SI.pw });
+      if (!x.ok) { SI.showReset = !!x.j.locked || x.status === 401; return siShowErr('pw', x.j.error || 'Could not sign in. Try again.'); }
+      lsSet('winai_last_email', email);
+      try { sessionStorage.setItem('winai_welcome', 'back'); } catch (_) {}
+      SI.pw = ''; await refreshMe(); siClose(); afterAuthLoaded();
+    }, 'si-go', 'Signing in…', 'Sign in');
+  }
+  if (SI.step === 'signup') {
+    if (!(SI.name || '').trim()) { siShowErr('name', 'Enter your first name.'); return document.getElementById('si-name')?.focus(); }
+    if (!EMAIL_RE.test(email)) { siShowErr('email', 'Enter a valid email address, like you@example.com.'); return document.getElementById('si-email')?.focus(); }
+    const bad = pwRules(SI.pw, email, SI.name).filter(x => !x[1]);
+    if (bad.length) { siShowErr('password', 'Your password needs: ' + bad.map(x => x[0].toLowerCase()).join(', ') + '.'); return document.getElementById('si-pw')?.focus(); }
+    if (!(SI.age || ageRemembered())) return siShowErr('age', 'Please confirm you are 21 or older to create an account.');
+    return siRun(async () => {
+      const x = await postJson('/api/auth/signup', { name: SI.name.trim(), email, password: SI.pw, ageConfirmed: true });
+      if (!x.ok) {
+        const f = x.j.field === 'password' ? 'password' : (x.j.field || 'email');
+        return siShowErr(f, x.j.error || 'Could not create the account. Try again.');   // an address already in use shows "Email is already taken" in red
+      }
+      lsSet('winai_last_email', email); lsSet('winai_age_ok', '1'); siStashPending();
+      SI.pw = ''; await refreshMe();
+      Object.assign(SI, { step: 'created', emailSent: !!x.j.emailSent, devLink: x.j.devLink || null, resendAt: Date.now() + 30000 }); renderSignin();
+    }, 'si-go', 'Creating…', 'Create account');
+  }
 }
-async function siResend() {
+// Runs a submit with the button showing progress, and always puts it back afterwards.
+async function siRun(fn, btnId, busyText, idleText) {
+  SI.busy = true; const b = document.getElementById(btnId); if (b) { b.disabled = true; b.textContent = busyText; }
+  try { await fn(); } catch (_) { siShowErr('email', 'Could not reach the server. Check your connection and try again.'); }
+  SI.busy = false; const b2 = document.getElementById(btnId); if (b2) { b2.disabled = false; b2.textContent = idleText; }
+}
+function siStashPending() { if (SI.pending) lsSet('winai_pending_save', JSON.stringify({ p: SI.pending, t: Date.now() })); }
+function siFinishCreated() { siClose(); afterAuthLoaded(); }
+async function siResendConfirm() {
   const b = document.getElementById('si-resend'); if (!b || b.disabled) return;
   b.disabled = true; b.textContent = 'Sending…';
-  try { const j = await siRequestLink(); SI.devLink = j.devLink || SI.devLink; SI.resendAt = Date.now() + 30000; acctToast('Sent again'); }
-  catch (e) { acctToast(e.message); SI.resendAt = Date.now() + 10000; }
-  renderSignin();
+  try { const x = await postJson('/api/auth/resend-confirmation', {}); if (x.ok) { SI.emailSent = true; SI.devLink = x.j.devLink || SI.devLink; acctToast('Confirmation email sent again'); } else acctToast(x.j.error || 'Could not send it. Try again.'); } catch (_) { acctToast('Could not reach the server.'); }
+  SI.resendAt = Date.now() + 30000; renderSignin();
 }
-// While the "check your inbox" screen is open: count down the resend button, and watch for the link being used in
-// another tab on this device, so this screen signs itself in without a refresh.
-function siStartTimers() {
+// While the "You're in" screen is open: count down the resend button, and notice when the confirmation link is used
+// (possibly on another device) so the screen updates itself.
+function siStartCreatedTimers() {
   siStopTimers();
-  const paint = () => {
-    const b = document.getElementById('si-resend'); if (!b) return;
-    const left = Math.ceil((SI.resendAt - Date.now()) / 1000);
-    b.disabled = left > 0; b.textContent = left > 0 ? `Send again in ${left}s` : 'Send the link again';
-  };
+  const paint = () => { const b = document.getElementById('si-resend'); if (!b) return; const left = Math.ceil((SI.resendAt - Date.now()) / 1000); b.disabled = left > 0; b.textContent = left > 0 ? `Send again in ${left}s` : 'Send it again'; };
   paint(); SI.tick = setInterval(paint, 1000);
-  const check = async () => {
-    if (!SI.open || SI.step !== 'sent') return siStopTimers();
-    if (Date.now() - SI.sentAt > 16 * 60 * 1000) return siStopTimers();
-    try { const j = await fetch('/api/auth/me', { cache: 'no-store' }).then(r => r.json()); if (j.user) { siStopTimers(); applyMe(j); siClose(); paintAccount(); paintQuota(); acctToast('Signed in'); afterAuthLoaded(); } } catch (_) {}
-  };
-  SI.poll = setInterval(check, 3000);
-  document.addEventListener('visibilitychange', function once() { if (!SI.open || SI.step !== 'sent') { document.removeEventListener('visibilitychange', once); return; } if (!document.hidden) check(); });
+  SI.poll = setInterval(async () => {
+    if (!SI.open || SI.step !== 'created') return siStopTimers();
+    try { const j = await fetch('/api/auth/me', { cache: 'no-store' }).then(r => r.json()); if (j.user?.emailVerified) { siStopTimers(); applyMe(j); paintAccount(); renderSignin(); } } catch (_) {}
+  }, 3000);
 }
 
 // ── Google ──
@@ -5390,7 +5510,11 @@ async function mountGoogle() {
   SI.gReady = true;
 }
 function siGoogleTap() {   // only reached when Google's own button is not on top: not ticked yet, or not loaded
-  if (!(SI.age || ageRemembered())) { siShowErr('age', 'Tick the box to confirm you are 21 or older, then tap Google.'); return; }
+  if (!(SI.age || ageRemembered())) {
+    SI.ageRow = true; const row = document.getElementById('si-gage'); if (row) row.hidden = false;
+    const onSignup = SI.step === 'signup';
+    siShowErr(onSignup ? 'age' : 'gage', 'Tick the box to confirm you are 21 or older, then tap Google.'); return;
+  }
   siShowErr('google', SI.gFailed ? "Google sign-in couldn't load. Check your connection or use email instead." : 'Google sign-in is still loading. Try again in a moment.');
 }
 async function onGoogleCredential(resp) {
@@ -5402,9 +5526,13 @@ async function onGoogleCredential(resp) {
     lsSet('winai_age_ok', '1');
     try { sessionStorage.setItem('winai_welcome', j.created ? 'new' : 'back'); } catch (_) {}
     SI.busy = false; await refreshMe(); siClose(); afterAuthLoaded();
-  } catch (e) { SI.busy = false; if (b) b.classList.remove('busy'); siShowErr(e.code === 'age_required' ? 'age' : 'google', e.message); }
+  } catch (e) { SI.busy = false; if (b) b.classList.remove('busy'); siShowErr(e.code === 'age_required' ? (SI.step === 'signup' ? 'age' : 'gage') : (SI.step === 'signup' ? 'password' : 'pw'), e.message); }
 }
 
+async function acctResendConfirm() {
+  try { const x = await postJson('/api/auth/resend-confirmation', {}); acctToast(x.ok ? (x.j.alreadyConfirmed ? 'Your email is already confirmed' : 'Confirmation email sent') : (x.j.error || 'Could not send it. Try again.')); }
+  catch (_) { acctToast('Could not reach the server.'); }
+}
 async function acctSignOut() {
   try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (_) {}
   AUTH.user = null; AUTH.plan = null; AUTH.billing = null; AUTH.quota = null; betslip.length = 0; updateBetslipCount(); paintAccount(); paintQuota();
@@ -5466,7 +5594,7 @@ async function upCheckout() {
   if (SI.busy) return;
   SI.busy = true; SI.err = ''; renderSignin();
   try { const r = await apiPost('/api/billing/checkout', {}); location.href = r.url; return; }
-  catch (e) { SI.err = e.message; }
+  catch (e) { SI.err = e.message; SI.needConfirm = e.code === 'email_unverified'; }
   SI.busy = false; renderSignin();
 }
 async function openPortal() {
@@ -5505,7 +5633,7 @@ function paintQuota() {
   }
 }
 function applyMe(j) {
-  AUTH.enabled = !!j.enabled; AUTH.methods = j.methods || { email: true, google: null }; AUTH.user = j.user || null; AUTH.maxProps = j.maxProps || 300;
+  AUTH.enabled = !!j.enabled; AUTH.methods = j.methods || { password: true, mail: false, google: null }; AUTH.user = j.user || null; AUTH.maxProps = j.maxProps || 300;
   AUTH.paywall = !!j.paywall; AUTH.plan = j.plan || null; AUTH.billing = j.billing || null; AUTH.quota = j.quota || null;
 }
 async function refreshMe() {

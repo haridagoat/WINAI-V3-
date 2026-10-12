@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>WIN AI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@700;800&family=Barlow+Semi+Condensed:wght@600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0a0a0b;--surface:#111113;--surface2:#18181b;--surface3:#202024;--border:rgba(255,255,255,.09);--border2:rgba(255,255,255,.17);--text:#ececee;--muted:#9a9aa3;--muted2:#c4c4cb;--dim:#6f6f78;--pos:#4cb47e;--neg:#ffb3b3;--neg-bg:#2a1414;--neg-line:#7a2f2f;--pos-bg:#12261b;--pos-line:#2a6b47;
+  --display:'Barlow Condensed','Arial Narrow',Impact,sans-serif;--label:'Barlow Semi Condensed','Barlow',system-ui,sans-serif;--body:'Barlow',system-ui,-apple-system,'Segoe UI',sans-serif;color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{background:var(--bg);color:var(--text);margin:0;min-height:100%}
+body{font-family:var(--body);font-size:15px;line-height:1.45;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px 16px}
+.card{width:100%;max-width:420px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:26px}
+.logo{font-family:var(--display);font-weight:800;font-size:26px;letter-spacing:.06em}
+h1{font-family:var(--display);font-weight:800;font-size:30px;letter-spacing:.05em;text-transform:uppercase;margin:18px 0 6px;line-height:1}
+p{color:var(--muted);margin:0 0 18px}
+label{display:block;font-family:var(--label);font-weight:700;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:16px 0 6px}
+.pw{position:relative}
+input{width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:9px;padding:12px 64px 12px 13px;font-size:16px;color:var(--text);font-family:inherit}
+input.bad{border-color:var(--neg-line);box-shadow:0 0 0 3px rgba(255,93,93,.12)}
+.eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:auto;background:none;border:0;padding:6px 8px;font-family:var(--label);font-weight:700;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted2);cursor:pointer}
+.eye:hover{background:none}
+.go{display:block;width:100%;margin-top:16px;background:#e6e6ea;border:1px solid #e6e6ea;color:#0a0a0b;border-radius:9px;padding:12px 18px;font-family:var(--label);font-weight:700;font-size:14px;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;text-align:center;text-decoration:none}
+.go:hover{background:#fff}.go[disabled]{background:var(--surface3);border-color:var(--border);color:var(--dim);cursor:not-allowed}
+.go:focus-visible,a:focus-visible,input:focus-visible,.eye:focus-visible{outline:2px solid var(--muted2);outline-offset:2px}
+a.alt{display:block;text-align:center;margin-top:14px;color:var(--muted2);font-family:var(--label);font-weight:600;font-size:13px;letter-spacing:.1em;text-transform:uppercase}
+.err{background:var(--neg-bg);border:1px solid var(--neg-line);color:#ffd0d0;border-radius:10px;padding:11px 13px;margin-top:16px;font-size:14px}
+.ok{background:var(--pos-bg);border:1px solid var(--pos-line);color:#bfeed3;border-radius:10px;padding:11px 13px;margin-top:16px;font-size:14px}
+.rules{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:3px;font-size:13px;color:var(--muted)}
+.rules li::before{content:"○";margin-right:8px;color:var(--dim)}
+.rules li.ok{color:var(--muted2)}.rules li.ok::before{content:"✓";color:var(--pos)}
+</style>
+</head>
+<body>
+<main class="card">
+  <div class="logo">WIN AI</div>
+  <h1 id="h">One moment</h1>
+  <p id="p"></p>
+  <div id="reset" hidden>
+    <label for="pw">New password</label>
+    <div class="pw"><input id="pw" type="password" autocomplete="new-password" autocapitalize="off" spellcheck="false" aria-describedby="rules"><button type="button" class="eye" id="eye" aria-label="Show password">Show</button></div>
+    <ul class="rules" id="rules"><li id="r1">At least 10 characters</li><li id="r2">Not a commonly used password</li></ul>
+  </div>
+  <div class="err" id="err" role="alert" hidden></div>
+  <div class="ok" id="okbox" hidden></div>
+  <button class="go" id="go" type="button" hidden></button>
+  <a class="alt" id="back" href="/" hidden>Back to WIN AI</a>
+</main>
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var kind = location.pathname.indexOf('/auth/reset') === 0 ? 'reset' : 'confirm';
+  var token = new URLSearchParams(location.search).get('t') || '';
+  try { history.replaceState(null, '', location.pathname); } catch (_) {}          // keep the one-time token out of history
+  var COMMON = ['password','passw0rd','password1','password12','password123','password1234','qwertyuiop','qwerty123','1234567890','12345678910','1111111111','iloveyou123','letmein123','welcome123','admin12345','abcdefghij'];
+  function show(id, on) { $(id).hidden = !on; }
+  function fail(msg) { $('err').textContent = msg; show('err', true); }
+  function dead(msg) { $('h').textContent = 'Link not valid'; $('p').textContent = 'Go back and ask for a new one.'; show('reset', false); show('go', false); show('okbox', false); fail(msg); show('back', true); }
+  function post(path, body) {
+    return fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, j: j }; }); });
+  }
+  if (!token) return dead('This page needs the link from your email.');
+
+  if (kind === 'confirm') {
+    $('h').textContent = 'Confirm your email';
+    $('p').textContent = 'Tap the button to confirm that this address is yours.';
+    var go = $('go'); go.textContent = 'Confirm email'; show('go', true);
+    go.addEventListener('click', function () {
+      go.disabled = true; go.textContent = 'Confirming…'; show('err', false);
+      post('/api/auth/confirm', { token: token }).then(function (x) {
+        if (!x.ok) return dead(x.j.error || 'Could not confirm. Try again.');
+        $('h').textContent = 'Email confirmed'; $('p').textContent = 'Thanks. Your address is confirmed, and you can subscribe and reset your password if you ever need to.';
+        show('go', false); show('back', true); $('back').textContent = 'Continue to WIN AI';
+        if (x.j.signedIn) setTimeout(function () { location.replace('/'); }, 1500);
+      }).catch(function () { go.disabled = false; go.textContent = 'Try again'; fail('Could not reach the server. Check your connection and try again.'); });
+    });
+    return;
+  }
+
+  // reset
+  $('h').textContent = 'Choose a new password';
+  $('p').textContent = "You'll be signed in on this device, and signed out everywhere else.";
+  show('reset', true);
+  var pw = $('pw'), go2 = $('go'); go2.textContent = 'Save new password'; show('go', true);
+  function rules() { var v = pw.value; $('r1').className = v.length >= 10 ? 'ok' : ''; $('r2').className = v.length > 0 && COMMON.indexOf(v.toLowerCase()) < 0 ? 'ok' : ''; }
+  pw.addEventListener('input', function () { rules(); pw.classList.remove('bad'); show('err', false); });
+  pw.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); save(); } });
+  $('eye').addEventListener('click', function () { var t = pw.type === 'password'; pw.type = t ? 'text' : 'password'; $('eye').textContent = t ? 'Hide' : 'Show'; $('eye').setAttribute('aria-label', t ? 'Hide password' : 'Show password'); });
+  function save() {
+    if (go2.disabled) return;
+    if (pw.value.length < 10) { pw.classList.add('bad'); fail('Your password needs at least 10 characters.'); pw.focus(); return; }
+    go2.disabled = true; go2.textContent = 'Saving…'; show('err', false);
+    post('/api/auth/reset', { token: token, password: pw.value }).then(function (x) {
+      if (x.ok) { try { sessionStorage.setItem('winai_welcome', 'back'); } catch (_) {} $('h').textContent = 'Password updated'; $('p').textContent = "You're signed in with your new password. Other devices were signed out."; show('reset', false); show('go', false); show('err', false); $('okbox').textContent = 'Taking you back to WIN AI…'; show('okbox', true); setTimeout(function () { location.replace('/'); }, 1200); return; }
+      go2.disabled = false; go2.textContent = 'Save new password';
+      if (x.j.code === 'link_invalid') return dead(x.j.error);
+      pw.classList.add('bad'); fail(x.j.error || 'Could not save the password. Try again.'); pw.focus();
+    }).catch(function () { go2.disabled = false; go2.textContent = 'Save new password'; fail('Could not reach the server. Check your connection and try again.'); });
+  }
+  go2.addEventListener('click', save);
+  pw.focus();
+})();
+</script>
+</body>
+</html>
