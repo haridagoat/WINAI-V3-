@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const E = require('../lib/emails');
 
 const LINK = 'https://winai.example/auth/confirm?t=' + 'A'.repeat(43);
-for (const [name, fn, subject, mins] of [['confirmation', E.confirmEmail, /^Confirm your email/, '24 hours'], ['reset', E.resetEmail, /^Reset your WIN AI password/, '30 minutes']]) {
+for (const [name, fn, subject, mins] of [['confirmation', E.confirmEmail, /^Welcome to WIN AI/, '24 hours'], ['reset', E.resetEmail, /^Reset your WIN AI password/, '30 minutes']]) {
   test(`${name} email: link, expiry, ignore line and the plain-text twin`, () => {
     const m = fn({ link: LINK, email: 'maya@example.com' });
     assert.match(m.subject, subject);
@@ -24,4 +24,26 @@ test('the reset email never says the account exists or shows a password', () => 
   const m = E.resetEmail({ link: LINK, email: 'maya@example.com' });
   assert.ok(!/password is /i.test(m.text));
   assert.match(m.text, /Your password has not changed/);
+});
+
+test('the confirmation email greets the person by first name and opens with "Tap to confirm"', () => {
+  const m = E.confirmEmail({ link: LINK, email: 'maya@example.com', name: 'Maya' });
+  assert.ok(m.html.includes('Welcome, Maya'));
+  assert.ok(m.text.startsWith('Welcome, Maya.'));
+  assert.ok(m.html.includes('Tap to confirm that <b>maya@example.com</b> is your email address.'));
+  assert.ok(m.text.includes('Tap to confirm that maya@example.com is your email address:'));
+  assert.ok(!m.html.includes('Confirm your email</h1>'));
+});
+test('without a name the greeting still reads naturally', () => {
+  for (const name of [undefined, null, '', '   ', '\u0000<>']) {
+    const m = E.confirmEmail({ link: LINK, email: 'maya@example.com', name });
+    assert.ok(m.html.includes('Welcome to WIN AI</h1>'), JSON.stringify(name));
+    assert.ok(m.text.startsWith('Welcome to WIN AI.'));
+  }
+});
+test('a name cannot inject markup and is kept short', () => {
+  const m = E.confirmEmail({ link: LINK, email: 'a@b.com', name: '<img src=x onerror=alert(1)>Maya' });
+  assert.ok(!m.html.includes('<img'));
+  assert.equal(E.firstName('x'.repeat(100)).length, 40);
+  assert.equal(E.firstName('  Mary   Ann \n Lee '), 'Mary Ann Lee');
 });
