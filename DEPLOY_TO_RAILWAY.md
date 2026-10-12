@@ -192,3 +192,10 @@ node scripts/restore-backup.js restore restored.db
 ```
 
 Then stop the app, replace `winai.db` with `restored.db` (delete `winai.db-wal` and `winai.db-shm`), and start it again. The script never overwrites an existing file.
+
+## Errors and uptime alerts
+
+Two settings tell you when something breaks. Both are free to set up, and the admin page (Data checks) flags them as "needs you" once real people have accounts and either is missing.
+
+1. **Errors:** make a Discord or Slack channel webhook and put its address in `ADMIN_ALERT_WEBHOOK`. Every server error, crash and error in someone's browser is written to the admin page (grouped, with emails and tokens removed) and one message per new problem is sent to the webhook. At most 5 messages an hour, so a bad day never floods your phone.
+2. **Site down:** a site that is down cannot message you, so something outside has to notice the silence. Make a free check at healthchecks.io (period 5 minutes, grace 10), copy its ping URL into `HEARTBEAT_URL`, and add your phone or email as its alert channel. The app pings it every 5 minutes. As an alternative, point any uptime watcher (UptimeRobot, Better Stack) at `https://your-site/api/ping`, which answers `{"ok":true}` only when the database is working.

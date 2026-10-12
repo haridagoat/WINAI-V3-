@@ -1728,6 +1728,17 @@
 <p class="rg-foot">WIN AI is analytics, not betting advice. Must be 21+. If gambling is a problem, call <a href="tel:18004262537">1-800-GAMBLER</a>.</p>
 
 <script>
+// Tells the owner when the page breaks for someone: a short, scrubbed message, at most 3 per page load.
+(function () {
+  let sent = 0;
+  const quiet = /Failed to fetch|NetworkError|Load failed|AbortError|ResizeObserver|Script error/i;
+  const send = (message, at) => {
+    message = String(message || '').slice(0, 200); if (sent >= 3 || !message || quiet.test(message)) return; sent++;
+    try { fetch('/api/client-error', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message, at: String(at || '').slice(0, 60), page: location.pathname }), keepalive: true }).catch(() => {}); } catch (_) {}
+  };
+  window.addEventListener('error', e => { if (e.target && e.target !== window) return; send(e.message, `${String(e.filename || '').split('/').pop()}:${e.lineno}`); });
+  window.addEventListener('unhandledrejection', e => send('Unhandled promise: ' + (e.reason && e.reason.message || e.reason), ''));
+})();
 // History used to be a plain in-memory array — every refresh silently
 // wiped it. Persisted to localStorage instead; capped at 30 entries since
 // each one carries the full ctx/raw analysis text.

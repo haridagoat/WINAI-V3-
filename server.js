@@ -27,6 +27,7 @@ const billingLib = require('./lib/billing');
 const rg = require('./lib/rg');
 const freshness = require('./lib/freshness');
 const offsiteLib = require('./lib/offsite');
+const errorsLib = require('./lib/errors');
 const { createGoogleVerifier } = require('./lib/google');
 
 const CLV_FILE = 'clv_tracker.json';   // legacy file, imported into SQLite on first start
@@ -40,6 +41,7 @@ const alerts = createAlerts({
   post: (url, body) => axios.post(url, body, { timeout: 8000 }),
   log: m => console.log(m),
 });
+const errorLog = errorsLib.createErrorLog({ store, alerts });
 // The calibrator turns the model's raw win chance into one that matches graded
 // results. It stays null/off until it has proven itself (lib/calibration.js).
 let calibrationModel = (store.latestCalibration() || {}).model || null;
@@ -79,6 +81,12 @@ if (process.env.TRUST_PROXY) app.set('trust proxy', /^\d+$/.test(process.env.TRU
 const security = require('./lib/security');
 app.use(require('compression')());   // gzip: the main page is 400 KB raw and about 100 KB compressed, which matters on a phone
 app.use(security.securityHeaders);
+// Any answer of 500 or more is written down, even from a route that handled its own error. The error handler at the
+// bottom adds the reason; this catches the rest with just the route.
+app.use((req, res, next) => {
+  res.on('finish', () => { if ([500, 502, 504].includes(res.statusCode) && !res.locals.errorLogged && req.path !== '/api/client-error') errorLog.record({ source: 'server', route: errorsLib.routeOf(req.method, req.originalUrl), message: `answered ${res.statusCode}` }); });
+  next();
+});
 app.use(express.json({ limit: '100kb', verify: (req, res, buf) => { if (req.originalUrl === '/api/stripe/webhook') req.rawBody = buf; } }));   // Stripe signs the exact bytes
 // One bad character in a name used to reach a Python launch call and crash the whole server.
 // Reject control characters and oversized values before any route sees them.
@@ -6922,6 +6930,7 @@ const dataCheckCtx = {
   runGrade: () => trackJob('grade', autoGradePendingPicks)(),
   creditBudget: currentCreditBudget,
   authStatus, billingStatus,
+  errorGroups: errorLog.groups, monitoring: () => ({ webhook: alerts.configured, heartbeat: heartbeatState() }),
 };
 let dataChecksRunning = null;
 function runDataChecks() {
@@ -6949,6 +6958,38 @@ app.post('/api/admin/alerts/test', requireAdmin, async (req, res) => {
   res.json({ webhookConfigured: alerts.configured, ...out });
 });
 
+// ── Monitoring: uptime signal, browser errors, and what the admin page shows ──
+// /api/ping is for an uptime watcher (UptimeRobot, Better Stack...). It touches the database, so "up" means really up.
+app.get('/api/ping', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try { store.getMeta('ping'); res.json({ ok: true, uptimeSec: Math.round(process.uptime()) }); }
+  catch (err) { res.status(503).json({ ok: false }); }
+});
+// Browser errors: tiny, scrubbed, and rationed so nobody can fill the log or ping the owner's phone.
+const clientErrLimiter = security.createRateLimiter({ windowMs: 60 * 60 * 1000, max: 10, message: 'Too many reports.' });
+let clientErrHour = { at: 0, n: 0 };
+app.post('/api/client-error', clientErrLimiter, security.sameOrigin, (req, res) => {
+  const b = req.body || {};
+  const nowT = Date.now(); if (nowT - clientErrHour.at > 3600e3) clientErrHour = { at: nowT, n: 0 };
+  if (typeof b.message === 'string' && b.message && ++clientErrHour.n <= 60) errorLog.record({ source: 'client', route: errorsLib.routeOf('', typeof b.page === 'string' ? b.page.slice(0, 80) : ''), message: `${b.message.slice(0, 160)}${typeof b.at === 'string' ? ' @ ' + b.at.slice(0, 60) : ''}` });
+  res.status(204).end();
+});
+app.get('/api/admin/errors', requireAdmin, (req, res) => {
+  res.json({ groups: errorLog.groups({ sinceMs: 7 * 24 * 3600e3 }), webhook: alerts.configured, heartbeat: heartbeatState() });
+});
+// Dead-man's switch: the app tells an outside service (Healthchecks.io, Better Stack heartbeats...) it is alive every five
+// minutes. If the site goes down, the messages stop and that service is what alerts you. A down server cannot alert itself.
+const HEARTBEAT_URL = /^https:\/\//.test(String(process.env.HEARTBEAT_URL || '').trim()) ? String(process.env.HEARTBEAT_URL).trim() : '';
+const hb = { lastOk: null, lastError: null };
+const heartbeatState = () => ({ configured: !!HEARTBEAT_URL, lastOk: hb.lastOk, lastError: hb.lastError });
+async function sendHeartbeat() {
+  if (!HEARTBEAT_URL) return;
+  try { await axios.get(HEARTBEAT_URL, { timeout: 8000, maxRedirects: 0, validateStatus: s => s >= 200 && s < 300 }); hb.lastOk = new Date().toISOString(); hb.lastError = null; }
+  catch (err) { hb.lastError = err.message; }
+}
+if (HEARTBEAT_URL) { cron.schedule('*/5 * * * *', sendHeartbeat); setTimeout(sendHeartbeat, 15000); }
+else if (process.env.HEARTBEAT_URL) console.warn('[Monitoring] HEARTBEAT_URL must start with https://, so the heartbeat is off.');
+
 // ═════════════════════════════════════════════════════════════════
 // SAFETY NET
 // One bad request or one failed background call must not take the whole server down. Errors are
@@ -6956,12 +6997,12 @@ app.post('/api/admin/alerts/test', requireAdmin, async (req, res) => {
 // 20 in a minute) the process exits so the host restarts it clean instead of limping on.
 // ═════════════════════════════════════════════════════════════════
 let recentFaults = [];
-function noteFault(kind, err) {
+function noteFault(kind, err, route = '') {
   const now = Date.now();
   recentFaults = recentFaults.filter(t => now - t < 60000);
   recentFaults.push(now);
   console.error(`[${kind}]`, err && err.stack ? err.stack.split('\n').slice(0, 4).join('\n') : err);
-  try { store.addEvent('fault', 'warn', `${kind}: ${err && err.message ? err.message : err}`); } catch (_) {}
+  try { errorLog.record({ source: kind === 'route' ? 'server' : 'process', route, message: `${kind === 'route' ? '' : kind + ': '}${err && err.message ? err.message : err}` }); } catch (_) {}
   if (recentFaults.length > 20) { console.error('[Fatal] too many faults in a minute, exiting for a clean restart'); process.exit(1); }
 }
 process.on('uncaughtException', err => noteFault('uncaughtException', err));
@@ -6969,6 +7010,6 @@ process.on('unhandledRejection', err => noteFault('unhandledRejection', err));
 app.use((err, req, res, next) => {   // eslint-disable-line no-unused-vars
   if (res.headersSent) return;
   const status = err.status || err.statusCode || 500;
-  if (status >= 500) noteFault('route', err);
+  if (status >= 500) { res.locals.errorLogged = true; noteFault('route', err, errorsLib.routeOf(req.method, req.originalUrl)); }
   res.status(status >= 400 && status < 600 ? status : 500).json({ error: status === 413 ? 'Request too large.' : status === 400 ? 'Bad request.' : 'Something went wrong on the server.' });
 });

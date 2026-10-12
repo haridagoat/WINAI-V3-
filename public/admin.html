@@ -348,7 +348,7 @@ const CHECK_LABEL = { ok: 'Healthy', fixed: 'Fixed itself', bad: 'Needs you' };
 async function loadChecks() {
   const el = document.getElementById('p-checks');
   try {
-    const d = await apiCall('/api/admin/checks'), h = await apiCall('/api/admin/health').catch(() => ({}));
+    const d = await apiCall('/api/admin/checks'), h = await apiCall('/api/admin/health').catch(() => ({})), er = await apiCall('/api/admin/errors').catch(() => ({ groups: [] }));
     const last = d.last;
     if (!last) { el.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px"><h2 style="margin:0">Data checks</h2><button class="btn2" id="chk-run">${d.running ? 'Running...' : 'Run checks now'}</button></div><div class="banner">The checks have not run yet. They run at startup and every night at 3:10 AM.</div>`; wireChecks(el); return; }
     const c = last.counts, list = last.checks.filter(x => checkFilter === 'all' || x.status === checkFilter);
@@ -370,10 +370,16 @@ async function loadChecks() {
         <div class="card"><h2>Fixes itself</h2><ul class="list3"><li>Clears a stale slate cache</li><li>Writes a backup if there is none from the last 26 hours</li><li>Re-fetches a stat file the server can fetch (once every 6 hours)</li><li>Runs grading when picks are overdue</li></ul></div>
         <div class="card"><h2>Only tells you</h2><ul class="list3"><li>Stat files the server cannot refresh itself</li><li>Low Odds credits</li><li>Impossible values in picks or stats</li><li>A damaged database, or sign-in not set up</li></ul></div>
       </div>
+      <div class="card"><h2>Errors, last 7 days</h2><div class="hint" style="margin-bottom:8px">Server errors, crashes and errors in people's browsers, grouped. Private details are removed before they are saved. ${er.heartbeat?.configured ? 'Heartbeat on' + (er.heartbeat.lastOk ? ', last sent ' + ago(er.heartbeat.lastOk) : '') : 'No heartbeat set (HEARTBEAT_URL)'}.</div>${errRows(er.groups || [])}</div>
       <div class="card"><h2>Activity</h2>${act}</div>`;
     el.querySelectorAll('[data-f]').forEach(b => b.addEventListener('click', () => { checkFilter = b.dataset.f; loadChecks(); }));
     wireChecks(el);
   } catch (err) { if (TOKEN) el.innerHTML = `<div class="err">${escapeHtml(err.message)}</div>`; }
+}
+const ERR_SRC = { server: 'Server', client: 'Browser', process: 'Crash' };
+function errRows(groups) {
+  if (!groups.length) return '<div class="empty">No errors in the last 7 days.</div>';
+  return groups.slice(0, 25).map(g => `<div class="ev"><small>${ago(g.last)}</small><span class="pill ${g.source === 'client' ? '' : 'warn'}">${ERR_SRC[g.source] || escapeHtml(g.source)}</span><span>${g.count > 1 ? `<b>${g.count}×</b> ` : ''}${g.route ? `<code>${escapeHtml(g.route)}</code> ` : ''}${escapeHtml(g.message)}</span></div>`).join('');
 }
 function wireChecks(el) {
   const b = el.querySelector('#chk-run'); if (!b) return;

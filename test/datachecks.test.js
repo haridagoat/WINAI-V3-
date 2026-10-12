@@ -153,3 +153,24 @@ test('offsite: a failed upload or a failed restore test asks for you', async () 
   const ver = await mk({ offsiteVerify: async () => { throw new Error('passphrase is wrong'); } }).run('offsite');
   assert.equal(ver.status, 'bad'); assert.match(ver.detail, /restore test FAILED.*passphrase is wrong/);
 });
+
+// ── monitoring and errors ──
+test('monitoring: unset is a fault only once people have accounts; a failing heartbeat is a fault', async () => {
+  assert.equal((await ctx().run('monitoring')).status, 'ok');
+  const w = ctx(); w.c.store.createUser('a@example.com', new Date().toISOString(), new Date().toISOString(), { name: 'A', passwordHash: 'x' });
+  const r = await w.run('monitoring'); assert.equal(r.status, 'bad'); assert.match(r.detail, /ADMIN_ALERT_WEBHOOK.*HEARTBEAT_URL/);
+  const good = await ctx({ monitoring: () => ({ webhook: true, heartbeat: { configured: true, lastOk: new Date(NOW - 3 * 60e3).toISOString() } }) }).run('monitoring');
+  assert.equal(good.status, 'ok'); assert.match(good.detail, /last heartbeat was under an hour ago/);
+  const broke = await ctx({ monitoring: () => ({ webhook: true, heartbeat: { configured: true, lastError: 'ENOTFOUND' } }) }).run('monitoring');
+  assert.equal(broke.status, 'bad'); assert.match(broke.detail, /ENOTFOUND/);
+});
+test('errors: none is healthy; browser errors alone are fine; a crash or a repeating failure asks for you', async () => {
+  assert.equal((await ctx().run('errors')).status, 'ok');
+  const g = list => ctx({ errorGroups: () => list }).run('errors');
+  assert.equal((await g([{ source: 'client', route: '/', message: 'x', count: 30 }])).status, 'ok');
+  assert.equal((await g([{ source: 'server', route: 'GET /a', message: 'm', count: 2 }])).status, 'ok');
+  const rep = await g([{ source: 'server', route: 'GET /api/today', message: 'boom', count: 7 }]);
+  assert.equal(rep.status, 'bad'); assert.match(rep.detail, /GET \/api\/today failed 7 times: boom/);
+  const crash = await g([{ source: 'process', route: '', message: 'uncaughtException: x', count: 1 }]);
+  assert.equal(crash.status, 'bad'); assert.match(crash.detail, /1 crash/);
+});
