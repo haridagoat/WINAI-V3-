@@ -47,3 +47,8 @@ test('a name cannot inject markup and is kept short', () => {
   assert.equal(E.firstName('x'.repeat(100)).length, 40);
   assert.equal(E.firstName('  Mary   Ann \n Lee '), 'Mary Ann Lee');
 });
+
+test('a name that is not text is ignored, not turned into "[object Object]"', () => {
+  for (const bad of [{ a: 1 }, ['Maya'], 42, true]) assert.equal(E.firstName(bad), '');
+  assert.ok(E.confirmEmail({ link: LINK, email: 'a@b.com', name: { a: 1 } }).html.includes('Welcome to WIN AI</h1>'));
+});

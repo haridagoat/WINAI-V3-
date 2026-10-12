@@ -5054,23 +5054,35 @@ async function refreshBetslip() {
   renderBetslip();
 }
 
+// A change to the Prop List is shown at once, but it only counts once the server agrees. If it does not (a sign-in that expired,
+// a dropped connection), the page puts things back and says so, instead of looking saved and quietly reverting on the next load.
+function propFailed(status, what) {
+  if (status === 401) { AUTH.user = null; paintAccount(); acctToast('Your sign-in expired. Sign in again to keep editing.'); openSignin('signin'); return; }
+  acctToast(`Could not ${what}. Try again.`);
+}
 async function removeProp(id) {
-  betslip.splice(betslip.findIndex(b=>b.id===id), 1);
+  const i = betslip.findIndex(b => b.id === id); if (i < 0) return;
+  const [item] = betslip.splice(i, 1);
   renderBetslip(); updateBetslipCount();
-  try { await fetch(`/api/clv/${id}`, { method: 'DELETE' }); } catch (_) {}
+  let status = 0;
+  try { status = (await fetch(`/api/clv/${id}`, { method: 'DELETE' })).status; } catch (_) {}
+  if (status < 200 || (status >= 300 && status !== 404)) { betslip.splice(i, 0, item); renderBetslip(); updateBetslipCount(); propFailed(status, 'remove that prop'); }
 }
 async function markPropResult(id, result) {
   const b = betslip.find(x=>x.id===id);
   if (!b) return;
-  const newResult = b.result === result ? null : result;
+  const before = b.result, newResult = before === result ? null : result;
   b.result = newResult; renderBetslip();
-  try { const { entry } = await apiPost('/api/clv/update', { id, result: newResult }); Object.assign(b, entry); renderBetslip(); } catch (_) {}
+  try { const { entry } = await apiPost('/api/clv/update', { id, result: newResult }); Object.assign(b, entry); renderBetslip(); }
+  catch (e) { b.result = before; renderBetslip(); propFailed(e.status || 0, 'save that result'); }
 }
 async function savePropActual(id, val) {
   const b = betslip.find(x=>x.id===id);
   if (!b) return;
+  const before = b.actualStat;
   b.actualStat = val ? parseFloat(val) : null;
-  try { const { entry } = await apiPost('/api/clv/update', { id, actualStat: b.actualStat }); Object.assign(b, entry); } catch (_) {}
+  try { const { entry } = await apiPost('/api/clv/update', { id, actualStat: b.actualStat }); Object.assign(b, entry); }
+  catch (e) { b.actualStat = before; renderBetslip(); propFailed(e.status || 0, 'save that number'); }
 }
 
 function renderBetslip() {
@@ -5161,7 +5173,9 @@ async function clearBetslip() {
   if (!confirm('Clear all props?')) return;
   const ids = betslip.map(b=>b.id);
   betslip.length=0; renderBetslip(); updateBetslipCount();
-  await Promise.all(ids.map(id => fetch(`/api/clv/${id}`, { method:'DELETE' }).catch(()=>{})));
+  const results = await Promise.all(ids.map(id => fetch(`/api/clv/${id}`, { method:'DELETE' }).then(r => r.status, () => 0)));
+  const failed = results.filter(st => st < 200 || (st >= 300 && st !== 404));
+  if (failed.length) { await loadBetslip(); propFailed(failed.includes(401) ? 401 : 0, `clear ${failed.length === 1 ? 'one prop' : failed.length + ' props'}`); }
 }
 
 

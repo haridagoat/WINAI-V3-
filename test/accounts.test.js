@@ -116,6 +116,19 @@ test('an address with no account is paused the same way, so the pause tells noth
   const results = []; for (let i = 0; i < 6; i++) results.push((await w.auth.signIn({ email: 'ghost@example.com', password: 'wrong-wrong-' + i })).status);
   assert.deepEqual(results, [401, 401, 401, 401, 429, 429]);
 });
+test('a stranger\'s wrong guesses pause only their own connection, never the real owner', async () => {
+  const w = setup(); await w.signUp();
+  for (let i = 0; i < 5; i++) await w.auth.signIn({ email: 'maya@example.com', password: 'attacker-' + i, ip: '6.6.6.6' });
+  assert.equal((await w.auth.signIn({ email: 'maya@example.com', password: PW, ip: '6.6.6.6' })).status, 429);      // the attacker is paused
+  assert.equal((await w.auth.signIn({ email: 'maya@example.com', password: PW, ip: '1.2.3.4' })).status, 200);      // the owner, elsewhere, is not
+});
+test('guessing spread across many connections is still stopped for the address overall', async () => {
+  const w = setup(); await w.signUp();
+  for (let i = 0; i < 25; i++) await w.auth.signIn({ email: 'maya@example.com', password: 'spread-' + i, ip: '9.9.9.' + i });
+  assert.equal((await w.auth.signIn({ email: 'maya@example.com', password: PW, ip: '1.2.3.4' })).status, 429);
+  w.advance(16 * 60 * 1000);
+  assert.equal((await w.auth.signIn({ email: 'maya@example.com', password: PW, ip: '1.2.3.4' })).status, 200);
+});
 test('a good sign in clears the count of wrong tries', async () => {
   const w = setup(); await w.signUp();
   for (let i = 0; i < 3; i++) await w.auth.signIn({ email: 'maya@example.com', password: 'wrong-wrong-' + i });

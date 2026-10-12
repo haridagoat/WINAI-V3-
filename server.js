@@ -1,4 +1,8 @@
 require('dotenv').config();
+// Every "today" in this app is an NBA/WNBA day, which runs on US Eastern time. A host like Railway defaults to UTC, which would
+// flip the date at 8 PM Eastern, in the middle of evening games, and shift the daily resets, grading dates and cron times.
+// Set APP_TIMEZONE to change it. This runs before anything reads the clock.
+process.env.TZ = process.env.APP_TIMEZONE || 'America/New_York';
 const express = require('express');
 const axios = require('axios');
 const cron = require('node-cron');
@@ -58,6 +62,8 @@ function trackJob(name, fn) {
 
 const app = express();
 app.disable('x-powered-by');
+// Plain query-string parsing: nothing here needs nested ?a[b]=c objects, and it keeps the (currently unpatched) qs parser out of the request path.
+app.set('query parser', 'simple');
 // Behind a proxy (Railway) every visitor looks like the proxy's address unless this is set, which
 // puts them all in ONE rate-limit bucket. Set TRUST_PROXY=1 in the host's variables when deployed.
 if (process.env.TRUST_PROXY) app.set('trust proxy', /^\d+$/.test(process.env.TRUST_PROXY) ? Number(process.env.TRUST_PROXY) : process.env.TRUST_PROXY);
@@ -68,6 +74,7 @@ if (process.env.TRUST_PROXY) app.set('trust proxy', /^\d+$/.test(process.env.TRU
 // ones, from a visitor's browser with no server-side signal it wasn't the
 // app's own frontend.
 const security = require('./lib/security');
+app.use(require('compression')());   // gzip: the main page is 400 KB raw and about 100 KB compressed, which matters on a phone
 app.use(security.securityHeaders);
 app.use(express.json({ limit: '100kb', verify: (req, res, buf) => { if (req.originalUrl === '/api/stripe/webhook') req.rawBody = buf; } }));   // Stripe signs the exact bytes
 // One bad character in a name used to reach a Python launch call and crash the whole server.
@@ -4900,6 +4907,11 @@ async function collectSlateResults(league) {
     const isEmpty = !cached.data?.candidates?.length;
     if (!isEmpty || (Date.now() - (cached.ts || 0)) < EMPTY_SCAN_RETRY_MS) return cached.data;
   }
+  // The nightly scan already skips itself when the Odds credits cannot cover it. A visitor opening the page must not be able to start
+  // one and burn the last credits either (a scan that runs out half way is wasted). Nothing is cached, so it tries again once
+  // credits are back. ODDS_ALLOW_LOW_CREDITS=1 overrides this.
+  const budget = currentCreditBudget();
+  if (budget.known && !budget.canScan && process.env.ODDS_ALLOW_LOW_CREDITS !== '1') return { candidates: [], results: [], skipped: 'low Odds credits' };
   if (!slateScanInflight[league]) {
     slateScanInflight[league] = scanSlate(league, today).finally(() => { delete slateScanInflight[league]; });
   }
@@ -4921,7 +4933,8 @@ async function scanSlate(league, today) {
   const data = { candidates, results };
   slateScanCache[league] = { data, dateKey: today, ts: Date.now(), v: SLATE_LOGIC_VERSION };
   saveSlateScanCacheToDisk(slateScanCache);
-  autoLogSlatePicks(league, results);
+  // Preseason picks cannot be graded (the stats feed has no preseason games), so they would only sit in the track record as noise.
+  if (datachecks.inSeason(league, new Date())) autoLogSlatePicks(league, results);
   return data;
 }
 
@@ -4982,7 +4995,12 @@ async function autoGradePendingPicks() {
   for (const e of pending) {
     try {
       const stats = e.league === 'wnba' ? await fetchWNBAPlayerStats(e.player) : await fetchPlayerStats(e.player);
-      if (!stats || stats.error) continue;
+      if (!stats || stats.error) {
+        // The player's stats could not be loaded. Retry for three days, then set it aside like an unmatched game, so it stops
+        // counting as "waiting" forever.
+        if (gradeDateOf(e) <= threeDaysAgo) { patches.set(e.id, { gradeNote: 'player stats could not be loaded after 3 days', gradeNoteV: GRADE_LOGIC_VERSION }); unmatched++; }
+        continue;
+      }
       const game = findGameForPick(stats, e);
       if (!game) {
         // Still no game in the log three days on (offseason stats feed, preseason game, player moved):
@@ -5549,6 +5567,12 @@ app.get('/api/debug', async (req, res) => {
 });
 
 
+// The caches below are keyed by whatever player name a visitor types, and are only emptied at midnight. Cap them so a bot asking
+// for endless made-up names cannot slowly use up the server's memory: past the limit the oldest entries are dropped.
+const CACHE_CAP = 1500;
+function capCache(c) { const k = Object.keys(c); if (k.length > CACHE_CAP) for (const key of k.slice(0, k.length - CACHE_CAP)) delete c[key]; }
+setInterval(() => { for (const c of [projectionCache, playerStatsCache, lastPlayerStatsFetch, nbaApiBridgeCache, shotChartCache]) capCache(c); }, 5 * 60 * 1000).unref();
+
 // ─────────────────────────────────────────────────────
 // SCHEDULED JOBS
 // ─────────────────────────────────────────────────────
@@ -5878,7 +5902,7 @@ app.post('/api/auth/signup', authSignupLimiter, async (req, res) => {
   startSession(req, res, r, { emailSent: r.emailSent, ...devOnly(req, r) });
 });
 app.post('/api/auth/login', authLoginLimiter, async (req, res) => {
-  const r = await auth.signIn({ email: req.body?.email, password: req.body?.password });
+  const r = await auth.signIn({ email: req.body?.email, password: req.body?.password, ip: req.ip });
   if (r.error) return authFail(res, r);
   startSession(req, res, r);
 });
@@ -5889,7 +5913,7 @@ app.post('/api/auth/forgot', authForgotLimiter, async (req, res) => {
   res.json({ ok: true, ...devOnly(req, r) });
 });
 app.post('/api/auth/reset', authVerifyLimiter, async (req, res) => {
-  const r = await auth.resetPassword({ token: req.body?.token, password: req.body?.password });
+  const r = await auth.resetPassword({ token: req.body?.token, password: req.body?.password, ip: req.ip });
   if (r.error) return authFail(res, r);
   startSession(req, res, r);
 });

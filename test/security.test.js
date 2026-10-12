@@ -110,3 +110,13 @@ test('the rate limiter reports each block', () => {
   for (let i = 0; i < 5; i++) lim({ ip: '1.1.1.1' }, res, () => {});
   assert.equal(blocks, 3);
 });
+
+test('security headers: always the basics, and HSTS only over https', () => {
+  const run = req => { const h = {}; s.securityHeaders(req, { set: o => Object.assign(h, typeof o === 'string' ? { [o]: arguments[1] } : o) }, () => {}); return h; };
+  const plain = {}, secure = {};
+  s.securityHeaders({ secure: false }, { set: (a, b) => (typeof a === 'string' ? (plain[a] = b) : Object.assign(plain, a)) }, () => {});
+  s.securityHeaders({ secure: true }, { set: (a, b) => (typeof a === 'string' ? (secure[a] = b) : Object.assign(secure, a)) }, () => {});
+  for (const h of [plain, secure]) { assert.match(h['Content-Security-Policy'], /frame-ancestors 'none'/); assert.match(h['Content-Security-Policy'], /object-src 'none'/); assert.equal(h['X-Frame-Options'], 'DENY'); }
+  assert.equal(plain['Strict-Transport-Security'], undefined);
+  assert.match(secure['Strict-Transport-Security'], /max-age=\d+/);
+});
