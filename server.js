@@ -5596,7 +5596,7 @@ cron.schedule('0 9 * * *', fetchTodaysGames);
 // This keeps playtypes, tracking, shot dashboard etc current
 cron.schedule('0 7 * * *', () => {
   console.log('[CRON] Auto-running fetch_stats.py to refresh nba.com data...');
-  const py = spawn('python', ['fetch_stats.py'], { cwd: __dirname });
+  const py = spawn('python3', ['fetch_stats.py'], { cwd: __dirname });
   py.stdout.on('data', d => console.log('[fetch_stats]', d.toString().trim()));
   py.stderr.on('data', d => console.error('[fetch_stats ERR]', d.toString().trim()));
   py.on('close', code => {
@@ -6918,7 +6918,7 @@ const STAT_FILE = { nba: 'player_stats.json', wnba: 'wnba_player_stats.json' };
 // The same Python scripts the 7 AM jobs run. One attempt, five minute limit.
 function runStatsScript(league) {
   return new Promise((resolve, reject) => {
-    const [cmd, script] = league === 'nba' ? ['python', 'fetch_stats.py'] : ['python3', 'fetch_wnba_stats.py'];
+    const [cmd, script] = league === 'nba' ? ['python3', 'fetch_stats.py'] : ['python3', 'fetch_wnba_stats.py'];
     const py = spawn(cmd, [script], { cwd: __dirname });
     const timer = setTimeout(() => { py.kill(); reject(new Error('timed out after 5 minutes')); }, 5 * 60 * 1000);
     py.on('error', err => { clearTimeout(timer); reject(err); });

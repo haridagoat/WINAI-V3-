@@ -16,7 +16,7 @@ test('routes lose their query string and their ids', () => {
   assert.equal(E.routeOf(null, undefined), '');
 });
 function rig(over = {}) {
-  const store = createStore({ dbPath: ':memory:' }); let t = Date.parse('2026-10-12T12:00:00Z'); const posts = [];
+  const store = createStore({ dbPath: ':memory:' }); let t = Date.now(); const posts = [];
   const alerts = createAlerts({ store, webhookUrl: 'https://hooks.example/x', post: async (u, b) => { posts.push(b.text); }, now: () => t });
   const log = E.createErrorLog({ store, alerts, now: () => t, ...over });
   return { store, log, posts, advance: ms => { t += ms; } };
@@ -49,5 +49,7 @@ test('groups only cover the window asked for, and sources are named', () => {
   const r = rig(); r.log.record({ source: 'client', route: '/', message: 'x is not a function' });
   r.log.record({ source: 'nonsense', route: 'GET /y', message: 'z' });
   assert.deepEqual(r.log.groups().map(g => g.source).sort(), ['client', 'server']);
-  assert.equal(r.log.groups({ sinceMs: -1 }).length, 0);
+  r.advance(2 * 60e3);                                                       // two minutes later, a one-minute window no longer reaches them
+  assert.equal(r.log.groups({ sinceMs: 60e3 }).length, 0);
+  assert.equal(r.log.groups().length, 2);
 });
