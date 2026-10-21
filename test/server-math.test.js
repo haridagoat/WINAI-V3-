@@ -149,3 +149,16 @@ test('combo props add their parts', () => {
   assert.equal(grade.gradeStatValue(g, 'rebounds'), 5);
   assert.equal(grade.gradeStatValue(g, '3pm'), 3);
 });
+
+// With no posted line (the Odds API is out of credits) there is no probability. The model-only picks depend on that
+// being a plain null that the evaluators tolerate; reading prob.overProbability unguarded crashed every one of them.
+test('no posted line means no probability, not an error', () => {
+  assert.equal(odds.calcOverUnderProbability(20, 6, null), null);
+  assert.equal(odds.calcOverUnderProbability(20, 6, undefined), null);
+  assert.equal(odds.calcOverUnderProbability(20, 6, 0), null);
+});
+test('the pick evaluators never read the probability without checking it exists', () => {
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'server.js'), 'utf8');
+  assert.ok(!/[^?]\bprob\.(over|under)Probability/.test(src), 'prob.overProbability / prob.underProbability must be read as prob?.');
+  assert.ok((src.match(/prob\?\.overProbability/g) || []).length >= 2);
+});

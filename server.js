@@ -4820,7 +4820,7 @@ async function evaluateNBACandidate(cand) {
     marketEdge: cand.consensusLine != null ? calcEdgeScore(projection.projection, cand.consensusLine) : null,
     projection: projection.projection, confidence: projection.confidence,
     edge, ...prob,
-    realEdge: calcRealEdge(edge > 0 ? 'OVER' : 'UNDER', prob.overProbability, prob.underProbability, cand.overPrice, cand.underPrice),
+    realEdge: calcRealEdge(edge > 0 ? 'OVER' : 'UNDER', prob?.overProbability, prob?.underProbability, cand.overPrice, cand.underPrice),   // prob is null when there is no posted line
   };
 }
 
@@ -4867,7 +4867,7 @@ async function evaluateWNBACandidate(cand) {
     marketEdge: cand.consensusLine != null ? calcEdgeScore(projection.projection, cand.consensusLine) : null,
     projection: projection.projection, confidence: projection.confidence,
     edge, ...prob,
-    realEdge: calcRealEdge(edge > 0 ? 'OVER' : 'UNDER', prob.overProbability, prob.underProbability, cand.overPrice, cand.underPrice),
+    realEdge: calcRealEdge(edge > 0 ? 'OVER' : 'UNDER', prob?.overProbability, prob?.underProbability, cand.overPrice, cand.underPrice),   // prob is null when there is no posted line
   };
 }
 
@@ -5125,21 +5125,23 @@ async function computeFallbackProjected(league) {
   }
 
   const evaluate = league === 'wnba' ? evaluateWNBACandidate : evaluateNBACandidate;
+  if (!gameList.length) console.error(`[Fallback] ${league}: no games on today's schedule`);
   const byGame = [];
   for (const g of gameList) {
     const byTeam = {};
     for (const team of [g.home, g.away]) {
       try {
         const top = await getTopUsagePlayers(league, team, 2);
+        if (!top.length) console.error(`[Fallback] ${league} ${team}: no players found in the stat files`);
         for (const p of top) {
           try {
             const r = await evaluate({ player: p.name, propType: 'points', line: null, book: null, homeTeam: g.home, awayTeam: g.away });
-            if (!r || !r.projection) continue;
+            if (!r || !r.projection) { console.error(`[Fallback] ${league} ${p.name}: no projection returned`); continue; }
             const existing = byTeam[r.team];
             if (!existing || (r.confidence || 0) > (existing.confidence || 0)) byTeam[r.team] = r;
-          } catch (_) { /* one player shouldn't sink the rest */ }
+          } catch (err) { console.error(`[Fallback] ${league} ${p.name}: ${err.message}`); /* one player shouldn't sink the rest */ }
         }
-      } catch (_) { /* one team shouldn't sink the rest */ }
+      } catch (err) { console.error(`[Fallback] ${league} ${team}: ${err.message}`); /* one team shouldn't sink the rest */ }
     }
     if (Object.keys(byTeam).length) byGame.push({ home: g.home, away: g.away, byTeam });
   }

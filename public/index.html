@@ -4261,30 +4261,43 @@ async function renderTodayPage() {
   if (!TD.data) root.innerHTML = '<div class="td-empty">Loading today\'s slate...</div>';
   try {
     const get = (u, d) => apiGet(u).catch(() => d);
-    const [nbaS, wnbaS, nbaB, wnbaB, nbaTeam, wnbaTeam, clv] = await Promise.all([
+    // Stage 1: the quick data (games, the prop board, the record). It paints at once.
+    const [nbaS, wnbaS, nbaB, wnbaB, clv] = await Promise.all([
       get('/api/today', { games: [] }), get('/api/wnba/today', { games: [] }),
       get('/api/prop-board?league=nba', { props: [] }), get('/api/prop-board?league=wnba', { props: [] }),
-      get('/api/team-picks?league=nba', { games: [] }), get('/api/team-picks?league=wnba', { games: [] }),
       get('/api/clv', null),
     ]);
     if (window._tdToken !== token) return;
     const games = [...(nbaS.games || []).map(g => ({ ...g, league: 'nba' })), ...(wnbaS.games || []).map(g => ({ ...g, league: 'wnba' }))];
     const props = [...(nbaB.props || []).map(p => ({ ...p, league: 'nba' })), ...(wnbaB.props || []).map(p => ({ ...p, league: 'wnba' }))];
+    const limited = !!(nbaB.limited || wnbaB.limited), boardTotal = (nbaB.total ?? (nbaB.props || []).length) + (wnbaB.total ?? (wnbaB.props || []).length);
     // No posted lines (Odds API down or out of credits): the server falls back to model-only picks.
     // They get their own honest template: never dressed up as a real line-based pick.
     // only meaningful for a league that actually has games today
-    const fallback = {
-      nba: games.some(g => g.league === 'nba') && (!!nbaTeam.fallback || !(nbaB.props || []).length),
-      wnba: games.some(g => g.league === 'wnba') && (!!wnbaTeam.fallback || !(wnbaB.props || []).length),
-    };
+    const hasG = lg => games.some(g => g.league === lg);
+    const fallbackOf = (teamNba, teamWnba) => ({
+      nba: hasG('nba') && (!!(teamNba && teamNba.fallback) || !(nbaB.props || []).length),
+      wnba: hasG('wnba') && (!!(teamWnba && teamWnba.fallback) || !(wnbaB.props || []).length),
+    });
+    const stage1Fb = fallbackOf(null, null);
+    TD.data = { games, props, limited, boardTotal, fallback: stage1Fb, fbPlays: [], clv, teamPicks: { nba: [], wnba: [] }, loadingPicks: games.length > 0 };
+    TD.conf = uniqueConfs([...props]);
+    paintToday();
+    tdLoadLines(games);
+    tdLoadInjuries(games);
+    // Stage 2: the slow part (team picks and, with no live lines, the model-only plays). On a cold start this can take a
+    // minute or more, so it fills in afterwards instead of holding the whole page back.
+    if (!games.length) return;
+    const [nbaTeam, wnbaTeam] = await Promise.all([get('/api/team-picks?league=nba', { games: [] }), get('/api/team-picks?league=wnba', { games: [] })]);
+    if (window._tdToken !== token) return;
+    const fallback = fallbackOf(nbaTeam, wnbaTeam);
     const fbPlays = [];
-    for (const lg of ['nba', 'wnba']) {
-      if (!fallback[lg]) continue;
+    await Promise.all(['nba', 'wnba'].filter(lg => fallback[lg]).map(async lg => {
       const tp = await get(`/api/top-plays?league=${lg}`, { fallbackPlays: [] });
       (tp.fallbackPlays || []).forEach(p => fbPlays.push({ ...p, league: lg }));
-    }
-    const limited = !!(nbaB.limited || wnbaB.limited), boardTotal = (nbaB.total ?? (nbaB.props || []).length) + (wnbaB.total ?? (wnbaB.props || []).length);
-    TD.data = { games, props, limited, boardTotal, fallback, fbPlays, clv, teamPicks: { nba: nbaTeam.games || [], wnba: wnbaTeam.games || [] } };
+    }));
+    if (window._tdToken !== token) return;
+    TD.data = { ...TD.data, fallback, fbPlays, teamPicks: { nba: nbaTeam.games || [], wnba: wnbaTeam.games || [] }, loadingPicks: false };
     TD.conf = uniqueConfs([...props, ...fbPlays]);
     paintToday();
     tdLoadLines(games);
@@ -4365,7 +4378,7 @@ function paintToday() {
 
   const empty = !nGames
     ? `<section><div class="td-card"><div class="td-empty"><b>No games today</b>${L === 'both' ? 'Nothing is on the NBA or WNBA schedule for today.' : 'Nothing is on the ' + L.toUpperCase() + ' schedule for today.'} Open Daily Matchups to look at a future game.</div></div></section>` : '';
-  const topSec = topList.length ? `<section><div class="td-sh"><h2>Top picks</h2><span class="td-hint">${tops.length ? 'one per player · ranked by confidence' : 'model projections only: no live lines'}</span></div><div class="td-tops">${topList.map(tdTopCard).join('')}</div></section>` : '';
+  const topSec = !topList.length && D.loadingPicks ? `<section><div class="td-card"><div class="td-empty" style="padding:22px 12px"><b>Working out today's picks</b>The games are below. Picks appear here as soon as they are ready, which can take a minute or two after a restart.</div></div></section>` : topList.length ? `<section><div class="td-sh"><h2>Top picks</h2><span class="td-hint">${tops.length ? 'one per player · ranked by confidence' : 'model projections only: no live lines'}</span></div><div class="td-tops">${topList.map(tdTopCard).join('')}</div></section>` : '';
   const gameSec = nGames ? `<section><div class="td-sh"><h2>Tonight's games</h2><span class="td-hint">${nGames} game${nGames === 1 ? '' : 's'}</span></div><div class="td-games">${games.map(tdGameCard).join('')}</div></section>` : '';
   const board = tdBoardHtml();
   const boardSec = (scanned || nGames) ? `<section class="td-card td-board">
