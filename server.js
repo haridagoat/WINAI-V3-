@@ -5655,6 +5655,16 @@ setTimeout(() => trackedClosing().catch(err => console.error('[Closing] failed:'
 cron.schedule('0 6 * * *', () => runDailyPipeline().catch(err => console.error('[Pipeline] failed:', err.message)));
 cron.schedule('0 3 * * *', () => trackJob('backup', async () => `wrote ${path.basename(store.backup(path.join(__dirname, 'backups')) || 'nothing (no file database)')}`)().catch(err => console.error('[Backup] failed:', err.message)));
 cron.schedule('5 3 * * *', () => trackJob('offsite-backup', async () => { const r = await uploadOffsite(); return `uploaded ${r.key} (${Math.round(r.bytes / 1024)} KB)`; })().catch(err => { console.error('[Offsite] failed:', err.message); }));
+// The credit count only used to update when a real odds request happened, so after adding credits the app kept believing it
+// was out until something spent one. The /sports call is free (it costs 0 credits and still returns the balance), so asking
+// it hourly keeps the count true, and lifts the "paused" state as soon as credits exist again.
+async function refreshOddsCredits() {
+  if (!oddsKeyConfigured()) return 'no odds key set';
+  const r = await axios.get(`${ODDS_BASE}/sports`, { params: { apiKey: process.env.ODDS_API_KEY }, timeout: 12000 });   // the response interceptor records x-requests-remaining
+  return `${r.headers['x-requests-remaining'] ?? '?'} credits left`;
+}
+cron.schedule('7 * * * *', () => trackJob('odds-credits', refreshOddsCredits)().catch(err => console.error('[Odds] credit check failed:', err.message)));
+setTimeout(() => trackJob('odds-credits', refreshOddsCredits)().catch(err => console.error('[Odds] credit check failed:', err.message)), 6000);
 cron.schedule('*/15 * * * *', () => runHealthCheck().catch(err => console.error('[Health] failed:', err.message)));
 setTimeout(() => initAdminJobs().catch(err => console.error('[Init] failed:', err.message)), 4000);
 
