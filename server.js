@@ -1335,18 +1335,33 @@ async function fetchESPNRoster(teamName) {
 // ─────────────────────────────────────────────────────
 // TODAY'S GAMES
 // ─────────────────────────────────────────────────────
+// The list is only ever trusted for the day it was fetched, and for ten minutes (game statuses change). It used to be loaded
+// once at startup plus a 9 AM job, so a server left running (or a laptop asleep at 9) kept serving yesterday's games under
+// today's date. A failed fetch is retried after one minute, never on every page view.
+let todaysGamesDate = null, todaysGamesAt = 0, todaysGamesInFlight = null;
+const TODAYS_GAMES_TTL_MS = 10 * 60 * 1000, TODAYS_GAMES_RETRY_MS = 60 * 1000;
 async function fetchTodaysGames() {
+  const day = getToday();
   try {
     const res = await axios.get(`${BALLDONTLIE}/games`, {
-      params: { dates: [getToday()], per_page: 30 },
+      params: { dates: [day], per_page: 30 },
       headers: { Authorization: process.env.BALLDONTLIE_KEY },
       timeout: 10000
     });
     todaysGames = res.data.data || [];
-    console.log(`[BDL] ${todaysGames.length} games fetched for ${getToday()}`);
+    todaysGamesDate = day; todaysGamesAt = Date.now();
+    console.log(`[BDL] ${todaysGames.length} games fetched for ${day}`);
   } catch (err) {
+    todaysGamesAt = Date.now() - (TODAYS_GAMES_TTL_MS - TODAYS_GAMES_RETRY_MS);     // try again in a minute
     console.error('[BDL] Games fetch failed:', err.message);
   }
+}
+async function ensureTodaysGames() {
+  const day = getToday();
+  if (todaysGamesDate !== day) todaysGames = [];                  // never show another day's games under today's date
+  if (todaysGamesDate === day && Date.now() - todaysGamesAt < TODAYS_GAMES_TTL_MS) return;
+  if (!todaysGamesInFlight) todaysGamesInFlight = fetchTodaysGames().finally(() => { todaysGamesInFlight = null; });
+  await todaysGamesInFlight;
 }
 
 // ─────────────────────────────────────────────────────
@@ -3924,7 +3939,7 @@ app.get('/api/data-status', (req, res) => {
 });
 
 app.get('/api/today', async (req, res) => {
-  if (!todaysGames.length) await fetchTodaysGames();
+  await ensureTodaysGames();
   res.json({
     date: getToday(),
     games: todaysGames.map(g => {
@@ -5120,7 +5135,7 @@ async function computeFallbackProjected(league) {
   if (league === 'wnba') {
     gameList = (await fetchWNBASchedule()).map(g => ({ home: g.home, away: g.away }));
   } else {
-    if (!todaysGames.length) await fetchTodaysGames();
+    await ensureTodaysGames();
     gameList = todaysGames.map(g => ({ home: g.home_team.full_name, away: g.visitor_team.full_name }));
   }
 
@@ -5324,7 +5339,7 @@ app.get('/api/player-matchup', async (req, res) => {
   if (!name) return res.status(400).json({ error: 'name required' });
 
   // Make sure today's games are loaded
-  if (!todaysGames.length) await fetchTodaysGames();
+  await ensureTodaysGames();
 
   try {
     // Fast path: use cached player stats if available
@@ -5426,7 +5441,7 @@ app.get('/api/player-matchup', async (req, res) => {
 
 // ── MATCHUP DEBUG ─────────────────────────────────────────────────
 app.get('/api/debug-matchup', requireAdmin, async (req, res) => {
-  if (!todaysGames.length) await fetchTodaysGames();
+  await ensureTodaysGames();
   res.json({
     gamesLoaded: todaysGames.length,
     games: todaysGames.map(g => ({
