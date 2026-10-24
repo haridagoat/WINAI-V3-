@@ -1359,6 +1359,10 @@
   .up-list{list-style:none;margin:14px 0 0;padding:0;display:flex;flex-direction:column;gap:9px}
   .up-list li{display:flex;gap:10px;font-size:14.5px;color:var(--muted2)}
   .up-list li::before{content:"";flex:none;width:6px;height:6px;border-radius:50%;background:var(--pos,#4cb47e);margin-top:8px}
+  .pro-lock{display:inline-flex;align-items:center;gap:4px;margin-left:8px;padding:2px 7px;border-radius:999px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06);color:var(--muted2);font-size:10px;font-weight:700;letter-spacing:.6px;line-height:1.4;vertical-align:middle;text-transform:uppercase}
+  .pro-lock svg{width:10px;height:10px;flex:none}
+  .tm-locked{display:flex;flex-direction:column;align-items:flex-start;gap:10px}
+  .tm-locked button{background:none;border:1px solid rgba(255,255,255,.25);border-radius:8px;padding:7px 12px;color:var(--text);font:inherit;font-weight:600;cursor:pointer}
   .up-price{margin-top:16px;font-family:var(--display);font-weight:800;font-size:30px;letter-spacing:.04em;line-height:1}
   .up-price small{font-family:var(--label);font-weight:600;font-size:13px;letter-spacing:.06em;color:var(--muted);margin-left:8px}
   .pl-empty{padding:34px 16px;text-align:center;color:var(--muted);background:var(--surface);border:1px solid var(--border);border-radius:12px}
@@ -3926,7 +3930,14 @@ Return ONLY valid JSON in exactly this shape:
     const json = (res.response.match(/\{[\s\S]*\}/) || [])[0];
     body.innerHTML = tmBreakdownHtml(JSON.parse(json), league, t1, t2);
   } catch (err) {
-    if (window._tmToken === token && body) body.innerHTML = `<div class="tm-card tm-wait" style="color:var(--neg);">The written breakdown failed to load: ${escapeHtml(err.message)}</div>`;
+    if (window._tmToken !== token || !body) return;
+    if (err.code === 'pro_required' || err.code === 'auth_required') {
+      const signin = err.code === 'auth_required';
+      body.innerHTML = `<div class="tm-card tm-locked"><span><span class="pro-lock" style="margin-left:0">${LOCK_SVG}Pro</span> The written offense and defense breakdown is part of Pro.</span>
+        <button type="button" onclick="${signin ? "openSignin('signin')" : "openUpgrade('team_breakdown')"}">${signin ? 'Sign in' : 'See Pro'}</button></div>`;
+      return;
+    }
+    body.innerHTML = `<div class="tm-card tm-wait" style="color:var(--neg);">The written breakdown failed to load: ${escapeHtml(err.message)}</div>`;
   }
 }
 
@@ -4085,12 +4096,12 @@ function escapeHtml(str) {
 
 async function apiGet(url, headers) {
   const res = await fetch(url, headers ? { headers } : undefined);
-  if (!res.ok) { const e = await res.json().catch(()=>({error:'Unknown'})); const err = new Error(e.error || `Server error ${res.status}`); err.code = e.code; err.status = res.status; throw err; }
+  if (!res.ok) { const e = await res.json().catch(()=>({error:'Unknown'})); const err = new Error(e.error || `Server error ${res.status}`); err.code = e.code; err.feature = e.feature; err.status = res.status; throw err; }
   return res.json();
 }
 async function apiPost(url, body, headers) {
   const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json', ...(headers || {})}, body:JSON.stringify(body) });
-  if (!res.ok) { const e = await res.json().catch(()=>({error:'Unknown'})); const err = new Error(e.error || `Error ${res.status}`); err.code = e.code; err.status = res.status; throw err; }
+  if (!res.ok) { const e = await res.json().catch(()=>({error:'Unknown'})); const err = new Error(e.error || `Error ${res.status}`); err.code = e.code; err.feature = e.feature; err.status = res.status; throw err; }
   return res.json();
 }
 function parseVerdict(text, ctx) {
@@ -5348,9 +5359,28 @@ function renderSignin() {
       ${mailOn ? '<div class="mail"><div><b>Nothing arrived?</b><div class="note" style="margin-top:2px">Check spam, and make sure it is the address you signed up with.</div></div></div>' : ''}
       ${SI.devLink ? `<a class="acct-go" href="${escapeHtml(SI.devLink)}" target="_blank" rel="noopener">Open the reset link (development only)</a>` : ''}
       <button type="button" class="acct-alt" onclick="siGo('login')">Back to sign in</button>`;
+  } else if (SI.step === 'upgrade' && AUTH.paywallMode === 'fake') {
+    const price = (_plans || {}).price?.label;
+    const head = { analyzer: 'Unlock the prop analyzer', prop_list: 'Save props to your Prop List', line_movement: 'See line movement', team_breakdown: 'Read the team breakdowns', general: 'Go Pro' }[SI.upFeature] || 'Go Pro';
+    body = `<h2>${escapeHtml(head)}</h2>
+      <p>${escapeHtml(SI.upMsg || 'WIN AI Pro unlocks the full toolkit.')}</p>
+      <ul class="up-list">
+        <li>Prop analyzer: full AI analyses with projections, edges and confidence</li>
+        <li>Prop List: save props and have them graded for you</li>
+        <li>Line movement on the props you save</li>
+        <li>Written offense and defense breakdowns in Daily Matchups</li></ul>
+      ${price ? `<div class="up-price">${escapeHtml(price.split(' / ')[0])}<small>per ${escapeHtml(price.split(' / ')[1] || 'month')}</small></div>` : ''}
+      ${SI.err ? `<div class="err">${escapeHtml(SI.err)}</div>` : ''}
+      <button type="button" class="acct-go" onclick="upFakeSubscribe()">${SI.busy ? 'One moment…' : 'Subscribe'}</button>
+      <button type="button" class="acct-alt" onclick="siClose()">Not now</button>`;
+  } else if (SI.step === 'unlocked') {
+    body = `<h2>You're in. Thank you!</h2>
+      <p>WIN AI is free while we're in beta, so there is nothing to pay and no card was taken. Wanting to subscribe is exactly what we needed to know.</p>
+      <p>As a thank-you for testing, Pro is now unlocked on your account for good.</p>
+      <button type="button" class="acct-go" onclick="siClose()">Start using Pro</button>`;
   } else if (SI.step === 'upgrade') {
     const P = _plans || {}, price = P.price?.label;
-    const head = { analyzer: 'Run unlimited analyses', prop_list: 'Save props to your Prop List', prop_board: 'See every prop on the board', general: 'Go Pro' }[SI.upFeature] || 'Go Pro';
+    const head = { analyzer: 'Run unlimited analyses', prop_list: 'Save props to your Prop List', prop_board: 'See every prop on the board', line_movement: 'See line movement', team_breakdown: 'Read the team breakdowns', general: 'Go Pro' }[SI.upFeature] || 'Go Pro';
     body = `<h2>${escapeHtml(head)}</h2>
       <p>${escapeHtml(SI.upMsg || 'WIN AI Pro unlocks the full toolkit.')}</p>
       <ul class="up-list">
@@ -5522,6 +5552,7 @@ async function acctResendConfirm() {
 async function acctSignOut() {
   try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (_) {}
   AUTH.user = null; AUTH.plan = null; AUTH.billing = null; AUTH.quota = null; betslip.length = 0; updateBetslipCount(); paintAccount(); paintQuota();
+  phSignedOut();
   if (document.getElementById('panel-betslip')?.classList.contains('active')) loadBetslip();
   acctToast('Signed out');
 }
@@ -5540,6 +5571,7 @@ async function acctDelete() {
   catch (e) { SI.busy = false; SI.err = e.message; return renderSignin(); }
   SI.busy = false; siClose();
   AUTH.user = null; AUTH.plan = null; AUTH.billing = null; AUTH.quota = null; betslip.length = 0; updateBetslipCount(); paintAccount(); paintQuota();
+  phSignedOut();
   if (document.getElementById('panel-betslip')?.classList.contains('active')) loadBetslip();
   acctToast('Account and props deleted');
 }
@@ -5574,7 +5606,19 @@ async function openUpgrade(feature, msg) {
   if (!AUTH.user) { openSignin('signin'); return; }
   Object.assign(SI, { open: true, step: 'upgrade', upFeature: feature || 'general', upMsg: msg || '', err: '', busy: false });
   renderSignin();
+  apiPost('/api/billing/viewed', { feature: SI.upFeature }).catch(() => {});   // pricing views, for clicks-per-view
   if (!_plans) { try { _plans = await fetch('/api/billing/plans').then(r => r.json()); } catch (_) {} if (SI.open && SI.step === 'upgrade') renderSignin(); }
+}
+// The beta's fake door: nothing is charged. The server records the intent and unlocks Pro for good.
+async function upFakeSubscribe() {
+  if (SI.busy) return;
+  SI.busy = true; SI.err = ''; renderSignin();
+  try {
+    await apiPost('/api/billing/fake-subscribe', { feature: SI.upFeature });
+    await refreshMe();
+    Object.assign(SI, { step: 'unlocked', busy: false });
+  } catch (e) { SI.err = e.message; SI.busy = false; }
+  renderSignin();
 }
 async function upCheckout() {
   if (SI.busy) return;
@@ -5609,19 +5653,59 @@ function paintQuota() {
     let html = '';
     if (AUTH.loaded && AUTH.paywall) {
       const q = AUTH.quota;
-      if (!AUTH.user) html = 'Sign in to run an analysis. Free accounts get one a day. <button type="button" onclick="openSignin(\'signin\')">Sign in</button>';
+      if (!AUTH.user) html = AUTH.paywallMode === 'fake'
+        ? 'Sign in to run an analysis. <button type="button" onclick="openSignin(\'signin\')">Sign in</button>'
+        : 'Sign in to run an analysis. Free accounts get one a day. <button type="button" onclick="openSignin(\'signin\')">Sign in</button>';
       else if (AUTH.plan === 'pro') html = q ? `Pro: ${Math.max(0, q.limit - q.used)} of ${q.limit} analyses left today.` : '';
+      else if (q && q.limit === 0) html = 'The prop analyzer is part of Pro. <button type="button" onclick="openUpgrade(\'analyzer\')">See Pro</button>';
       else if (q) html = q.used >= q.limit
         ? `You have used today's free analysis. <button type="button" onclick="openUpgrade('analyzer')">Go Pro</button> for more.`
         : `Free plan: ${q.limit - q.used} of ${q.limit} analysis left today.`;
     }
+    // The padlock sits in this note, not in the button: the analyze flow rewrites the button's text.
+    if (html && AUTH.loaded && AUTH.paywall && AUTH.plan !== 'pro') html = `<span class="pro-lock" style="margin:0 6px 0 0">${LOCK_SVG}Pro</span>${html}`;
     n.innerHTML = html; n.hidden = !html;
+  }
+  paintLocks();
+}
+// Padlocks on Pro features for anyone who doesn't have Pro (guests included) while the paywall is on.
+const LOCK_SVG = '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M5 7V5a3 3 0 0 1 6 0v2h.5A1.5 1.5 0 0 1 13 8.5v5a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 3 13.5v-5A1.5 1.5 0 0 1 4.5 7H5Zm1.5 0h3V5a1.5 1.5 0 0 0-3 0v2Z"/></svg>';
+function paintLocks() {
+  const locked = AUTH.loaded && AUTH.paywall && AUTH.plan !== 'pro';
+  const targets = [document.querySelector('.nav-item[data-page="betslip"]')];
+  for (const el of targets) {
+    if (!el) continue;
+    const badge = el.querySelector(':scope > .pro-lock');
+    if (locked && !badge) el.insertAdjacentHTML('beforeend', `<span class="pro-lock" title="Pro feature">${LOCK_SVG}Pro</span>`);
+    else if (!locked && badge) badge.remove();
   }
 }
 function applyMe(j) {
   AUTH.enabled = !!j.enabled; AUTH.methods = j.methods || { password: true, mail: false, google: null }; AUTH.user = j.user || null; AUTH.maxProps = j.maxProps || 300;
-  AUTH.paywall = !!j.paywall; AUTH.plan = j.plan || null; AUTH.billing = j.billing || null; AUTH.quota = j.quota || null;
+  AUTH.paywall = !!j.paywall; AUTH.paywallMode = j.paywallMode || null; AUTH.plan = j.plan || null; AUTH.billing = j.billing || null; AUTH.quota = j.quota || null;
+  phStart(j.analytics, AUTH.user);
 }
+// PostHog in the browser: page views and clicks. The events that measure the beta are sent by the server too,
+// so an ad blocker here loses only this layer. Same person id as the server (u_<account id>), never the email.
+let _phLoaded = false, _phId = null;
+function phStart(cfg, user) {
+  if (!cfg?.key || !/^https?:\/\/[^/]+$/.test(cfg.host || '')) return;
+  if (!_phLoaded) {
+    _phLoaded = true;
+    const ph = window.posthog = window.posthog || [];
+    ph._i = [[cfg.key, { api_host: cfg.host, person_profiles: 'identified_only' }, undefined]];
+    for (const m of ['capture', 'identify', 'reset', 'register']) ph[m] = function () { ph.push([m, ...arguments]); };
+    ph.__SV = 1;
+    const s = document.createElement('script');
+    s.async = true; s.crossOrigin = 'anonymous';
+    s.src = cfg.host.replace('.i.posthog.com', '-assets.i.posthog.com') + '/static/array.js';
+    document.head.appendChild(s);
+  }
+  const id = user?.analyticsId || null;
+  if (id && id !== _phId) window.posthog.identify(id);
+  _phId = id;
+}
+function phSignedOut() { if (_phLoaded) { window.posthog.reset(); _phId = null; } }
 async function refreshMe() {
   try { applyMe(await fetch('/api/auth/me', { cache: 'no-store' }).then(r => r.json())); } catch (_) {}
   paintAccount(); paintQuota();

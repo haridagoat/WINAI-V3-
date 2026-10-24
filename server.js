@@ -21,6 +21,7 @@ const { createMailer } = require('./lib/mailer');
 const datachecks = require('./lib/datachecks');
 const billingLib = require('./lib/billing');
 const { createGoogleVerifier } = require('./lib/google');
+const { createAnalytics, distinctIdFor } = require('./lib/analytics');
 
 const CLV_FILE = 'clv_tracker.json';   // legacy file, imported into SQLite on first start
 const store = createStore({
@@ -5186,8 +5187,9 @@ app.get('/api/prop-board', async (req, res) => {
         overProbability: r.overProbability ?? null, underProbability: r.underProbability ?? null,
         consensusLine: r.consensusLine ?? null, bookCount: r.bookCount ?? null, realEdge: r.realEdge ?? null,
       }));
-    // Free accounts and guests see the top of the board; Pro sees every prop.
-    const limited = paywallOn() && !isProReq(req);
+    // With real billing, free accounts and guests see the top of the board and Pro sees every prop.
+    // The beta's fake door keeps the whole board free.
+    const limited = PAYWALL_MODE === 'stripe' && paywallOn() && !isProReq(req);
     res.json({ league, date: getToday(), scanned: (candidates || []).length, props: limited ? billingLib.freeBoard(all) : all, ...(limited ? { limited: true, total: all.length } : {}) });
   } catch (err) {
     res.json({ league, date: getToday(), scanned: 0, props: [], error: err.message });
@@ -5243,7 +5245,9 @@ const TEAM_PROMPT_START = 'You are WIN AI. Write a short scouting read of';
 app.post('/api/analyze', analyzeRateLimiter, (req, res, next) => {
   const kind = req.body?.kind === 'team' ? 'team' : 'prop';
   req.analyzeKind = kind;
-  return kind === 'prop' ? analysisGate('ai')(req, res, next) : next();
+  // Team breakdowns skip the analysis ticket, so with the paywall on they must be Pro-gated here or the
+  // 'team' prefix becomes a free way around the analyzer limit.
+  return kind === 'prop' ? analysisGate('ai')(req, res, next) : requirePro('team_breakdown')(req, res, next);
 }, async (req, res) => {
   const { prompt } = req.body;
   if (!prompt || typeof prompt !== 'string') return res.status(400).json({ error: 'prompt required' });
@@ -5271,6 +5275,7 @@ app.post('/api/analyze', analyzeRateLimiter, (req, res, next) => {
     );
     // The analysis counts toward the daily limit only now, once it has actually worked.
     if (req.analysisTicket) store.finishTicket(req.analysisTicket);
+    if (req.user) track(req.user.id, 'feature_used', { feature: req.analyzeKind === 'team' ? 'team_breakdown' : 'analyzer' });
     res.json({ response: claudeRes.data.content.map(b => b.text || '').join('') });
   } catch (err) {
     const errMsg = err.response?.data?.error?.message || err.message || 'Unknown error';
@@ -5785,6 +5790,14 @@ const auth = createAuth({
   store, send: m => mailer.send(m), adminEmail: process.env.ADMIN_EMAIL, devLinks: mailer.devLinks, log: m => console.log(m),
   extraBlocked: String(process.env.BLOCKED_EMAIL_DOMAINS || '').toLowerCase().split(',').map(x => x.trim()).filter(Boolean),
 });
+// PostHog (lib/analytics.js). POSTHOG_KEY is the project's public key; without it nothing is sent.
+// Events carry the account id only (u_<id>), never the email address.
+const analytics = createAnalytics({
+  key: process.env.POSTHOG_KEY, host: process.env.POSTHOG_HOST,
+  post: (url, body) => axios.post(url, body, { timeout: 5000 }),
+  log: m => console.warn(m),
+});
+const track = (userId, event, props) => { analytics.capture(userId, event, props); };
 // Google sign-in needs only the public client id (Google Cloud Console > Credentials > OAuth client ID, Web).
 const GOOGLE_CLIENT_ID = /^[\w.-]+\.apps\.googleusercontent\.com$/.test(process.env.GOOGLE_CLIENT_ID || '') ? process.env.GOOGLE_CLIENT_ID : '';
 // Only a local stand-in may replace Google's key address (used by the tests).
@@ -5836,10 +5849,11 @@ function requireUser(req, res, next) {
 app.get('/api/auth/me', (req, res) => {
   res.set('Cache-Control', 'no-store');
   const on = paywallOn(), info = req.user ? planFor(req) : null;
+  if (req.user) analytics.appOpened(req.user.id, getToday());
   res.json({
     enabled: authStatus().enabled, methods: { password: authStatus().methods.password, mail: authStatus().methods.mail, google: authStatus().methods.google },
-    user: req.user ? { email: req.user.email, name: req.user.name || null, emailVerified: !!req.user.email_verified_at } : null, maxProps: USER_MAX_PROPS,
-    paywall: on,
+    user: req.user ? { email: req.user.email, name: req.user.name || null, emailVerified: !!req.user.email_verified_at, analyticsId: distinctIdFor(req.user.id) } : null, maxProps: USER_MAX_PROPS,
+    paywall: on, paywallMode: on ? PAYWALL_MODE : null, analytics: analytics.clientConfig(),
     ...(on && req.user ? {
       plan: info.plan,
       billing: { status: info.status, renewsAt: info.renewsAt, cancelAtPeriodEnd: info.cancelAtPeriodEnd, comped: info.comped, canManage: info.hasCustomer },
@@ -5859,11 +5873,13 @@ app.post('/api/auth/signup', authSignupLimiter, async (req, res) => {
   const b = req.body || {};
   const r = await auth.signUp({ name: b.name, email: b.email, password: b.password, ageConfirmed: b.ageConfirmed === true, baseUrl: mailBase(req), ip: req.ip });
   if (r.error) return authFail(res, r);
+  track(r.user.id, 'signed_up', { method: 'password', $set_once: { signed_up_at: r.user.created_at } });
   startSession(req, res, r, { emailSent: r.emailSent, ...devOnly(req, r) });
 });
 app.post('/api/auth/login', authLoginLimiter, async (req, res) => {
   const r = await auth.signIn({ email: req.body?.email, password: req.body?.password });
   if (r.error) return authFail(res, r);
+  track(r.user.id, 'logged_in', { method: 'password' });
   startSession(req, res, r);
 });
 // Always answers the same, whether or not the address has an account.
@@ -5939,6 +5955,7 @@ app.get('/auth/google/callback', async (req, res) => {      // needs the matchin
     const r = auth.signInVerified({ email: g.email, name: g.name, ageConfirmed: rec.ageConfirmed });
     if (r.error) return backToApp(res, { signin_error: r.code === 'age_required' ? 'age_required' : r.status === 403 ? 'disabled' : 'failed' });
     res.append('Set-Cookie', sessionCookie(r.sessionToken, { secure: isSecureReq(req) }));
+    track(r.user.id, r.created ? 'signed_up' : 'logged_in', { method: 'google', ...(r.created ? { $set_once: { signed_up_at: r.user.created_at } } : {}) });
     backToApp(res, { welcome: r.created ? 'new' : 'back' });
   } catch (err) { console.error('[Auth] Google sign-in failed:', err.response?.data?.error || err.message); backToApp(res, { signin_error: 'failed' }); }
 });
@@ -5982,7 +5999,11 @@ const STRIPE_PRICE = process.env.STRIPE_PRICE_ID || '';
 const STRIPE_PRICE_YEARLY = process.env.STRIPE_PRICE_ID_YEARLY || '';
 // Only a local stand-in may replace Stripe's address (used by the tests).
 const STRIPE_BASE = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(process.env.STRIPE_API_BASE || '') ? process.env.STRIPE_API_BASE : 'https://api.stripe.com';
-const FREE_DAILY_ANALYSES = envNum(process.env.FREE_DAILY_ANALYSES, 1);
+const PAYWALL_MODE = billingLib.paywallMode(process.env.PAYWALL);
+// In the beta the analyzer is a Pro feature outright; with real billing free accounts get one a day.
+const FREE_DAILY_ANALYSES = envNum(process.env.FREE_DAILY_ANALYSES, PAYWALL_MODE === 'fake' ? 0 : 1);
+// Shown on the fake-door pricing screen only (e.g. "$9.99 / month"). Nothing is ever charged.
+const BETA_PRICE_LABEL = /^[^<>]{1,40}$/.test(process.env.BETA_PRICE_LABEL || '') ? process.env.BETA_PRICE_LABEL : null;
 const PRO_DAILY_ANALYSES = envNum(process.env.PRO_DAILY_ANALYSES, 100);
 const stripeHttp = async (method, url, form, headers) => {
   const r = await axios({ method, url, data: form || undefined, headers: { ...headers, ...(form ? { 'Content-Type': 'application/x-www-form-urlencoded' } : {}) }, timeout: 15000, validateStatus: () => true });
@@ -5995,8 +6016,11 @@ function billingStatus() {
   if (!STRIPE_KEY) missing.push('STRIPE_SECRET_KEY');
   if (!STRIPE_WEBHOOK_SECRET) missing.push('STRIPE_WEBHOOK_SECRET');
   if (!STRIPE_PRICE) missing.push('STRIPE_PRICE_ID');
-  const requested = process.env.PAYWALL === 'on';
-  return { requested, configured: !missing.length, missing, on: requested && !missing.length && authStatus().enabled && authStatus().methods.mail,
+  const requested = PAYWALL_MODE !== 'off';
+  // The fake door needs accounts (to know who is locked and to unlock them) but never Stripe or email.
+  const on = PAYWALL_MODE === 'fake' ? authStatus().enabled
+    : PAYWALL_MODE === 'stripe' && !missing.length && authStatus().enabled && authStatus().methods.mail;
+  return { requested, paywallMode: PAYWALL_MODE, configured: PAYWALL_MODE === 'fake' || !missing.length, missing: PAYWALL_MODE === 'fake' ? [] : missing, on,
     mode: STRIPE_KEY ? (/^(sk|rk)_test_/.test(STRIPE_KEY) ? 'test' : 'live') : null, lastWebhookAt: store.getMeta('stripe:last_event_at') };
 }
 const paywallOn = () => billingStatus().on;
@@ -6006,12 +6030,17 @@ const planFor = req => {
   return info;
 };
 const isProReq = req => isAdmin(req) || (!!req.user && planFor(req).plan === 'pro');
-const FEATURE_NAME = { prop_list: 'The Prop List', analyzer: 'The prop analyzer', prop_board: 'The full Prop Board' };
+const FEATURE_NAME = { prop_list: 'The Prop List', analyzer: 'The prop analyzer', prop_board: 'The full Prop Board', line_movement: 'Line movement', team_breakdown: 'The written team breakdown' };
+// A locked feature answers 402; the browser shows the upgrade sheet. Each refusal is a paywall hit for analytics.
+function proRequired(req, res, feature) {
+  if (req.user) track(req.user.id, 'paywall_hit', { feature, paywall: PAYWALL_MODE });
+  return res.status(402).json({ error: `${FEATURE_NAME[feature] || 'This'} is a Pro feature.`, code: 'pro_required', feature });
+}
 function requirePro(feature) {
   return (req, res, next) => {
     if (!paywallOn() || isProReq(req)) return next();
     if (!req.user) return res.status(401).json({ error: 'Sign in to continue.', code: 'auth_required' });
-    return res.status(402).json({ error: `${FEATURE_NAME[feature] || 'This'} is a Pro feature.`, code: 'pro_required', feature });
+    return proRequired(req, res, feature);
   };
 }
 const returnBase = req => PUBLIC_URL || (isLoopback(req.ip) ? `${req.protocol}://${req.get('host')}` : null);
@@ -6027,9 +6056,9 @@ app.post('/api/analysis/start', analysisStartLimiter, (req, res) => {
   const pro = isProReq(req), limit = pro ? PRO_DAILY_ANALYSES : FREE_DAILY_ANALYSES, day = getToday();
   const used = store.analysesDone(req.user.id, day);
   if (used >= limit) {
-    return res.status(402).json(pro
-      ? { error: `You have used today's ${limit} analyses. The limit resets at midnight.`, code: 'daily_limit', feature: 'analyzer', quota: { used, limit } }
-      : { error: "You've used today's free analysis. Pro removes the daily limit.", code: 'pro_required', feature: 'analyzer', quota: { used, limit } });
+    if (pro) return res.status(402).json({ error: `You have used today's ${limit} analyses. The limit resets at midnight.`, code: 'daily_limit', feature: 'analyzer', quota: { used, limit } });
+    track(req.user.id, 'paywall_hit', { feature: 'analyzer', paywall: PAYWALL_MODE });
+    return res.status(402).json({ error: limit === 0 ? 'The prop analyzer is a Pro feature.' : "You've used today's free analysis. Pro removes the daily limit.", code: 'pro_required', feature: 'analyzer', quota: { used, limit } });
   }
   // A person who keeps starting analyses without finishing one is stopped, so the data routes cannot be farmed.
   if (store.ticketsStarted(req.user.id, day) >= limit * (pro ? 2 : 5) + 3) return res.status(429).json({ error: 'Too many analyses started today.', code: 'daily_limit', quota: { used, limit } });
@@ -6061,13 +6090,38 @@ async function currentPrice() {
 }
 app.get('/api/billing/plans', async (req, res) => {
   res.set('Cache-Control', 'no-store');
-  const on = paywallOn();
-  const price = on ? await currentPrice() : null;
-  res.json({ paywall: on, price: price ? { label: billingLib.priceLabel(price), interval: price.recurring?.interval || null } : null, freeDailyAnalyses: FREE_DAILY_ANALYSES, proDailyAnalyses: PRO_DAILY_ANALYSES, maxProps: USER_MAX_PROPS });
+  const on = paywallOn(), fake = on && PAYWALL_MODE === 'fake';
+  const price = on && !fake ? await currentPrice() : null;
+  const label = fake ? BETA_PRICE_LABEL : price ? billingLib.priceLabel(price) : null;
+  res.json({ paywall: on, paywallMode: on ? PAYWALL_MODE : null, price: label ? { label, interval: fake ? null : price.recurring?.interval || null } : null, freeDailyAnalyses: FREE_DAILY_ANALYSES, proDailyAnalyses: PRO_DAILY_ANALYSES, maxProps: USER_MAX_PROPS });
+});
+
+// ── fake door (PAYWALL=fake) ──
+// The pricing screen reports that it was seen, so intent can be read as clicks per view.
+const intentLimiter = security.createRateLimiter({ windowMs: 60 * 1000, max: 30, message: 'Too many requests. Wait a moment.' });
+app.post('/api/billing/viewed', requireUser, intentLimiter, (req, res) => {
+  if (!paywallOn()) return res.json({ ok: false });
+  track(req.user.id, 'pricing_viewed', { feature: billingLib.cleanFeature(req.body?.feature), paywall: PAYWALL_MODE, price: PAYWALL_MODE === 'fake' ? BETA_PRICE_LABEL : null });
+  res.json({ ok: true });
+});
+// Subscribe on the fake door: no payment. Records the intent (PostHog + the admin event log), then unlocks the
+// account for good as the beta thank-you, using the same flag as an admin comp.
+app.post('/api/billing/fake-subscribe', requireUser, intentLimiter, (req, res) => {
+  if (!paywallOn() || PAYWALL_MODE !== 'fake') return res.status(409).json({ error: 'Subscribing is not available here.' });
+  const feature = billingLib.cleanFeature(req.body?.feature);
+  const already = isProReq(req);
+  track(req.user.id, 'subscribe_clicked', { feature, price: BETA_PRICE_LABEL, already_pro: already, $set: { beta_subscribe_intent: true } });
+  if (!already) {
+    store.setUserComped(req.user.id, true);
+    store.addEvent('billing', 'info', `Account #${req.user.id} clicked Subscribe on the beta fake door (${feature}); unlocked.`);
+    track(req.user.id, 'beta_unlocked', { feature });
+  }
+  res.json({ ok: true, unlocked: true });
 });
 const checkoutLimiter = security.createRateLimiter({ windowMs: 15 * 60 * 1000, max: 10, message: 'Too many attempts. Try again in a few minutes.' });
 app.post('/api/billing/checkout', requireUser, checkoutLimiter, async (req, res) => {
-  if (!paywallOn() || !stripe) return res.status(503).json({ error: 'Payments are not turned on yet.' });
+  // The fake door must never reach Stripe, even if Stripe keys happen to be set.
+  if (PAYWALL_MODE !== 'stripe' || !paywallOn() || !stripe) return res.status(503).json({ error: 'Payments are not turned on yet.' });
   const base = returnBase(req);
   if (!base) return res.status(503).json({ error: 'The site address is not set up for payments yet.' });
   const info = planFor(req);
@@ -6279,6 +6333,7 @@ app.post('/api/clv/save', requireUser, requirePro('prop_list'), writeLimiter, (r
     notes:       ''
   };
   store.writePick(entry);
+  track(req.user.id, 'feature_used', { feature: 'prop_list' });
   res.json({ ok: true, id: entry.id, entry });
 });
 
@@ -6399,7 +6454,7 @@ app.delete('/api/clv/:id', writeLimiter, (req, res) => {
 // so it inherits the same odds-API source (and the same "unavailable if
 // quota's exhausted" behavior — reported honestly via `available: false`
 // rather than a fake number).
-app.get('/api/current-line', async (req, res) => {
+app.get('/api/current-line', requirePro('line_movement'), async (req, res) => {
   const league    = (req.query.league || 'nba').toLowerCase() === 'wnba' ? 'wnba' : 'nba';
   const player    = req.query.player;
   const propType  = req.query.propType || 'points';
@@ -6746,7 +6801,7 @@ app.get('/api/admin/users', requireAdmin, (req, res) => {
       signInsBlocked24h: authBlocks.filter(x => x > day).length,
     },
     users: users.map(u => ({ id: u.id, email: maskEmail(u.email), joined: u.created_at, lastSeen: u.last_seen, props: u.props, disabled: !!u.disabled, confirmed: !!u.email_verified_at, ...planOf(u) })),
-    billing: { ...(({ requested, configured, missing, on, mode, lastWebhookAt }) => ({ requested, configured, missing, on, mode, lastWebhookAt }))(billingStatus()), plans: planTotals(users) },
+    billing: { ...(({ requested, paywallMode, configured, missing, on, mode, lastWebhookAt }) => ({ requested, paywallMode, configured, missing, on, mode, lastWebhookAt }))(billingStatus()), analytics: analytics.enabled, plans: planTotals(users) },
   });
 });
 app.post('/api/admin/users/:id/:action(disable|enable|comp|uncomp)', requireAdmin, (req, res) => {
