@@ -22,6 +22,34 @@
   header{border-bottom:1px solid var(--border);padding:18px 28px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:rgba(10,10,11,0.97);backdrop-filter:blur(12px);z-index:100;}
   .logo{font-family:var(--label);font-weight:700;font-size:23px;letter-spacing:0.5px;color:var(--gold);line-height:1;display:flex;flex-direction:column;gap:2px;}
   .logo span{color:var(--muted);font-size:11px;font-family:var(--label);letter-spacing:1.5px;line-height:1;}
+  /* header: one "Tonight" pill instead of a scrolling ticker; the list opens beneath it */
+  .gp-wrap{position:relative}
+  .gp-pill{display:inline-flex;align-items:center;gap:10px;height:40px;padding:0 14px 0 12px;background:var(--surface2);border:1px solid var(--border2);border-radius:999px;color:var(--text);white-space:nowrap;cursor:pointer;font-family:var(--body)}
+  .gp-pill:hover,.gp-pill[aria-expanded="true"]{background:var(--surface3)}
+  .gp-pill[aria-expanded="true"]{border-color:rgba(255,255,255,.3)}
+  .gp-k{font-family:var(--label);font-weight:700;font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+  .gp-v{font-size:14.5px;font-weight:500;font-variant-numeric:tabular-nums}
+  .gp-sep{color:var(--dim)}
+  .gp-chev{color:var(--muted);transition:transform .15s}.gp-pill[aria-expanded="true"] .gp-chev{transform:rotate(180deg)}
+  .gp-dot{width:8px;height:8px;border-radius:50%;background:var(--green);flex:none;animation:pulse 2s infinite}
+  .gp-short{display:none}
+  .gp-dd{position:absolute;right:0;top:calc(100% + 8px);width:360px;max-width:calc(100vw - 24px);background:var(--surface);border:1px solid var(--border2);border-radius:14px;box-shadow:0 18px 44px rgba(0,0,0,.6);z-index:120;overflow:hidden}
+  .gp-dd[hidden]{display:none}
+  .gp-h{display:flex;justify-content:space-between;align-items:baseline;padding:14px 16px 10px}
+  .gp-h b{font-family:var(--display);font-weight:800;font-size:22px;letter-spacing:.04em;text-transform:uppercase}
+  .gp-h span{font-size:13px;color:var(--muted)}
+  .gp-grp{font-family:var(--label);font-weight:700;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--dim);padding:10px 16px 4px}
+  .gp-gm{display:grid;grid-template-columns:74px minmax(0,1fr) auto;gap:10px;align-items:center;width:100%;background:none;border:0;border-top:1px solid var(--border);padding:11px 16px;text-align:left;cursor:pointer;color:var(--text);font-family:var(--body);font-size:15px}
+  .gp-gm:hover,.gp-gm:focus-visible{background:var(--surface2)}
+  .gp-gm .t{font-family:var(--display);font-weight:700;font-size:19px;color:var(--muted2);font-variant-numeric:tabular-nums}
+  .gp-gm.live .t{color:var(--green);font-size:14px;letter-spacing:.08em;text-transform:uppercase;font-family:var(--label)}
+  .gp-gm.fin .t{font-size:14px;letter-spacing:.08em;text-transform:uppercase;font-family:var(--label);color:var(--dim)}
+  .gp-gm .m{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .gp-gm .go{color:var(--dim)}
+  .gp-f{display:block;width:100%;background:none;border:0;border-top:1px solid var(--border2);padding:13px 16px;text-align:left;font-family:var(--label);font-weight:700;font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted2);cursor:pointer}
+  .gp-f:hover{background:var(--surface2);color:var(--text)}
+  .gp-empty{padding:6px 16px 16px;color:var(--muted);font-size:14.5px}
+  @media(max-width:860px){.gp-long{display:none}.gp-short{display:inline}.gp-k{display:none}.gp-pill{padding:0 12px}.gp-dd{right:-4px}}
   .live-dot{width:7px;height:7px;border-radius:50%;background:var(--green);display:inline-block;margin-right:6px;animation:pulse 2s infinite;}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
   .today-games{font-family:var(--body);font-size:11px;color:var(--muted);background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:7px 0;max-width:min(560px,44vw);display:flex;flex-direction:column;gap:6px;overflow:hidden;}
@@ -1480,9 +1508,13 @@
 <header>
   <div class="logo">WIN AI <span>NBA + WNBA PROPS ENGINE</span></div>
   <div style="display:flex;align-items:center;gap:16px;">
-    <div class="today-games">
-      <div class="games-row"><span class="live-dot"></span><span class="league-tag nba">NBA</span><span id="games-text-nba">Loading...</span></div>
-      <div class="games-row"><span class="live-dot"></span><span class="league-tag wnba">WNBA</span><span id="games-text-wnba">Loading...</span></div>
+    <div class="gp-wrap" id="gp-wrap" hidden>
+      <button type="button" class="gp-pill" id="gp-pill" aria-haspopup="true" aria-expanded="false" aria-controls="gp-dd" onclick="gpToggle()">
+        <span class="gp-dot" id="gp-dot" hidden aria-hidden="true"></span><span class="gp-k">Tonight</span>
+        <span class="gp-v gp-long" id="gp-long">Loading…</span><span class="gp-v gp-short" id="gp-short">…</span>
+        <svg class="gp-chev" width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6l4.5 4.5L12.5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="gp-dd" id="gp-dd" role="dialog" aria-label="Tonight's games" hidden></div>
     </div>
   </div>
 </header>
@@ -1799,6 +1831,7 @@ function teamLogoUrl(league, teamName) {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
+  gpSync(document.querySelector('.panel.active')?.id.replace('panel-', '') || 'today');
   loadTodaysGames();
   loadFullPlayerLists();
   renderTodayPage();
@@ -1812,47 +1845,84 @@ window.addEventListener('DOMContentLoaded', () => {
   });
 });
 
-// Non-wrapping pill chips for the header ticker — replaces the old
-// comma-joined text blob, which wrapped awkwardly across multiple lines
-// once more than a couple games were scheduled.
-function renderGamesTicker(games) {
-  if (!games.length) return '<span class="ticker-empty">No games today</span>';
-  return games.map(g => {
-    const away = escapeHtml((g.away || '').split(' ').pop());
-    const home = escapeHtml((g.home || '').split(' ').pop());
-    const time = g.gameTime ? `<span class="t-time">${escapeHtml(g.gameTime)}</span>` : '';
-    return `<span class="ticker-item">${away} @ ${home}${time}</span>`;
-  }).join('');
+// ── Header "Tonight" pill: how many games, when the first one tips, and a list that opens beneath it ──
+const GP = { nba: null, wnba: null, err: null, open: false };
+const gpTime = t => { const m = /(\d{1,2}):(\d{2})\s*(AM|PM)/i.exec(t || ''); return m ? ((+m[1] % 12) + (/pm/i.test(m[3]) ? 12 : 0)) * 60 + +m[2] : 9999; };
+const gpNick = n => /Trail Blazers$/.test(n || '') ? 'Trail Blazers' : String(n || '').split(' ').pop();
+// upcoming / live / final, from whatever each schedule source reports (a time means it has not started)
+function gpState(g) {
+  const st = String(g.status || '');
+  if (/final/i.test(st)) return 'final';
+  if (!st || /T\d\d:\d\d/.test(st) || /scheduled|^pre/i.test(st)) return 'upcoming';
+  return 'live';
 }
+function gpGames() {
+  const prep = (arr, lg) => (arr || []).map(g => ({ ...g, lg, state: gpState(g) })).sort((a, b) => gpTime(a.gameTime) - gpTime(b.gameTime));
+  return { nba: prep(GP.nba, 'nba'), wnba: prep(GP.wnba, 'wnba') };
+}
+function gpSummary() {
+  if (GP.err && GP.nba == null && GP.wnba == null) return { long: 'Schedule unavailable', short: 'Schedule?', dot: false };
+  if (GP.nba == null && GP.wnba == null) return { long: 'Loading…', short: '…', dot: false };
+  const { nba, wnba } = gpGames(), all = [...nba, ...wnba], n = all.length;
+  if (!n) return { long: 'No games tonight', short: 'No games', dot: false };
+  const live = all.some(g => g.state === 'live');
+  const next = all.filter(g => g.state === 'upcoming' && g.gameTime).sort((a, b) => gpTime(a.gameTime) - gpTime(b.gameTime))[0];
+  const counts = [nba.length ? `${nba.length} NBA` : '', wnba.length ? `${wnba.length} WNBA` : ''].filter(Boolean).join(' · ');
+  const tail = live ? 'live now' : next ? `first tip ${String(next.gameTime).replace(/\s*ET$/, '')}` : 'all final';
+  const shortTail = live ? 'live' : next ? String(next.gameTime).replace(/\s*ET$/, '') : 'final';
+  return { long: `${counts} · ${tail}`, short: `${n} ${!nba.length ? 'WNBA' : 'game' + (n === 1 ? '' : 's')} · ${shortTail}`, dot: live };
+}
+function gpRow(g) {
+  const i = GP[g.lg].findIndex(x => x.away === g.away && x.home === g.home);
+  const t = g.state === 'live' ? (/T\d\d:\d\d|in progress/i.test(g.status) ? 'Live' : String(g.status).replace(/^(\d)\w{2}\s*Qtr/i, 'Q$1')) : g.state === 'final' ? 'Final' : escapeHtml(String(g.gameTime || 'TBD').replace(/\s*ET$/, ''));
+  return `<button type="button" class="gp-gm ${g.state === 'live' ? 'live' : g.state === 'final' ? 'fin' : ''}" data-gp="${g.lg}|${i}"><span class="t">${g.state === 'live' ? escapeHtml(t) : t}</span><span class="m">${escapeHtml(gpNick(g.away))} @ ${escapeHtml(gpNick(g.home))}</span><svg class="go" width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5L10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`;
+}
+function gpListHtml() {
+  const day = new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  if (GP.err && GP.nba == null && GP.wnba == null) return `<div class="gp-h"><b>Tonight</b></div><div class="gp-empty">${escapeHtml(GP.err)}</div><button type="button" class="gp-f" data-gp-retry>Try again</button>`;
+  if (GP.nba == null && GP.wnba == null) return `<div class="gp-h"><b>Tonight</b></div><div class="gp-empty">Loading the schedule…</div>`;
+  const { nba, wnba } = gpGames(), n = nba.length + wnba.length;
+  if (!n) return `<div class="gp-h"><b>Tonight</b><span>${day}</span></div><div class="gp-empty">Nothing on the NBA or WNBA schedule. Open Matchups to look at a future game.</div><button type="button" class="gp-f" data-gp-go="matchups">Open Matchups</button>`;
+  return `<div class="gp-h"><b>Tonight</b><span>${day} · ${n} game${n === 1 ? '' : 's'}</span></div>
+    ${nba.length ? `<div class="gp-grp">NBA</div>${nba.map(gpRow).join('')}` : ''}${wnba.length ? `<div class="gp-grp">WNBA</div>${wnba.map(gpRow).join('')}` : ''}
+    <button type="button" class="gp-f" data-gp-go="today">Open the Today page</button>`;
+}
+function gpPaint() {
+  const s = gpSummary();
+  const set = (id, txt) => { const el = document.getElementById(id); if (el) el.innerHTML = txt.split(' · ').map(escapeHtml).join('<span class="gp-sep"> · </span>'); };
+  set('gp-long', s.long); set('gp-short', s.short);
+  const dot = document.getElementById('gp-dot'); if (dot) dot.hidden = !s.dot;
+  const dd = document.getElementById('gp-dd'), pill = document.getElementById('gp-pill');
+  if (dd) { dd.hidden = !GP.open; if (GP.open) dd.innerHTML = gpListHtml(); }
+  if (pill) pill.setAttribute('aria-expanded', String(GP.open));
+}
+function gpToggle(force) { GP.open = typeof force === 'boolean' ? force : !GP.open; gpPaint(); }
+// The Today page already lists every game, so the pill is only shown on the other pages.
+function gpSync(page) { const w = document.getElementById('gp-wrap'); if (w) w.hidden = page === 'today'; if (page === 'today') gpToggle(false); }
+document.addEventListener('click', e => {
+  const row = e.target.closest('[data-gp]');
+  if (row) { const [lg, i] = row.dataset.gp.split('|'), g = (GP[lg] || [])[+i]; gpToggle(false); if (g) prefillMatchup(g.away, g.home, lg); return; }
+  const go = e.target.closest('[data-gp-go]'); if (go) { gpToggle(false); switchTab(go.dataset.gpGo); return; }
+  if (e.target.closest('[data-gp-retry]')) { loadTodaysGames(); return; }
+  if (GP.open && !e.target.closest('#gp-wrap')) gpToggle(false);
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && GP.open) { gpToggle(false); document.getElementById('gp-pill')?.focus(); } });
+setInterval(() => { if (!document.hidden) loadTodaysGames(); }, 5 * 60 * 1000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) loadTodaysGames(); });
 
 async function loadTodaysGames() {
-  // NBA
-  try {
-    const data = await apiGet('/api/today');
-    const games = data.games || [];
-    document.getElementById('games-text-nba').innerHTML = renderGamesTicker(games);
-  } catch (err) {
-    console.error('NBA games load error:', err.message);
-    document.getElementById('games-text-nba').textContent = 'Could not load schedule — check server';
-    // Try debug endpoint to give user more info
-    fetch('/api/debug').then(r=>r.json()).then(d=>{
-      if (!d.balldontlie?.ok) {
-        document.getElementById('games-text-nba').textContent =
-          `BallDontLie API error: ${d.balldontlie?.status || 'no response'} — check API key`;
-      }
-    }).catch(()=>{
-      document.getElementById('games-text-nba').textContent = 'Server not running — start node server.js';
-    });
+  const [nba, wnba] = await Promise.allSettled([apiGet('/api/today'), apiGet('/api/wnba/today')]);
+  if (nba.status === 'fulfilled') GP.nba = nba.value.games || []; else console.error('NBA games load error:', nba.reason?.message);
+  if (wnba.status === 'fulfilled') GP.wnba = wnba.value.games || []; else console.error('WNBA games load error:', wnba.reason?.message);
+  GP.err = null;
+  if (nba.status === 'rejected' && wnba.status === 'rejected') {
+    GP.err = 'The schedule did not load. Check that the server is running.';
+    try {   // the old ticker pointed at the schedule key when that was the problem; keep that hint
+      const d = await fetch('/api/debug').then(r => r.json());
+      if (d.balldontlie && !d.balldontlie.ok) GP.err = `The schedule source (BallDontLie) answered ${d.balldontlie.status || 'with nothing'}. Check its API key.`;
+    } catch (_) {}
   }
-
-  // WNBA
-  try {
-    const data = await apiGet('/api/wnba/today');
-    document.getElementById('games-text-wnba').innerHTML = renderGamesTicker(data.games || []);
-  } catch (err) {
-    console.error('WNBA games load error:', err.message);
-    document.getElementById('games-text-wnba').textContent = 'Could not load schedule';
-  }
+  gpPaint();
 }
 
 // Element ids are suffixed "-wnba" for the WNBA tab, bare for NBA — this
@@ -4231,6 +4301,7 @@ function switchTab(name) {
   document.getElementById('nav-btn-sport')?.classList.toggle('on', name in NAV_SPORT);
   document.getElementById('nav-btn-tools')?.classList.toggle('on', name in NAV_TOOLS);
   closeNavMenu();
+  gpSync(name);
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.getElementById('panel-'+name)?.classList.add('active');
   if (name==='betslip') loadBetslip();
