@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """
 WIN AI — NBA API Bridge
-Usage:
+Usage (the season defaults to the current one; this season's games lead, last season's are a slight prior):
   python3 predict_tonight.py "Player Name"
-  python3 predict_tonight.py "Player Name" 2025-26
-  python3 predict_tonight.py "Player Name" 2025-26 "Opponent Team"  <- H2H mode
+  python3 predict_tonight.py "Player Name" 2026-27
+  python3 predict_tonight.py "Player Name" 2026-27 "Opponent Team"  <- H2H mode
 """
 import sys, json, time
+
+import season_blend
 
 try:
     from nba_api.stats.endpoints import playergamelog
@@ -191,6 +193,25 @@ def row_to_game(row):
         'plus_minus': si(row.get('PLUS_MINUS')),
     }
 
+def prev_season(season):
+    y = int(season[:4])
+    return f'{y - 1}-{str(y)[-2:]}'
+
+
+def blend_avgs(cur, prior, w0):
+    """Season averages: this season's, with last season's as a slight prior (weight w0)."""
+    if not prior:
+        return cur
+    if not cur or w0 >= 1:
+        return prior
+    out = dict(cur)
+    for k, v in cur.items():
+        pv = prior.get(k)
+        if isinstance(v, (int, float)) and isinstance(pv, (int, float)):
+            out[k] = round((1 - w0) * v + w0 * pv, 1)
+    return out
+
+
 def calc_avgs(games):
     if not games: return {}
     n = len(games)
@@ -227,7 +248,7 @@ def main():
         sys.exit(1)
 
     player_name = sys.argv[1]
-    season      = sys.argv[2] if len(sys.argv) > 2 else '2025-26'
+    season      = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2] else season_blend.current_nba_season()
     opponent    = sys.argv[3] if len(sys.argv) > 3 else None
 
     player = find_player(player_name)
@@ -256,19 +277,6 @@ def main():
         print(json.dumps({'error': str(e)}))
         sys.exit(1)
 
-    # Fallback to previous season
-    if df.empty or len(df) < 3:
-        try:
-            yr = int(season[:4])
-            prev = f'{yr-1}-{str(yr)[-2:]}'
-            df2 = get_log(pid, prev)
-            if not df2.empty: df = df2
-        except: pass
-
-    if df.empty and (df_playoffs is None or df_playoffs.empty):
-        print(json.dumps({'error': f'No game log for {player_name}'}))
-        sys.exit(1)
-
     playoff_games = []
     if df_playoffs is not None and not df_playoffs.empty:
         playoff_games = [row_to_game(row) for _, row in df_playoffs.iterrows()]
@@ -278,7 +286,29 @@ def main():
     # the same season string, and each half is already newest-first on its
     # own (confirmed directly against nba_api) — concatenating keeps the
     # combined list newest-first with no re-sort needed.
-    all_games = playoff_games + regular_games
+    current_games = playoff_games + regular_games
+    n_current = len(current_games)
+
+    # Early in a season a player has only a handful of games. Last season's games are kept as a slight prior:
+    #  - the recent-games window (L5 / L10 / the 20 returned) is topped up with the end of last season, so it is a
+    #    full rolling window and the new games sit at the front of it
+    #  - the season average is this season's, with last season's blended in (the same weights as the stat files)
+    # Once a player has 40 games the prior is down to 10% and is no longer fetched.
+    prior_games = []
+    w0 = season_blend.prior_weight(n_current)
+    if n_current < 40 and not opponent:
+        try:
+            time.sleep(0.4)
+            df_prev = get_log(pid, prev_season(season))
+            if not df_prev.empty:
+                prior_games = [row_to_game(row) for _, row in df_prev.iterrows()]
+                for g in prior_games: g['priorSeason'] = True
+        except Exception:
+            prior_games = []
+    if n_current == 0 and not prior_games and not opponent:
+        print(json.dumps({'error': f'No game log for {player_name}'}))
+        sys.exit(1)
+    all_games = current_games + prior_games[:max(0, 20 - n_current)]
 
     # ── H2H MODE ────────────────────────────────────────────────────
     if opponent:
@@ -288,8 +318,8 @@ def main():
 
         # Search current season first — only go back if not enough games
         seasons_to_try = [season]
-        if season != '2024-25': seasons_to_try.append('2024-25')
-        if season != '2023-24': seasons_to_try.append('2023-24')
+        for _ in range(3):
+            seasons_to_try.append(prev_season(seasons_to_try[-1]))
         # Only add 2022-23 if we really need more data (checked after current season)
         for i, try_season in enumerate(seasons_to_try):
             if i > 0:
@@ -345,15 +375,22 @@ def main():
     # all_games already holds the full current-season log (nba_api fetches it
     # in one call) — season-long averages are essentially free, just use them
     # as a shrinkage baseline instead of throwing the rest of the season away.
+    # gamesFound is the size of the sample behind the season average: this season's games plus the evidence the prior adds
+    # (up to 30 of last season's games, scaled by the prior's weight). The server uses it to judge how much to trust the
+    # season baseline, so a player 4 games in is not treated as having 4 games of history.
+    effective = n_current + round(min(len(prior_games), 30) * w0)
+    season_avg = blend_avgs(calc_avgs(current_games), calc_avgs(prior_games), w0 if prior_games else 0.0) if prior_games or current_games else {}
     print(json.dumps({
         'player':     player['full_name'],
         'id':         pid,
         'season':     season,
         'source':     'nba_api (live)',
-        'gamesFound': len(all_games),
+        'gamesFound': effective,
+        'currentSeasonGames': n_current,
+        'priorSeasonGamesInWindow': sum(1 for g in all_games if g.get('priorSeason')),
         'l5':         calc_avgs(all_games[:5]),
         'l10':        calc_avgs(all_games[:10]),
-        'season_avg': calc_avgs(all_games),
+        'season_avg': season_avg,
         'games':      all_games[:20],  # bumped from 10 so the UI's home/away filters have enough games to draw from
     }))
 

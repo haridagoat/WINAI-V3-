@@ -14,6 +14,7 @@ from nba_api.stats.endpoints import (
     leaguedashteamshotlocations,
     leaguedashplayershotlocations,
     leaguedashptdefend,
+    leaguedashptteamdefend,
     leaguedashptstats,
     leaguehustlestatsplayer,
     leaguehustlestatsteam,
@@ -102,6 +103,10 @@ def fetch(label, fn, **kw):
             if df is None or len(df) == 0:
                 print(f"  ERROR: Empty data frame")
                 return None
+            # Some endpoints (shot locations) return two-level column names like ('Restricted Area', 'FGM');
+            # flatten to 'Restricted Area_FGM' so the rows can be written as JSON.
+            if getattr(df.columns, 'nlevels', 1) > 1:
+                df.columns = ['_'.join(str(p) for p in col if p) for col in df.columns]
             print(f"  OK ({len(df)} rows)")
             return df
         except Exception as e:
@@ -164,8 +169,9 @@ for label, mtype, fname in [
     time.sleep(SLEEP)
 
 # ── TEAM PAINT DEFENSE ────────────────────────────────────────────
-df = fetch("Team Paint Defense", leaguedashteamptshot.LeagueDashTeamPtShot,
-           season=SEASON, pt_measure_type='PaintTouch',
+# Paint defense = how teams defend shots inside 6 feet (nba_api 1.11 has no 'PaintTouch' option on LeagueDashTeamPtShot).
+df = fetch("Team Paint Defense", leaguedashptteamdefend.LeagueDashPtTeamDefend,
+           season=SEASON, defense_category='Less Than 6Ft',
            per_mode_simple='PerGame', season_type_all_star='Regular Season')
 if df is not None:
     save('team_paint_defense.json', df.to_dict('records'))
@@ -226,7 +232,7 @@ time.sleep(SLEEP)
 df = fetch("Shot Dashboard Player (General)",
            leaguedashplayershotlocations.LeagueDashPlayerShotLocations,
            season=SEASON,
-           per_mode_simple='PerGame',
+           per_mode_detailed='PerGame',
            season_type_all_star='Regular Season')
 if df is not None:
     save('shotdash_general_player.json', df.to_dict('records'))
@@ -235,7 +241,7 @@ time.sleep(SLEEP)
 df = fetch("Shot Dashboard Team (General)",
            leaguedashteamshotlocations.LeagueDashTeamShotLocations,
            season=SEASON,
-           per_mode_simple='PerGame',
+           per_mode_detailed='PerGame',
            season_type_all_star='Regular Season')
 if df is not None:
     save('shotdash_general_team.json', df.to_dict('records'))
@@ -243,10 +249,10 @@ if df is not None:
 time.sleep(SLEEP)
 
 # ── HUSTLE STATS ──────────────────────────────────────────────────
-# per_mode_nullable is correct (not per_mode_time_nullable)
+# per_mode_time is the parameter name in nba_api 1.11 (per_mode_nullable no longer exists)
 df = fetch("Hustle Player", leaguehustlestatsplayer.LeagueHustleStatsPlayer,
            season=SEASON,
-           per_mode_nullable='PerGame',
+           per_mode_time='PerGame',
            season_type_all_star='Regular Season')
 if df is not None:
     save('hustle_player.json', df.to_dict('records'))
@@ -254,7 +260,7 @@ time.sleep(SLEEP)
 
 df = fetch("Hustle Team", leaguehustlestatsteam.LeagueHustleStatsTeam,
            season=SEASON,
-           per_mode_nullable='PerGame',
+           per_mode_time='PerGame',
            season_type_all_star='Regular Season')
 if df is not None:
     save('hustle_team.json', df.to_dict('records'))

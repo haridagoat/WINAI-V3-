@@ -210,3 +210,9 @@ The admin page can read every account, so the admin token should not be its only
 4. Open the admin page. Enter the token, then the code. You stay signed in for 8 hours, or until you press Lock.
 
 If you lose the phone and the saved secret, remove `ADMIN_TOTP_SECRET` from the server and set up a new one. After this is on, scripts that call admin routes with only the token stop working; that is the point.
+
+## NBA stats: this season, blended with last season
+
+`fetch_stats.py` fetches the current NBA season (it follows the calendar: October starts a new one) and blends it with last season's final files in `prior_season/`. The current season dominates. Last season is a slight prior that counts for most while a player has fewer than 10 games, about 15% after that, and fades to 5% by game 60. This is automatic, and runs with the 7 AM refresh.
+
+`prior_season/` is committed to the repo on purpose, so a fresh deploy blends correctly from day one. **Each October, before the new season's first stats fetch:** copy the files from `season_raw/` into `prior_season/` (replace them), set `prior_season/season_meta.json` to the season that just ended, and commit. Do this on the computer where the fetch has been running, because `season_raw/` is not in git.

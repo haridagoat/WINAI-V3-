@@ -216,3 +216,31 @@ test('the bell curve misprices low counts: a 0.5 line on a 0.9 projection', () =
   assert.ok(count.overProbability > 0.5 && count.overProbability < 1);
   assert.ok(Math.abs(count.overProbability - bell.overProbability) > 0.02, `${count.overProbability} vs ${bell.overProbability}`);
 });
+
+// ── player lookup ignores accents ──
+test('a player is found whichever way their name is accented', async () => {
+  const index = {
+    'luka doncic': { id: 1, name: 'Luka Doncic', team: 'Los Angeles Lakers' },
+    'kristaps porzingis': { id: 2, name: 'Kristaps Porzingis', team: 'Atlanta Hawks' },
+    'nikola jovic': { id: 3, name: 'Nikola Jovic', team: 'Miami Heat' },
+    'jaylin williams': { id: 4, name: 'Jaylin Williams', team: 'Oklahoma City Thunder' },
+    'jalen williams': { id: 5, name: 'Jalen Williams', team: 'Oklahoma City Thunder' },
+  };
+  const lookup = extract({
+    functions: ['normalizePlayerName', 'resolveNBAPlayer'],
+    globals: { nbaPlayerIndex: index, buildNBAPlayerIndex: async () => {} },
+  });
+  for (const [typed, id] of [['Luka Dončić', 1], ['Luka Doncic', 1], ['luka dončić', 1], ['Kristaps Porziņģis', 2], ['Nikola Jović', 3], ['Jalen Williams', 5], ['Williams Jaylin', 4]])
+    assert.equal((await lookup.resolveNBAPlayer(typed))?.id, id, typed);
+  assert.equal(await lookup.resolveNBAPlayer('Somebody Else'), null);
+  assert.equal(await lookup.resolveNBAPlayer('Williams'), (await lookup.resolveNBAPlayer('Williams')) && (await lookup.resolveNBAPlayer('Williams')), 'a bare surname still resolves to some Williams, as before');
+});
+
+// ── the season follows the calendar ──
+test('the NBA season is named for the year it starts: October begins a new one', () => {
+  const { currentNbaSeason } = extract({ functions: ['currentNbaSeason'] });
+  const at = d => currentNbaSeason(new Date(d + 'T12:00:00'));
+  assert.equal(at('2026-10-01'), '2026-27'); assert.equal(at('2026-12-31'), '2026-27'); assert.equal(at('2027-02-14'), '2026-27');
+  assert.equal(at('2027-09-30'), '2026-27');                         // the off season still points at the season just finished
+  assert.equal(at('2027-10-01'), '2027-28'); assert.equal(at('2025-10-22'), '2025-26');
+});

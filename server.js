@@ -386,12 +386,17 @@ async function resolveNBAPlayer(playerName) {
   await buildNBAPlayerIndex();
   const lower = playerName.toLowerCase().trim();
   if (nbaPlayerIndex[lower]) return nbaPlayerIndex[lower];
+  // Names are compared with accents removed ("Luka Dončić" is "Luka Doncic" in ESPN's index), so an accented spelling
+  // from one source still finds the player. Without this the team came back "Unknown" and the pick was dropped.
+  const norm = normalizePlayerName(playerName);
+  const exact = Object.values(nbaPlayerIndex).find(p => normalizePlayerName(p.name) === norm);
+  if (exact) return exact;
   // Every query token must appear as a whole token in the candidate's
   // name — not a bare substring, which could match an unrelated player
   // sharing a name fragment instead of an honest "not found".
-  const queryTokens = new Set(lower.split(' ').filter(Boolean));
+  const queryTokens = new Set(norm.split(' ').filter(Boolean));
   const match = Object.values(nbaPlayerIndex).find(p => {
-    const nameTokens = new Set(p.name.toLowerCase().split(' '));
+    const nameTokens = new Set(normalizePlayerName(p.name).split(' '));
     return [...queryTokens].every(t => nameTokens.has(t));
   });
   return match || null;
@@ -714,7 +719,7 @@ function normalizePlayerName(s) {
   return (s || '')
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // strip diacritics
     .toLowerCase()
-    .replace(/[.'-]/g, '')
+    .replace(/[.\u0027-]/g, '')                       // dots, apostrophes and hyphens
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -1682,7 +1687,12 @@ async function fetchPlayerStats(playerName) {
 // Calls predict_tonight.py with opponent arg → full game log filtered
 // Returns every individual game as a box score — not just averages
 // ════════════════════════════════════════════════════════════════
-async function fetchH2HViaBridge(playerName, opponent, season = '2025-26') {
+// NBA seasons are named for the year they start: October of 2026 begins "2026-27", and the summer after it is still "2026-27".
+function currentNbaSeason(d = new Date()) {
+  const y = d.getMonth() >= 9 ? d.getFullYear() : d.getFullYear() - 1;
+  return `${y}-${String((y + 1) % 100).padStart(2, '0')}`;
+}
+async function fetchH2HViaBridge(playerName, opponent, season = currentNbaSeason()) {
   if (security.badString(playerName) || security.badString(opponent) || security.badString(season)) return { error: 'Invalid name' };
   const cacheKey = `h2h:${playerName}:${opponent}`;
   const cached = nbaApiBridgeCache[cacheKey];
@@ -3818,7 +3828,7 @@ function enqueueBridge(taskFn) {
   return scheduled;
 }
 
-async function fetchViaBridge(playerName, season = '2025-26') {
+async function fetchViaBridge(playerName, season = currentNbaSeason()) {
   if (security.badString(playerName) || security.badString(season)) return { error: 'Invalid name' };
   const cacheKey = `${playerName}:${season}`;
   const cached = nbaApiBridgeCache[cacheKey];
@@ -3868,7 +3878,7 @@ async function fetchViaBridge(playerName, season = '2025-26') {
 const shotChartCache = {};
 const SHOT_CHART_TTL = 30 * 60 * 1000;
 
-async function fetchShotChart(league, mode, name, season = '2025-26') {
+async function fetchShotChart(league, mode, name, season = currentNbaSeason()) {
   if (security.badString(name) || security.badString(season)) return { error: 'Invalid name' };
   const cacheKey = `${league}:${mode}:${name}:${season}`;
   const cached = shotChartCache[cacheKey];
@@ -3919,13 +3929,13 @@ app.get('/api/shotchart', async (req, res) => {
   res.json(data);
 });
 
-// GET /api/nba-bridge?player=Shai+Gilgeous-Alexander&season=2025-26
+// GET /api/nba-bridge?player=Shai+Gilgeous-Alexander&season=2026-27
 app.get('/api/nba-bridge', requireAdmin, async (req, res) => {
   const { player, season } = req.query;
   if (!player) return res.status(400).json({ error: 'player required' });
 
   console.log(`[Bridge] Fetching: ${player}`);
-  const data = await fetchViaBridge(player, season || '2025-26');
+  const data = await fetchViaBridge(player, season || currentNbaSeason());
   res.json(data);
 });
 
@@ -3936,7 +3946,7 @@ app.post('/api/nba-bridge/batch', requireAdmin, async (req, res) => {
 
   const results = {};
   for (const name of playerList.slice(0, 10)) { // cap at 10
-    results[name] = await fetchViaBridge(name, season || '2025-26');
+    results[name] = await fetchViaBridge(name, season || currentNbaSeason());
     await new Promise(r => setTimeout(r, 1500)); // respect rate limits
   }
   res.json(results);

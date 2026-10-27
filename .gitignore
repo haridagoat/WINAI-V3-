@@ -13,6 +13,11 @@ __pycache__/
 !package-lock.json
 !railway.json
 
+# Last season's final NBA stat files. They never change, and fetch_stats.py blends the current season with them, so they ship
+# with the code (a fresh deploy has no stat files of its own). Each October: copy season_raw/*.json into prior_season/ and commit.
+!prior_season/
+!prior_season/*.json
+
 # SQLite database, its backups, and the one-time import copy
 *.db
 *.db-wal

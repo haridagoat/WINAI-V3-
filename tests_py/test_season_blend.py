@@ -125,3 +125,29 @@ class Season(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class Bridge(unittest.TestCase):
+    """The helpers in predict_tonight.py (importing it needs nba_api, which the bridge needs anyway)."""
+    @classmethod
+    def setUpClass(cls):
+        import predict_tonight
+        cls.pt = predict_tonight
+
+    def test_previous_season_name(self):
+        self.assertEqual(self.pt.prev_season('2026-27'), '2025-26')
+        self.assertEqual(self.pt.prev_season('2000-01'), '1999-00')
+
+    def test_season_average_leans_on_this_season_with_last_season_as_a_slight_prior(self):
+        cur = {'pts': 40.0, 'min': 36.0, 'fg_pct': 50.0}
+        prior = {'pts': 20.0, 'min': 30.0, 'fg_pct': 40.0}
+        out = self.pt.blend_avgs(cur, prior, 0.25)
+        self.assertEqual(out['pts'], 35.0)
+        self.assertEqual(out['min'], 34.5)
+        self.assertEqual(self.pt.blend_avgs(cur, {}, 0.25), cur)                 # no prior: this season as it is
+        self.assertEqual(self.pt.blend_avgs({}, prior, 1.0), prior)              # nothing yet this season: last season
+        self.assertEqual(self.pt.blend_avgs(cur, prior, 0.0), cur)
+
+    def test_values_missing_from_one_side_are_kept(self):
+        out = self.pt.blend_avgs({'pts': 10.0, 'x': 1.0}, {'pts': 20.0}, 0.5)
+        self.assertEqual((out['pts'], out['x']), (15.0, 1.0))
