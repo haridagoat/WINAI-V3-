@@ -6,7 +6,7 @@ const { extract } = require('./helpers/extract');
 const near = (a, b, eps = 1e-3) => assert.ok(Math.abs(a - b) <= eps, `${a} is not within ${eps} of ${b}`);
 
 const odds = extract({
-  functions: ['americanToImplied', 'americanToDecimal', 'devigTwoWay', 'calcExpectedValue', 'calcKellyStake', 'consensusFromLines', 'calcOverUnderProbability'],
+  functions: ['americanToImplied', 'americanToDecimal', 'devigTwoWay', 'calcExpectedValue', 'calcKellyStake', 'consensusFromLines', 'calcOverUnderProbability', 'usesCountModel', 'countPmf', 'countOverUnder'],
   globals: { normalCdf: z => { const t = 1 / (1 + 0.2316419 * Math.abs(z)), d = 0.3989423 * Math.exp(-z * z / 2); const p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274)))); return z > 0 ? 1 - p : p; } },
 });
 
@@ -161,4 +161,58 @@ test('the pick evaluators never read the probability without checking it exists'
   const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'server.js'), 'utf8');
   assert.ok(!/[^?]\bprob\.(over|under)Probability/.test(src), 'prob.overProbability / prob.underProbability must be read as prob?.');
   assert.ok((src.match(/prob\?\.overProbability/g) || []).length >= 2);
+});
+
+// ── small-count props use a count distribution instead of a bell curve ──
+test('only low-count props switch to the count model; points and combos keep the bell curve', () => {
+  for (const t of ['3pm', 'steals', 'blocks']) assert.equal(odds.usesCountModel(t, 12), true, t);       // always, whatever the mean
+  assert.equal(odds.usesCountModel('rebounds', 3.2), true); assert.equal(odds.usesCountModel('assists', 4.9), true);
+  assert.equal(odds.usesCountModel('rebounds', 9), false); assert.equal(odds.usesCountModel('assists', 7), false);
+  for (const t of ['points', 'pra', 'pr', 'pa', 'ra', undefined]) assert.equal(odds.usesCountModel(t, 2), false, String(t));
+});
+test('count distributions sum to 1 and have the requested mean, in all three regimes', () => {
+  for (const [mu, v] of [[2.5, 2.5], [2, 4], [3, 2.1], [0.8, 0.5], [1.2, 3]]) {
+    const pmf = odds.countPmf(mu, v, 200), sum = pmf.reduce((a, b) => a + b, 0), mean = pmf.reduce((a, p, k) => a + k * p, 0);
+    near(sum, 1, 1e-6); near(mean, mu, 0.02 * Math.max(1, mu));
+  }
+});
+test('Poisson: matches the textbook values (mean 2.5)', () => {
+  const pmf = odds.countPmf(2.5, 2.5, 100);
+  near(pmf[0], 0.082085, 1e-5); near(pmf[2], 0.256516, 1e-5);
+  near(pmf[0] + pmf[1] + pmf[2], 0.543813, 1e-5);
+  const r = odds.countOverUnder(2.5, Math.sqrt(2.5), 2.5);
+  near(r.underProbability, 0.5438, 1e-3); near(r.overProbability, 0.4562, 1e-3);                      // over 2.5 is 3 or more
+});
+test('negative binomial: mean 2, variance 4 gives .25, .25, .1875 and a fat upper tail', () => {
+  const pmf = odds.countPmf(2, 4, 200);
+  near(pmf[0], 0.25, 1e-9); near(pmf[1], 0.25, 1e-9); near(pmf[2], 0.1875, 1e-9);
+  const wide = odds.countOverUnder(2, 2, 5.5), poisson = odds.countOverUnder(2, Math.sqrt(2), 5.5);
+  assert.ok(wide.overProbability > poisson.overProbability);                                           // more spread, more big games
+});
+test('binomial: mean 3, variance 2.1 is the n=10, p=0.3 distribution, with a thinner tail than Poisson', () => {
+  const pmf = odds.countPmf(3, 2.1, 100);
+  near(pmf[0], 0.028248, 1e-5); near(pmf[3], 0.266828, 1e-5); near(pmf[0] + pmf[1] + pmf[2] + pmf[3], 0.649611, 1e-5);
+  assert.equal(pmf[11], 0);
+  assert.ok(odds.countOverUnder(3, Math.sqrt(2.1), 6.5).overProbability < odds.countOverUnder(3, Math.sqrt(3), 6.5).overProbability);
+});
+test('a whole-number line leaves the push out, so over and under still add to 1', () => {
+  const r = odds.countOverUnder(3, Math.sqrt(3), 3);                  // Poisson 3: P(0..2)=.4232, P(3)=.2240, P(4+)=.3528
+  near(r.underProbability, 0.4232 / (1 - 0.2240), 2e-3); near(r.overProbability, 0.3528 / (1 - 0.2240), 2e-3);
+  near(r.overProbability + r.underProbability, 1, 1e-9);
+  const half = odds.countOverUnder(3, Math.sqrt(3), 3.5); near(half.overProbability, 0.3528, 2e-3);
+});
+test('through the main function: 3-pointers use the count model, points do not, and bad input is still null', () => {
+  const direct = odds.countOverUnder(2.4, 1.3, 2.5), via = odds.calcOverUnderProbability(2.4, 1.3, 2.5, '3pm');
+  assert.deepEqual(via, direct);
+  const bell = odds.calcOverUnderProbability(2.4, 1.3, 2.5);
+  assert.deepEqual(odds.calcOverUnderProbability(2.4, 1.3, 2.5, 'points'), bell);                   // unchanged for points
+  assert.notDeepEqual(via, bell);
+  assert.equal(odds.calcOverUnderProbability(2.4, 1.3, null, '3pm'), null);
+  assert.equal(odds.calcOverUnderProbability(0, 1.3, 2.5, '3pm'), null);
+  for (const line of [0.5, 1.5, 2.5, 3, 6.5]) { const r = odds.calcOverUnderProbability(1.1, 0.7, line, 'blocks'); near(r.overProbability + r.underProbability, 1, 1e-3); }
+});
+test('the bell curve misprices low counts: a 0.5 line on a 0.9 projection', () => {
+  const bell = odds.calcOverUnderProbability(0.9, 0.55, 0.5), count = odds.calcOverUnderProbability(0.9, 0.55, 0.5, 'blocks');
+  assert.ok(count.overProbability > 0.5 && count.overProbability < 1);
+  assert.ok(Math.abs(count.overProbability - bell.overProbability) > 0.02, `${count.overProbability} vs ${bell.overProbability}`);
 });

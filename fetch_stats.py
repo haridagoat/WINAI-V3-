@@ -3,7 +3,9 @@ WIN AI — NBA Stats Fetcher
 Compatible with nba_api 1.11.4 / Python 3.14
 Run daily before using WIN AI. Takes 3-5 min due to nba.com rate limiting.
 """
-import json, time, os
+import json, time, os, shutil
+
+import season_blend
 
 from nba_api.stats.endpoints import (
     leaguedashteamstats,
@@ -18,8 +20,51 @@ from nba_api.stats.endpoints import (
     synergyplaytypes,
 )
 
-SEASON = '2025-26'
+# The season follows the calendar (October starts a new one); set WINAI_SEASON to force one.
+SEASON = os.environ.get('WINAI_SEASON') or season_blend.current_nba_season()
 SLEEP  = 2.5
+
+# The current season is fetched into RAW_DIR untouched. At the end it is blended with last season's files (PRIOR_DIR) and
+# the blended result is written next to this script, where the server reads it. Current season dominates; last season is
+# a slight prior that fades (see season_blend.py).
+RAW_DIR   = 'season_raw'
+PRIOR_DIR = 'prior_season'
+
+def _previous_season(season):
+    y = int(season[:4])
+    return f"{y - 1}-{y % 100:02d}"
+
+def _meta(d):
+    try:
+        with open(os.path.join(d, 'season_meta.json')) as f:
+            return json.load(f).get('season')
+    except Exception:
+        return None
+
+def prepare_dirs():
+    """Make sure last season's files are kept as the prior, and the raw folder belongs to this season."""
+    raw_has_files = os.path.isdir(RAW_DIR) and any(f.endswith('.json') and f != 'season_meta.json' for f in os.listdir(RAW_DIR))
+    if raw_has_files and _meta(RAW_DIR) not in (None, SEASON):
+        # A new season has started since the last run: the old raw files become the prior.
+        shutil.rmtree(PRIOR_DIR, ignore_errors=True)
+        shutil.copytree(RAW_DIR, PRIOR_DIR)
+        shutil.rmtree(RAW_DIR)
+        print(f"  New season {SEASON}: kept the {_meta(PRIOR_DIR)} files as the prior")
+    elif not os.path.isdir(PRIOR_DIR):
+        # First run of this setup: the files already here are last season's, so they become the prior.
+        os.makedirs(PRIOR_DIR)
+        NOT_NBA_STATS = {'clv_tracker.json', 'scouting_notes.json', 'slate_scan_cache.json', 'test_results.json', 'railway.json', 'season_meta.json'}
+        for f in os.listdir('.'):
+            if f.endswith('.json') and not f.startswith(('package', 'wnba_')) and f not in NOT_NBA_STATS:
+                shutil.copy(f, os.path.join(PRIOR_DIR, f))
+        with open(os.path.join(PRIOR_DIR, 'season_meta.json'), 'w') as f:
+            json.dump({'season': _previous_season(SEASON)}, f)
+        print(f"  First run: saved the existing files as the {_previous_season(SEASON)} prior")
+    os.makedirs(RAW_DIR, exist_ok=True)
+    with open(os.path.join(RAW_DIR, 'season_meta.json'), 'w') as f:
+        json.dump({'season': SEASON}, f)
+
+prepare_dirs()
 
 def _sanitize(obj):
     """Python's json module writes bare NaN/Infinity by default, which is
@@ -35,6 +80,7 @@ def _sanitize(obj):
     return obj
 
 def save(filename, data):
+    filename = os.path.join(RAW_DIR, filename)
     with open(filename, 'w') as f:
         json.dump(_sanitize(data), f)
     print(f"  Saved {filename} ({len(data)} rows)")
@@ -305,6 +351,12 @@ for label, ptype in PLAYTYPES:
         if df is not None:
             save(f'playtype_{ptype}_{gname}.json', df.to_dict('records'))
         time.sleep(SLEEP)
+
+# ── BLEND WITH LAST SEASON ────────────────────────────────────────
+print("\n[BLEND] This season is the base; last season is a slight prior...")
+season_blend.blend_dir(RAW_DIR, PRIOR_DIR, '.')
+with open('season_meta.json', 'w') as f:
+    json.dump({'season': SEASON, 'blended_with': _meta(PRIOR_DIR), 'blended_at': time.strftime('%Y-%m-%dT%H:%M:%S')}, f)
 
 # ── SUMMARY ───────────────────────────────────────────────────────
 all_files = sorted([f for f in os.listdir('.') if f.endswith('.json')

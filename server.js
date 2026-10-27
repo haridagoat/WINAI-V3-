@@ -2520,8 +2520,47 @@ function normalCdf(z) {
   if (z > 0) p = 1 - p;
   return p;
 }
-function calcOverUnderProbability(projection, stdDev, postedLine) {
+// Small-count props (3-pointers, steals, blocks, and low rebound or assist lines) land on whole numbers and cannot go below
+// zero, so a bell curve misprices them, most of all around the line. They use a count distribution instead, with the same mean
+// (the projection) and the same spread (stdDev) the bell curve would have used: Poisson when the spread matches the mean,
+// negative binomial when it is wider, binomial when it is tighter (3-pointers usually are). Points and combos stay on the curve.
+function usesCountModel(propType, projection) {
+  const counts = ['3pm', 'steals', 'blocks'];
+  return counts.includes(propType) || ((propType === 'rebounds' || propType === 'assists') && projection < 5);
+}
+function countPmf(mu, variance, kMax) {
+  const pmf = new Array(kMax + 1).fill(0), ratio = variance / mu;
+  if (ratio > 1.02) {
+    const r = mu * mu / (variance - mu), p = r / (r + mu);
+    pmf[0] = Math.pow(p, r);
+    for (let k = 0; k < kMax; k++) pmf[k + 1] = pmf[k] * ((k + r) / (k + 1)) * (1 - p);
+  } else if (ratio < 0.98) {
+    const n = Math.min(200, Math.max(Math.ceil(mu) + 1, Math.round(mu * mu / (mu - variance)))), p = mu / n;
+    pmf[0] = Math.pow(1 - p, n);
+    for (let k = 0; k < kMax; k++) pmf[k + 1] = k >= n ? 0 : pmf[k] * ((n - k) / (k + 1)) * (p / (1 - p));
+  } else {
+    pmf[0] = Math.exp(-mu);
+    for (let k = 0; k < kMax; k++) pmf[k + 1] = pmf[k] * mu / (k + 1);
+  }
+  return pmf;
+}
+// Over and under, with a whole-number line's push left out: a push refunds the bet, so over and under are measured against each other.
+function countOverUnder(mu, stdDev, postedLine) {
+  const line = parseFloat(postedLine), variance = Math.max(stdDev * stdDev, 1e-6);
+  if (!(mu > 0) || !(line > 0)) return null;
+  const kMax = Math.min(600, Math.max(40, Math.ceil(line + 2 * mu + 12 * Math.sqrt(Math.max(variance, mu)))));
+  const pmf = countPmf(mu, variance, kMax);
+  const cdf = k => { let t = 0; for (let i = 0; i <= Math.min(k, kMax); i++) t += pmf[i]; return t; };
+  const whole = Number.isInteger(line);
+  const push = whole ? pmf[line] || 0 : 0, under = whole ? cdf(line - 1) : cdf(Math.floor(line)), over = 1 - cdf(whole ? line : Math.floor(line));
+  const live = 1 - push;
+  if (!(live > 1e-9)) return null;
+  const o = Math.max(0, Math.min(1, over / live));
+  return { overProbability: parseFloat(o.toFixed(3)), underProbability: parseFloat((1 - o).toFixed(3)) };
+}
+function calcOverUnderProbability(projection, stdDev, postedLine, propType) {
   if (!projection || !stdDev || stdDev <= 0 || !postedLine) return null;
+  if (usesCountModel(propType, projection)) { const c = countOverUnder(projection, stdDev, postedLine); if (c) return c; }
   const zLine = (parseFloat(postedLine) - projection) / stdDev;
   // A count stat (points, blocks, steals, etc.) can't go below 0, but the
   // raw normal approximation assigns real probability mass there anyway —
@@ -4308,7 +4347,7 @@ app.get('/api/wnba/prop-context', async (req, res) => {
   let liveMarket = null;
   if (mathProjection && propLines && !propLines.error && propLines.softestLine != null) {
     const liveEdge = calcEdgeScore(mathProjection.projection, propLines.softestLine);
-    const liveProb = calcOverUnderProbability(mathProjection.projection, mathProjection.stdDev, propLines.softestLine);
+    const liveProb = calcOverUnderProbability(mathProjection.projection, mathProjection.stdDev, propLines.softestLine, propType);
     liveMarket = {
       line: propLines.softestLine, consensusLine: propLines.consensusLine, bookCount: propLines.bookCount,
       edge: liveEdge, ...liveProb,
@@ -4621,7 +4660,7 @@ app.get('/api/prop-context', async (req, res) => {
   let liveMarket = null;
   if (mathProjection && propLines && !propLines.error && propLines.softestLine != null) {
     const liveEdge = calcEdgeScore(mathProjection.projection, propLines.softestLine);
-    const liveProb = calcOverUnderProbability(mathProjection.projection, mathProjection.stdDev, propLines.softestLine);
+    const liveProb = calcOverUnderProbability(mathProjection.projection, mathProjection.stdDev, propLines.softestLine, propType);
     liveMarket = {
       line: propLines.softestLine, consensusLine: propLines.consensusLine, bookCount: propLines.bookCount,
       edge: liveEdge, ...liveProb,
@@ -4823,7 +4862,7 @@ async function evaluateNBACandidate(cand) {
   const projection = blendWithMarket(rawProjection, cand.consensusLine, cand.bookCount);
 
   const edge = calcEdgeScore(projection.projection, cand.line);
-  const prob = calcOverUnderProbability(projection.projection, projection.stdDev, cand.line);
+  const prob = calcOverUnderProbability(projection.projection, projection.stdDev, cand.line, cand.propType);
   return {
     league: 'nba', player: playerStats.player.name, team: playerTeam, opponent,
     propType: cand.propType, line: cand.line, book: cand.book,
@@ -4874,7 +4913,7 @@ async function evaluateWNBACandidate(cand) {
   const projection = blendWithMarket(rawProjection, cand.consensusLine, cand.bookCount);
 
   const edge = calcEdgeScore(projection.projection, cand.line);
-  const prob = calcOverUnderProbability(projection.projection, projection.stdDev, cand.line);
+  const prob = calcOverUnderProbability(projection.projection, projection.stdDev, cand.line, cand.propType);
   return {
     league: 'wnba', player: playerStats.player.name, team: playerTeam, opponent,
     propType: cand.propType, line: cand.line, book: cand.book,
