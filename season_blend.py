@@ -139,8 +139,25 @@ def team_games_played(rows):
     return gps[len(gps) // 2] if gps else None
 
 
+MIN_ROWS_SHARE = 0.5     # a fresh file with fewer than half the rows of last season's is treated as a bad response
+
+
+def _write_json_atomic(path, rows):
+    """Write to a temporary file, then swap it in, so the server never reads a half-written file."""
+    tmp = path + '.tmp'
+    try:
+        with open(tmp, 'w') as f:
+            json.dump(rows, f, allow_nan=False)    # refuse to write NaN or Infinity: Node cannot read them
+        os.replace(tmp, path)
+    except Exception:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+        raise
+
+
 def blend_dir(raw_dir, prior_dir, out_dir, log=print):
-    """Blend every json file present in raw_dir with its twin in prior_dir and write the result to out_dir."""
+    """Blend every json file present in raw_dir with its twin in prior_dir and write the result to out_dir.
+    Returns the names written. A file is left as it was (and reported) when the fresh one looks like a bad response."""
     gp_ref = None
     tt = os.path.join(raw_dir, 'team_traditional.json')
     if os.path.exists(tt):
@@ -149,15 +166,20 @@ def blend_dir(raw_dir, prior_dir, out_dir, log=print):
     for fn in sorted(os.listdir(raw_dir)):
         if not fn.endswith('.json') or fn.startswith('package') or fn == 'season_meta.json':
             continue
-        new_rows = _load(os.path.join(raw_dir, fn))
-        pp = os.path.join(prior_dir, fn)
-        if isinstance(new_rows, list) and os.path.exists(pp):
-            prior_rows = _load(pp)
-            if isinstance(prior_rows, list):
-                new_rows = blend_rows(fn[:-5], new_rows, prior_rows, gp_ref)
-        with open(os.path.join(out_dir, fn), 'w') as f:
-            json.dump(new_rows, f)
-        wrote.append(fn)
+        try:
+            new_rows = _load(os.path.join(raw_dir, fn))
+            pp = os.path.join(prior_dir, fn)
+            if isinstance(new_rows, list) and os.path.exists(pp):
+                prior_rows = _load(pp)
+                if isinstance(prior_rows, list):
+                    if len(prior_rows) >= 10 and len(new_rows) < MIN_ROWS_SHARE * len(prior_rows):
+                        log(f"  SKIPPED {fn}: only {len(new_rows)} rows against {len(prior_rows)} last season, so it looks like a bad response. Left as it was.")
+                        continue
+                    new_rows = blend_rows(fn[:-5], new_rows, prior_rows, gp_ref)
+            _write_json_atomic(os.path.join(out_dir, fn), new_rows)
+            wrote.append(fn)
+        except Exception as e:           # one bad file must not stop the others
+            log(f"  SKIPPED {fn}: {e}")
     log(f"  Blended {len(wrote)} files (this season {gp_ref} games in; last-season weight {prior_weight(gp_ref):.0%} for a team)")
     return wrote
 

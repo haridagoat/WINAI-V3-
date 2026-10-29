@@ -244,3 +244,13 @@ test('the NBA season is named for the year it starts: October begins a new one',
   assert.equal(at('2027-09-30'), '2026-27');                         // the off season still points at the season just finished
   assert.equal(at('2027-10-01'), '2027-28'); assert.equal(at('2025-10-22'), '2025-26');
 });
+
+// ── slow evaluations are shared, not repeated ──
+test('callers who arrive while the model-only evaluation is running share it; a later call runs it again', async () => {
+  let calls = 0;
+  const lib = extract({ functions: ['computeFallbackProjected'], globals: { fallbackInflight: {}, computeFallbackProjectedOnce: async league => { calls++; await new Promise(r => setTimeout(r, 30)); return { league, n: calls }; } } });
+  const five = await Promise.all([1, 2, 3, 4, 5].map(() => lib.computeFallbackProjected('nba')));
+  assert.equal(calls, 1); assert.ok(five.every(r => r.n === 1));
+  await lib.computeFallbackProjected('nba'); assert.equal(calls, 2);                       // finished, so the next one is a fresh run
+  await Promise.all([lib.computeFallbackProjected('nba'), lib.computeFallbackProjected('wnba')]); assert.equal(calls, 4);   // leagues do not share
+});

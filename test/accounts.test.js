@@ -441,3 +441,33 @@ test('an active break survives deleting the account and signing up again; an end
   w.store.deleteUser(b.user.id);
   assert.equal(w.store.holdFor('maya@example.com').until, future);                 // the ended break wrote nothing new
 });
+
+// ── analyses that overlap still count toward the daily limit ──
+test('an analysis that has reached the AI is not closed by starting another, and counts as running until it finishes', () => {
+  const w = setup(); const id = w.store.createUser('t@example.com', new Date().toISOString(), new Date().toISOString(), { name: 'T', passwordHash: 'x' });
+  const day = '2026-10-29', exp = new Date(Date.now() + 5 * 60e3).toISOString();
+  w.store.startTicket({ hash: 'h1', userId: id, day, expiresAt: exp });
+  assert.equal(w.store.analysesInFlight(id, day), 0);                                  // not at the AI yet
+  assert.equal(w.store.useTicket('h1', 'ai', 2), true);
+  assert.equal(w.store.analysesInFlight(id, day), 1);
+  w.store.startTicket({ hash: 'h2', userId: id, day, expiresAt: exp });                 // a second start must not close the running one
+  assert.ok(w.store.getTicket('h1'), 'the running ticket is still open');
+  assert.equal(w.store.analysesInFlight(id, day), 1);
+  assert.equal(w.store.finishTicket('h1'), true);
+  assert.equal(w.store.analysesInFlight(id, day), 0); assert.equal(w.store.analysesDone(id, day), 1);
+});
+test('a ticket that never reached the AI is still closed by the next start, and a failed analysis is given back', () => {
+  const w = setup(); const id = w.store.createUser('u@example.com', new Date().toISOString(), new Date().toISOString(), { name: 'U', passwordHash: 'x' });
+  const day = '2026-10-29', exp = new Date(Date.now() + 5 * 60e3).toISOString();
+  w.store.startTicket({ hash: 'a', userId: id, day, expiresAt: exp }); w.store.startTicket({ hash: 'b', userId: id, day, expiresAt: exp });
+  assert.equal(w.store.getTicket('a'), null); assert.ok(w.store.getTicket('b'));
+  w.store.useTicket('b', 'ai', 2); assert.equal(w.store.analysesInFlight(id, day), 1);
+  assert.equal(w.store.releaseTicket('b'), true); assert.equal(w.store.analysesInFlight(id, day), 0);   // the AI call failed: not spent
+  assert.equal(w.store.analysesDone(id, day), 0);
+});
+test('a running analysis stops counting after the window, so a stuck one cannot block a person all day', () => {
+  const w = setup(); const id = w.store.createUser('v@example.com', new Date().toISOString(), new Date().toISOString(), { name: 'V', passwordHash: 'x' });
+  const day = '2026-10-29'; w.store.startTicket({ hash: 'c', userId: id, day, expiresAt: new Date(Date.now() + 5 * 60e3).toISOString() }); w.store.useTicket('c', 'ai', 2);
+  assert.equal(w.store.analysesInFlight(id, day, 150000, Date.now()), 1);
+  assert.equal(w.store.analysesInFlight(id, day, 150000, Date.now() + 200000), 0);
+});

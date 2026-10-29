@@ -88,7 +88,7 @@ app.use((req, res, next) => {
   res.on('finish', () => { if ([500, 502, 504].includes(res.statusCode) && !res.locals.errorLogged && req.path !== '/api/client-error') errorLog.record({ source: 'server', route: errorsLib.routeOf(req.method, req.originalUrl), message: `answered ${res.statusCode}` }); });
   next();
 });
-app.use(express.json({ limit: '100kb', verify: (req, res, buf) => { if (req.originalUrl === '/api/stripe/webhook') req.rawBody = buf; } }));   // Stripe signs the exact bytes
+app.use(express.json({ limit: '100kb', inflate: false, verify: (req, res, buf) => { if (req.originalUrl === '/api/stripe/webhook') req.rawBody = buf; } }));   // Stripe signs the exact bytes
 // One bad character in a name used to reach a Python launch call and crash the whole server.
 // Reject control characters and oversized values before any route sees them.
 app.use('/api', (req, res, next) => {
@@ -5175,7 +5175,14 @@ async function computeTeamPicks(league) {
 // projection + confidence get surfaced here — no fabricated edge, no
 // OVER/UNDER call, since there's no real line to be over/under against.
 const fallbackProjectedCache = {}; // league -> { data, dateKey }
+// The evaluation takes minutes (every team's top players, one nba.com call each). Callers who arrive while it is running share
+// its result, instead of each starting another and clogging the single queue that every player lookup goes through.
+const fallbackInflight = {};
 async function computeFallbackProjected(league) {
+  if (!fallbackInflight[league]) fallbackInflight[league] = computeFallbackProjectedOnce(league).finally(() => { delete fallbackInflight[league]; });
+  return fallbackInflight[league];
+}
+async function computeFallbackProjectedOnce(league) {
   const today = getToday();
   const cached = fallbackProjectedCache[league];
   if (cached && cached.dateKey === today) return cached.data;
@@ -5373,6 +5380,7 @@ app.post('/api/analyze', analyzeRateLimiter, (req, res, next) => {
   } catch (err) {
     const errMsg = err.response?.data?.error?.message || err.message || 'Unknown error';
     const errStatus = err.response?.status || 500;
+    if (req.analysisTicket) store.releaseTicket(req.analysisTicket);          // a failed analysis is not spent
     console.error(`[Claude] Error ${errStatus}:`, errMsg);
     console.error('[Claude] Full error:', JSON.stringify(err.response?.data || {}, null, 2));
     res.status(500).json({ error: errMsg, status: errStatus });
@@ -5596,7 +5604,10 @@ app.post('/api/roster-refresh', requireAdmin, (req, res) => {
 });
 
 // ── DEBUG ROUTE ───────────────────────────────────────────────────
+// Public visitors get a minute-old answer, so this cannot be used to make the server hammer BallDontLie and ESPN.
+let publicDebug = { at: 0, data: null };
 app.get('/api/debug', async (req, res) => {
+  if (!isAdmin(req) && publicDebug.data && Date.now() - publicDebug.at < 60 * 1000) return res.json(publicDebug.data);
   const results = { time: new Date().toISOString() };
   try {
     const r = await axios.get(`${BALLDONTLIE}/games`, {
@@ -5626,7 +5637,7 @@ app.get('/api/debug', async (req, res) => {
   }
   // The page only reads the BallDontLie result. Which keys exist, which files are present and
   // cache sizes are for the admin.
-  if (!isAdmin(req)) return res.json({ time: results.time, balldontlie: results.balldontlie });
+  if (!isAdmin(req)) { publicDebug = { at: Date.now(), data: { time: results.time, balldontlie: { ok: !!results.balldontlie?.ok } } }; return res.json(publicDebug.data); }
   results.env = {
     balldontlie: !!process.env.BALLDONTLIE_KEY,
     anthropic: !!(process.env.ANTHROPIC_KEY && !process.env.ANTHROPIC_KEY.includes('your_')),
@@ -6174,7 +6185,9 @@ app.post('/api/analysis/start', analysisStartLimiter, (req, res) => {
   if (eff.restricted) return res.status(403).json(rgBreakBody(eff));
   const pro = isProReq(req), planLimit = planGate ? (pro ? PRO_DAILY_ANALYSES : FREE_DAILY_ANALYSES) : Infinity, day = getToday();
   const limit = Math.min(planLimit, eff.dailyLimit ?? Infinity);
-  const used = store.analysesDone(req.user.id, day);
+  const used = store.analysesDone(req.user.id, day), running = store.analysesInFlight(req.user.id, day);
+  // Analyses that are still running count too, otherwise several started together all pass the check and the limit means nothing.
+  if (used < limit && used + running >= limit) return res.status(429).json({ error: 'Another analysis is still running. Wait for it to finish.', code: 'analysis_busy', quota: { used, limit: Number.isFinite(limit) ? limit : null } });
   if (used >= limit) {
     if (eff.dailyLimit != null && eff.dailyLimit <= planLimit) return res.status(403).json({ error: `You have reached the daily limit you set (${eff.dailyLimit}). It resets at midnight.`, code: 'rg_limit', quota: { used, limit } });
     return res.status(402).json(pro

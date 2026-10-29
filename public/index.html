@@ -1464,6 +1464,11 @@
   .td-mchip span{font-family:var(--label);font-weight:700;font-size:11.5px;letter-spacing:.14em;color:var(--muted);text-transform:uppercase;}
   .td-mchip b{font-family:var(--display);font-weight:800;font-size:22px;letter-spacing:.02em;}
   .td-gm-f{display:flex;justify-content:space-between;align-items:center;gap:10px;border-top:1px solid var(--border);padding-top:10px;color:var(--muted2);font-size:14px;}
+  /* tap targets: at least 40px tall on the controls that were 16 to 30px */
+  .td-seg button{min-height:40px}
+  .td-link{min-height:40px;display:inline-flex;align-items:center}
+  .day-nav{min-width:40px;min-height:40px}
+  @media (prefers-reduced-motion: reduce){*,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important;scroll-behavior:auto !important}}
   .td-link{white-space:nowrap;background:none;border:0;color:var(--text);font-family:var(--label);font-weight:700;font-size:13px;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;padding:0;text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--border2);}
   .td-link[hidden]{display:none;}
   .td-cols{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:20px;align-items:start;}
@@ -1574,7 +1579,7 @@
         <label>PLAYER NAME <span class="verified-badge" id="player-verified"><span class="vb-dot">✓</span> verified</span></label>
         <div class="field-wrap field-lookup">
           <span class="field-search-icon">🔍</span>
-          <input type="text" id="player-name" class="has-icons" placeholder="e.g. Anthony Edwards" autocomplete="off" oninput="onPlayerInput(this.value)" />
+          <input type="text" id="player-name" class="has-icons" placeholder="e.g. Anthony Edwards" autocomplete="off" oninput="onPlayerInput(this.value)" / aria-label="Player name">
           <span class="field-chevron">▾</span>
           <div class="suggestion-box" id="player-suggestions"></div>
         </div>
@@ -1583,7 +1588,7 @@
         <label>OPPOSING TEAM <span id="opp-auto-label" style="color:var(--green);font-size:11px;letter-spacing:1px;"></span></label>
         <div class="field-lookup field-wrap" style="position:relative;">
           <span class="field-search-icon">🔍</span>
-          <input type="text" id="opp-team" class="has-icons" placeholder="Auto-detected from today's schedule..." maxlength="50" autocomplete="off" oninput="onOppTeamInput(this.value)" onfocus="onOppTeamFocus()" />
+          <input type="text" id="opp-team" class="has-icons" placeholder="Auto-detected from today's schedule..." maxlength="50" autocomplete="off" oninput="onOppTeamInput(this.value)" onfocus="onOppTeamFocus()" / aria-label="Opposing team">
           <span class="field-chevron" id="opp-status">▾</span>
           <div class="suggestion-box" id="opp-team-suggestions"></div>
         </div>
@@ -1592,7 +1597,7 @@
       <div class="field-row">
         <div class="field-group">
           <label>PROP TYPE</label>
-          <select id="prop-type">
+          <select id="prop-type" aria-label="Prop type">
             <option value="points">Points</option>
             <option value="rebounds">Rebounds</option>
             <option value="assists">Assists</option>
@@ -1607,12 +1612,12 @@
         </div>
         <div class="field-group">
           <label>LINE</label>
-          <input type="number" id="prop-line" step="0.5" placeholder="24.5" />
+          <input type="number" id="prop-line" step="0.5" placeholder="24.5" / aria-label="Prop line">
         </div>
       </div>
       <div class="field-group">
         <label>GAME CONTEXT</label>
-        <select id="game-context">
+        <select id="game-context" aria-label="Game context">
           <option value="unknown">Let AI assess</option>
           <option value="close">Projected close game</option>
           <option value="blowout-likely">Blowout likely (-12+)</option>
@@ -1648,7 +1653,7 @@
         <label>PLAYER NAME <span class="verified-badge" id="player-verified-wnba"><span class="vb-dot">✓</span> verified</span></label>
         <div class="field-wrap field-lookup">
           <span class="field-search-icon">🔍</span>
-          <input type="text" id="player-name-wnba" class="has-icons" placeholder="e.g. A'ja Wilson" autocomplete="off" oninput="onPlayerInput(this.value,'wnba')" />
+          <input type="text" id="player-name-wnba" class="has-icons" placeholder="e.g. A'ja Wilson" autocomplete="off" oninput="onPlayerInput(this.value,'wnba')" / aria-label="Player name">
           <span class="field-chevron">▾</span>
           <div class="suggestion-box" id="player-suggestions-wnba"></div>
         </div>
@@ -1657,7 +1662,7 @@
         <label>OPPOSING TEAM <span id="opp-auto-label-wnba" style="color:var(--green);font-size:11px;letter-spacing:1px;"></span></label>
         <div class="field-lookup field-wrap" style="position:relative;">
           <span class="field-search-icon">🔍</span>
-          <input type="text" id="opp-team-wnba" class="has-icons" placeholder="Auto-detected from today's schedule..." maxlength="50" autocomplete="off" oninput="onOppTeamInput(this.value,'wnba')" onfocus="onOppTeamFocus('wnba')" />
+          <input type="text" id="opp-team-wnba" class="has-icons" placeholder="Auto-detected from today's schedule..." maxlength="50" autocomplete="off" oninput="onOppTeamInput(this.value,'wnba')" onfocus="onOppTeamFocus('wnba')" / aria-label="Opposing team">
           <span class="field-chevron" id="opp-status-wnba">▾</span>
           <div class="suggestion-box" id="opp-team-suggestions-wnba"></div>
         </div>
@@ -1666,7 +1671,7 @@
       <div class="field-row">
         <div class="field-group">
           <label>PROP TYPE</label>
-          <select id="prop-type-wnba">
+          <select id="prop-type-wnba" aria-label="Prop type">
             <option value="points">Points</option>
             <option value="rebounds">Rebounds</option>
             <option value="assists">Assists</option>
@@ -1681,12 +1686,12 @@
         </div>
         <div class="field-group">
           <label>LINE</label>
-          <input type="number" id="prop-line-wnba" step="0.5" placeholder="24.5" />
+          <input type="number" id="prop-line-wnba" step="0.5" placeholder="24.5" / aria-label="Prop line">
         </div>
       </div>
       <div class="field-group">
         <label>GAME CONTEXT</label>
-        <select id="game-context-wnba">
+        <select id="game-context-wnba" aria-label="Game context">
           <option value="unknown">Let AI assess</option>
           <option value="close">Projected close game</option>
           <option value="blowout-likely">Blowout likely (-12+)</option>
@@ -1708,20 +1713,20 @@
 <div id="panel-matchups" class="panel">
   <div class="card-label" style="margin-bottom:8px;">Select A Day</div>
   <div class="day-picker">
-    <button class="day-nav" onclick="shiftMatchupWeek(-1)">‹</button>
+    <button class="day-nav" onclick="shiftMatchupWeek(-1)" aria-label="Previous week">‹</button>
     <div class="day-strip" id="day-strip"></div>
-    <button class="day-nav" onclick="shiftMatchupWeek(1)">›</button>
+    <button class="day-nav" onclick="shiftMatchupWeek(1)" aria-label="Next week">›</button>
   </div>
   <div class="schedule-strip" id="schedule-strip"><div class="game-chip">Loading...</div></div>
   <div class="card-label" style="margin-bottom:8px;margin-top:8px;">Matchup Scanner</div>
   <div class="matchup-input-row">
-    <select id="matchup-league" onchange="populateMatchupTeamSelects()">
+    <select id="matchup-league" onchange="populateMatchupTeamSelects()" aria-label="League">
       <option value="nba">NBA</option>
       <option value="wnba">WNBA</option>
     </select>
-    <select id="matchup-team1"></select>
+    <select id="matchup-team1" aria-label="Team"></select>
     <div style="font-family:var(--body);font-size:18px;color:var(--muted);padding-bottom:9px;">VS</div>
-    <select id="matchup-team2"></select>
+    <select id="matchup-team2" aria-label="Opponent"></select>
     <button class="scan-btn" onclick="analyzeMatchup()">SCAN MATCHUP →</button>
   </div>
   <div class="matchup-result" id="matchup-result">
@@ -1919,7 +1924,7 @@ async function loadTodaysGames() {
     GP.err = 'The schedule did not load. Check that the server is running.';
     try {   // the old ticker pointed at the schedule key when that was the problem; keep that hint
       const d = await fetch('/api/debug').then(r => r.json());
-      if (d.balldontlie && !d.balldontlie.ok) GP.err = `The schedule source (BallDontLie) answered ${d.balldontlie.status || 'with nothing'}. Check its API key.`;
+      if (d.balldontlie && !d.balldontlie.ok) GP.err = 'The schedule source (BallDontLie) is not accepting requests. Check its API key.';
     } catch (_) {}
   }
   gpPaint();
@@ -5407,7 +5412,22 @@ function openSignin(reason, pending, view) {
 }
 function openDeleteAccount() { Object.assign(SI, { open: true, step: 'delete', err: '', busy: false }); renderSignin(); }
 function siGo(step) { Object.assign(SI, { step, err: '', errField: '', showReset: false, pw: step === 'forgot' || step === 'forgot_sent' ? '' : SI.pw }); renderSignin(); }
-function siClose() { siStopTimers(); SI.open = false; document.getElementById('acct-modal')?.remove(); }
+function siClose() {
+  siStopTimers(); SI.open = false; document.getElementById('acct-modal')?.remove();
+  const back = SI.opener; SI.opener = null; SI._shown = false;
+  if (back && back.isConnected) back.focus({ preventScroll: true });          // the dialog gave focus away, so give it back to what opened it
+}
+// Tab and Shift+Tab stay inside an open dialog instead of walking out to the page behind it.
+function siTrapTab(e) {
+  if (e.key !== 'Tab') return;
+  const box = document.getElementById('acct-modal'); if (!box) return;
+  const f = [...box.querySelectorAll('button,input,select,textarea,a[href],[tabindex]:not([tabindex="-1"])')].filter(x => !x.disabled && !x.hidden && x.offsetParent !== null);
+  if (!f.length) return;
+  const first = f[0], last = f[f.length - 1];
+  if (!box.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+  else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+}
 function siStopTimers() { clearInterval(SI.poll); clearInterval(SI.tick); SI.poll = SI.tick = null; }
 
 function siPwField(id, autocomplete, label) {
@@ -5530,10 +5550,12 @@ function renderSignin() {
       <button type="button" class="acct-go" onclick="cpSubmit()">${CP.busy ? 'Saving…' : 'Change password'}</button>
       <button type="button" class="acct-alt" onclick="siClose()">Cancel</button>`;
   }
+  if (!SI._shown) { SI._shown = true; SI.opener = document.activeElement && document.activeElement !== document.body ? document.activeElement : null; }
   const wrap = document.createElement('div');
   wrap.id = 'acct-modal'; wrap.className = 'acct-scrim';
   wrap.innerHTML = `<div class="acct-sheet" role="dialog" aria-modal="true" aria-label="Sign in">${body}</div>`;
   wrap.addEventListener('mousedown', e => { if (e.target === wrap) siClose(); });
+  wrap.addEventListener('keydown', siTrapTab);
   document.body.appendChild(wrap);
   if (SI.step === 'password') document.getElementById('cp-cur')?.focus({ preventScroll: true });
   if (['login', 'signup', 'forgot'].includes(SI.step)) { siPaintErr(); siAgeChanged(); if (SI.step === 'signup') { siTyping(); siPwTyping(); } }
@@ -5715,7 +5737,7 @@ function saferHtml() {
   const cfmNote = cfm ? `<div class="rg-banner" role="alert">${cfm.kind === 'exclusion' ? 'This cannot be ended early, by you or by us, even if you delete your account and come back.' : 'This cannot be ended early. The analyzer and Prop List stay paused until it is over.'}</div>` : '';
   const pending = R.pending ? `<p class="note">Raising it to ${R.pending.limit == null ? 'no limit' : R.pending.limit} starts ${escapeHtml(rgDateTime(R.pending.at))}. Lowering a limit is instant; raising one waits a day, so a bad moment cannot undo a good decision.</p>` : '<p class="note">Lowering a limit is instant. Raising it or removing it starts 24 hours later.</p>';
   return `<h2>Safer play</h2>
-    <p>These tools are free for everyone, always. They follow your account on every device.</p>
+    <p>These tools are free for everyone, always. They follow your account on every device. They are a help, not a lock: they apply while you are signed in.</p>
     ${R.restricted ? `<div class="rg-banner"><b>${R.kind === 'exclusion' ? 'You are stepping away' : 'You are on a break'} until ${escapeHtml(rgDate(R.until))}.</b><br>The analyzer and Prop List are paused. You can still look around, export your data or delete your account.</div>` : ''}
     <div class="rg-sec"><h3>Daily limit on analyses</h3><p>${R.dailyLimit == null ? 'No limit set.' : `You have used ${R.usedToday} of ${R.dailyLimit} today.`}</p><div class="rg-chips">${lims}</div>${pending}</div>
     <div class="rg-sec"><h3>Time reminders</h3><p>A gentle nudge after you have been on for a while.</p><div class="rg-chips">${rem}</div></div>
@@ -5824,6 +5846,7 @@ function gateError(e, feature) {
   if (e.code === 'pro_required') { openUpgrade(e.feature || feature, e.message); return true; }
   if (e.code === 'daily_limit') { acctToast(e.message); return true; }
   if (e.code === 'rg_break' || e.code === 'rg_limit') { acctToast(e.message); refreshMe(); return true; }
+  if (e.code === 'analysis_busy') { acctToast(e.message); return true; }
   if (e.code === 'ticket_required') { acctToast('That went out of sync. Run the analysis again.'); return true; }
   return false;
 }

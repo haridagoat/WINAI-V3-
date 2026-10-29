@@ -40,3 +40,11 @@ test('the setup link carries the secret and names the app', () => {
   const u = T.otpauthUri('ABCDEF234567', 'owner@example.com');
   assert.match(u, /^otpauth:\/\/totp\/WIN%20AI:owner%40example\.com\?secret=ABCDEF234567&issuer=WIN%20AI&algorithm=SHA1&digits=6&period=30$/);
 });
+
+test('the code must be text: an array or a number holding the right digits is not accepted', () => {
+  const code = T.codeAt(SECRET, T.stepOf(AT));
+  assert.equal(T.verify(SECRET, code, { now: AT }), T.stepOf(AT));
+  assert.equal(T.verify(SECRET, [code], { now: AT }), null);
+  assert.equal(T.verify(SECRET, Number(code), { now: AT }), null);
+  assert.equal(T.verify(SECRET, { toString: () => code }, { now: AT }), null);
+});

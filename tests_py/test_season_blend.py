@@ -151,3 +151,34 @@ class Bridge(unittest.TestCase):
     def test_values_missing_from_one_side_are_kept(self):
         out = self.pt.blend_avgs({'pts': 10.0, 'x': 1.0}, {'pts': 20.0}, 0.5)
         self.assertEqual((out['pts'], out['x']), (15.0, 1.0))
+
+
+class Safety(unittest.TestCase):
+    def test_a_partial_response_does_not_replace_a_full_file(self):
+        with tempfile.TemporaryDirectory() as d:
+            raw, prior, out = (os.path.join(d, n) for n in ('raw', 'prior', 'out'))
+            for p in (raw, prior, out): os.makedirs(p)
+            teams = [{'TEAM_ID': i, 'GP': 82, 'PTS': 9000 + i} for i in range(30)]
+            json.dump(teams, open(os.path.join(prior, 'team_traditional.json'), 'w'))
+            json.dump(teams, open(os.path.join(out, 'team_traditional.json'), 'w'))                 # what the server reads today
+            json.dump([{'TEAM_ID': 1, 'GP': 3, 'PTS': 330}, {'TEAM_ID': 2, 'GP': 3, 'PTS': 300}], open(os.path.join(raw, 'team_traditional.json'), 'w'))   # 2 of 30 teams
+            logs = []
+            wrote = sb.blend_dir(raw, prior, out, log=logs.append)
+            self.assertEqual(wrote, [])
+            self.assertTrue(any('SKIPPED team_traditional.json' in l for l in logs))
+            self.assertEqual(len(sb._load(os.path.join(out, 'team_traditional.json'))), 30)           # untouched
+
+    def test_a_full_response_is_written_and_no_temp_file_is_left_behind(self):
+        with tempfile.TemporaryDirectory() as d:
+            raw, prior, out = (os.path.join(d, n) for n in ('raw', 'prior', 'out'))
+            for p in (raw, prior, out): os.makedirs(p)
+            rows = lambda g: [{'TEAM_ID': i, 'GP': g, 'PTS': 100 * g} for i in range(30)]
+            json.dump(rows(82), open(os.path.join(prior, 'team_traditional.json'), 'w')); json.dump(rows(4), open(os.path.join(raw, 'team_traditional.json'), 'w'))
+            self.assertEqual(sb.blend_dir(raw, prior, out, log=lambda *_: None), ['team_traditional.json'])
+            self.assertEqual(sorted(os.listdir(out)), ['team_traditional.json'])
+
+    def test_nan_is_refused_instead_of_written(self):
+        with tempfile.TemporaryDirectory() as d:
+            with self.assertRaises(ValueError):
+                sb._write_json_atomic(os.path.join(d, 'x.json'), [{'a': float('nan')}])
+            self.assertEqual(os.listdir(d), [])                                            # no x.json and no leftover temp file
