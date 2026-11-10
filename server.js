@@ -20,6 +20,18 @@ const calibration = require('./lib/calibration');
 const { buildReport } = require('./lib/backtest');
 const { createAlerts } = require('./lib/alerts');
 const { evaluateHealth, creditBudget, envNum } = require('./lib/health');
+const { eventsDueForFill, eventInfoFrom } = require('./lib/slatefill');
+const { createLaneQueue } = require('./lib/lanequeue');
+const market = require('./lib/market');
+const evaluateLib = require('./lib/evaluate');
+const { buildGradingReport, top3Result } = require('./lib/report');
+const picksLib = require('./lib/picks');
+const modelParams = require('./lib/params');
+const dvpLib = require('./lib/dvp');
+const bestBets = require('./lib/bestbets');
+const biasLib = require('./lib/bias');
+modelParams.load();
+const { AsyncLocalStorage } = require('node:async_hooks');
 const { createAuth, sessionCookie, clearCookie, maskEmail, sha, newToken, parseCookies: parseCookiesHeader } = require('./lib/auth');
 const { createMailer } = require('./lib/mailer');
 const datachecks = require('./lib/datachecks');
@@ -47,6 +59,8 @@ const errorLog = errorsLib.createErrorLog({ store, alerts });
 // results. It stays null/off until it has proven itself (lib/calibration.js).
 let calibrationModel = (store.latestCalibration() || {}).model || null;
 const calibrate = p => calibration.apply(calibrationModel, p);
+// How much the model has run high or low per prop type, learned nightly from the graded scan log (lib/bias.js). Empty until there is enough data.
+let biasTable = (() => { try { return JSON.parse(store.getMeta('bias:model') || '{}').table || {}; } catch (_) { return {}; } })();
 
 // Last run of every scheduled job, for the admin Health page. A failure is only
 // announced when a job goes from working to failing, not on every retry.
@@ -67,6 +81,14 @@ function trackJob(name, fn) {
 }
 
 const app = express();
+// Express 4 does not hand a rejected promise from an async handler to the error handler: the request simply never gets an answer
+// (and, worse, counted toward the safety net's exit limit). Every handler is wrapped so a throw becomes a normal 500 instead.
+for (const m of ['get', 'post', 'put', 'delete', 'patch', 'all', 'use']) {
+  const orig = app[m].bind(app);
+  app[m] = (...args) => orig(...args.map(a => (typeof a === 'function' && a.length < 4)
+    ? function safeHandler(req, res, next) { try { const r = a(req, res, next); if (r && typeof r.catch === 'function') r.catch(next); } catch (e) { next(e); } }
+    : a));
+}
 app.disable('x-powered-by');
 // Plain query-string parsing: nothing here needs nested ?a[b]=c objects, and it keeps the (currently unpatched) qs parser out of the request path.
 app.set('query parser', 'simple');
@@ -80,7 +102,10 @@ if (process.env.TRUST_PROXY) app.set('trust proxy', /^\d+$/.test(process.env.TRU
 // ones, from a visitor's browser with no server-side signal it wasn't the
 // app's own frontend.
 const security = require('./lib/security');
-app.use(require('compression')());   // gzip: the main page is 400 KB raw and about 100 KB compressed, which matters on a phone
+const compression = require('compression');
+// gzip: the main page is 400 KB raw and about 100 KB compressed, which matters on a phone. A streamed answer is left
+// alone: compressing it would hold the text back in a buffer until the end.
+app.use(compression({ filter: (req, res) => /text\/event-stream/.test(String(res.getHeader('Content-Type') || '')) ? false : compression.filter(req, res) }));
 app.use(security.securityHeaders);
 // Any answer of 500 or more is written down, even from a route that handled its own error. The error handler at the
 // bottom adds the reason; this catches the rest with just the route.
@@ -104,6 +129,17 @@ const apiLimiter = security.createRateLimiter({ windowMs: 60 * 1000, max: 300 })
 const costlyLimiter = security.createRateLimiter({ windowMs: 60 * 1000, max: 80, message: 'Too many lookups. Slow down and try again shortly.' });
 const writeLimiter = security.createRateLimiter({ windowMs: 60 * 1000, max: 30, message: 'Too many saves. Slow down and try again shortly.' });
 app.use('/api', apiLimiter);
+// Every route reads its query values as plain text. A repeated name (?x=a&x=b) or a bracket (?x[a]=b) turns a value into a list or an
+// object and would crash the handler, and control characters (line breaks, NUL) could forge lines in the server log. None of the
+// app's own calls use either, so they are refused before they reach any route.
+const CONTROL_CHARS = /[\u0000-\u001f\u007f]/;
+app.use('/api', (req, res, next) => {
+  for (const [k, v] of Object.entries(req.query || {})) {
+    if (typeof v !== 'string') return res.status(400).json({ error: 'Each parameter must be sent once, as plain text.' });
+    if (CONTROL_CHARS.test(v) || CONTROL_CHARS.test(k)) return res.status(400).json({ error: 'The request has characters that are not allowed.' });
+  }
+  next();
+});
 app.use(['/api/prop-context', '/api/wnba/prop-context', '/api/current-line', '/api/shotchart', '/api/player-matchup',
   '/api/wnba/player-matchup', '/api/team-compare', '/api/matchup-targets', '/api/game-odds', '/api/top-plays', '/api/team-picks', '/api/prop-board',
   '/api/debug', '/api/grade-prop'], costlyLimiter);
@@ -479,6 +515,37 @@ function lookupPlayerId(league, name) {
   } catch (_) {}
   playerIdCache[key] = id;
   return id;
+}
+
+// What each defense gives up to guards, forwards and centers (fetch_dvp.py writes dvp_positions.json from FantasyPros' public table).
+// Read at most every 5 minutes. Refreshed about daily by ensureDvpFresh; a failed fetch leaves the last good file (the model ignores it after 4 days).
+const DVP_FILE = path.join(__dirname, 'dvp_positions.json');
+let dvpCache = null, dvpReadAt = 0, dvpRunning = null, dvpLastTry = 0;
+function loadDvp() {
+  if (Date.now() - dvpReadAt < 5 * 60 * 1000) return dvpCache;
+  dvpReadAt = Date.now();
+  try { dvpCache = JSON.parse(fs.readFileSync(DVP_FILE, 'utf8')); } catch (_) { dvpCache = null; }
+  return dvpCache;
+}
+function runDvpFetch() {
+  if (dvpRunning) return dvpRunning;
+  dvpRunning = new Promise((resolve, reject) => {
+    const py = spawn('python3', ['fetch_dvp.py'], { cwd: __dirname });
+    let out = '', err = '';
+    py.stdout.on('data', d => { out += d; }); py.stderr.on('data', d => { err += d; });
+    const timer = setTimeout(() => { py.kill(); reject(new Error('timed out after 2 minutes')); }, 2 * 60 * 1000);
+    py.on('error', e => { clearTimeout(timer); reject(e); });
+    py.on('close', code => { clearTimeout(timer); dvpReadAt = 0; code === 0 ? resolve(out.trim()) : reject(new Error(err.trim().split('\n').pop() || `exit code ${code}`)); });
+  }).finally(() => { dvpRunning = null; });
+  return dvpRunning;
+}
+// Whenever the file is missing or over 20 hours old (checked a minute after start, then hourly). After a failure it waits 3 hours before asking the site again.
+async function ensureDvpFresh() {
+  const m = mtimeOf('dvp_positions.json');
+  if (m && Date.now() - m < 20 * 3600e3) return 'fresh';
+  if (Date.now() - dvpLastTry < 3 * 3600e3) return 'waiting after a failed try';
+  dvpLastTry = Date.now();
+  return trackJob('dvp', runDvpFetch)();
 }
 
 // ─────────────────────────────────────────────────────
@@ -1279,13 +1346,14 @@ async function fetchGameOdds(league, team1Name, team2Name) {
 // ─────────────────────────────────────────────────────
 // ESPN ROSTER FETCHER — cached 6 hours per team
 // ─────────────────────────────────────────────────────
-async function fetchESPNRoster(teamName) {
+// 30 minutes, not 2 hours: an injury report can change a projection a lot, and this call costs nothing. `force` skips the cache (the late-news job).
+const ROSTER_TTL_MS = 30 * 60 * 1000;
+async function fetchESPNRoster(teamName, { force = false } = {}) {
   const abbr = resolveESPNTeam(teamName);
   if (!abbr) return { error: `Unknown team: ${teamName}`, players: [] };
 
   const now = Date.now();
-  const SIX_HOURS = 2 * 60 * 60 * 1000; // 2hr cache — keeps rosters fresh
-  if (rosterCache[abbr] && (now - (lastRosterFetch[abbr] || 0)) < SIX_HOURS) {
+  if (!force && rosterCache[abbr] && (now - (lastRosterFetch[abbr] || 0)) < ROSTER_TTL_MS) {
     return rosterCache[abbr];
   }
 
@@ -1940,7 +2008,6 @@ function consensusFromLines(lines) {
 // those same cached files each call; only fall back to a fixed snapshot if
 // the files genuinely aren't available yet (e.g. first boot before the
 // cron has ever run).
-const LEAGUE_AVG_PACE_FALLBACK = 99.5;
 const LEAGUE_BASELINES_FALLBACK = {
   nba:  { pace: 99.5, defRating: 113.0 },
   wnba: { pace: 94.8, defRating: 103.1 },
@@ -2175,8 +2242,46 @@ function baselineAbsenceWeight(name, playerStats) {
   return Math.max(0, Math.min(1, 1 - (wRecent * missedRecent + (1 - wRecent) * missedSeason)));
 }
 
-function calcUsageInflation(playerRoster, playerStats, propType, nbaPlayerStats) {
+// How much of the team's regular production is missing because of injuries, measured the way the lab measured it: each absent regular's per-game
+// stat, over the per-game stat of every regular on the roster (regular = 20+ minutes a game). A player listed 'questionable' counts half.
+// Returns null when the season stat rows cannot support it (the caller then falls back to the usage-rate method).
+function missingProductionShare(playerRoster, injuredPlayers, seasonRows, playerStats) {
+  if (!seasonRows?.length || !playerRoster?.players?.length) return null;
+  const rowOf = name => {
+    const toks = new Set(String(name || '').toLowerCase().trim().split(/\s+/).filter(Boolean));
+    return toks.size ? seasonRows.find(r => { const t = new Set(String(r.PLAYER_NAME || '').toLowerCase().split(/\s+/)); return [...toks].every(x => t.has(x)); }) : null;
+  };
+  const keys = { points: 'PTS', rebounds: 'REB', assists: 'AST', '3pm': 'FG3M', steals: 'STL', blocks: 'BLK' };
+  const regulars = [];
+  for (const p of playerRoster.players) {
+    const r = rowOf(p.name), gp = parseFloat(r?.GP) || 0;
+    if (r && gp >= 3 && (parseFloat(r.MIN) || 0) / gp >= 20) regulars.push({ name: p.name, row: r, gp });
+  }
+  for (const ip of injuredPlayers) {                                    // an injured regular may be listed apart from the healthy roster
+    if (regulars.some(x => x.name === ip.name)) continue;
+    const r = rowOf(ip.name), gp = parseFloat(r?.GP) || 0;
+    if (r && gp >= 3 && (parseFloat(r.MIN) || 0) / gp >= 20) regulars.push({ name: ip.name, row: r, gp });
+  }
+  if (regulars.length < 5) return null;
+  const perGame = (x, k) => (parseFloat(x.row[k]) || 0) / x.gp;
+  const missing = [];
+  for (const ip of injuredPlayers) {
+    const reg = regulars.find(x => x.name === ip.name);
+    if (!reg) continue;                                                // not a regular: the lab does not count them either
+    const statusWeight = ['out', 'doubtful'].includes((ip.status || '').toLowerCase()) ? 1.0 : 0.5;
+    missing.push({ reg, w: statusWeight * baselineAbsenceWeight(ip.name, playerStats), name: ip.name, status: ip.status });
+  }
+  const share = {};
+  for (const k of Object.values(keys)) {
+    const total = regulars.reduce((t, x) => t + perGame(x, k), 0);
+    share[k] = total > 0 ? Math.min(0.6, missing.reduce((t, m) => t + m.w * perGame(m.reg, k), 0) / total) : 0;
+  }
+  return { share, missing, regularsCount: regulars.length };
+}
+
+function calcUsageInflation(playerRoster, playerStats, propType, nbaPlayerStats, league = 'nba') {
   let mult = 1.0;
+  let teammatePart = 0;                                   // the share of the lift that comes from teammates being out (logged for the forward check)
   const details = [];
 
   // ── STEP 1: USG_PCT-based redistribution ─────────────────────
@@ -2261,7 +2366,25 @@ function calcUsageInflation(playerRoster, playerStats, propType, nbaPlayerStats)
         }
       }
 
-      if (healthyTotalUSG > 0 && playerUSG && freedUSG > 0) {
+      // NBA: the measured method. The lab found that others produce more by (slope x the share of the team's regular production that is out),
+      // with a slope for each stat, so that share is worked out the same way here and the fitted slope applied.
+      const prod = league === 'nba' ? missingProductionShare(playerRoster, injuredPlayers, loadNBAStats()?.playerStats, playerStats) : null;
+      const sens = modelParams.get().usage.sens || {};
+      if (prod && prod.missing.length) {
+        const own = k => parseFloat(playerStats?.averages?.[k]) || 0;
+        const parts = { points: ['PTS'], rebounds: ['REB'], assists: ['AST'], '3pm': ['FG3M'], steals: ['STL'], blocks: ['BLK'], pra: ['PTS', 'REB', 'AST'], pr: ['PTS', 'REB'], pa: ['PTS', 'AST'], ra: ['REB', 'AST'] }[propType] || ['PTS'];
+        const nameOf = { PTS: 'points', REB: 'rebounds', AST: 'assists', FG3M: '3pm', STL: 'steals', BLK: 'blocks' }, avgKey = { PTS: 'pts', REB: 'reb', AST: 'ast', FG3M: 'fg3m', STL: 'stl', BLK: 'blk' };
+        const weights = parts.map(k => Math.max(own(avgKey[k]), 0.01)), wSum = weights.reduce((a, b) => a + b, 0);
+        const boost = parts.reduce((t, k, i) => t + (weights[i] / wSum) * (sens[nameOf[k]] ?? 0) * prod.share[k], 0);
+        mult += boost;
+        details.push({
+          method: 'production share', missingShare: Object.fromEntries(parts.map(k => [nameOf[k], parseFloat((prod.share[k] * 100).toFixed(1)) + '%'])),
+          scaledBoost: parseFloat((boost * 100).toFixed(1)) + '%',
+          injuredPlayers: prod.missing.map(m => ({ name: m.name, status: m.status, newToBaseline: Math.round(baselineAbsenceWeight(m.name, playerStats) * 100) + '%' })),
+        });
+      } else if (prod) {
+        details.push({ method: 'production share', note: 'no regular rotation player is out', scaledBoost: '0%' });
+      } else if (healthyTotalUSG > 0 && playerUSG && freedUSG > 0) {
         // Player's share of healthy team USG
         const playerShare = playerUSG / healthyTotalUSG;
         // How much of freed USG flows to this player
@@ -2327,6 +2450,7 @@ function calcUsageInflation(playerRoster, playerStats, propType, nbaPlayerStats)
 
       // Cap: realistic max redistribution
       mult = Math.min(1.30, mult);
+      teammatePart = mult - 1;
     }
   }
 
@@ -2355,18 +2479,20 @@ function calcUsageInflation(playerRoster, playerStats, propType, nbaPlayerStats)
   const result = parseFloat(Math.max(0.85, Math.min(1.30, mult)).toFixed(4));
   // Attach breakdown for display (non-destructive)
   calcUsageInflation._lastDetails = details;
+  calcUsageInflation._lastTeammate = teammatePart;
   return result;
 }
 
 // Returns full redistribution breakdown for UI display and Claude prompt
-function calcInjuryBreakdown(playerRoster, playerStats, propType, nbaPlayerStats) {
+function calcInjuryBreakdown(playerRoster, playerStats, propType, nbaPlayerStats, league = 'nba') {
+  const mult    = calcUsageInflation(playerRoster, playerStats, propType, nbaPlayerStats, league);
   const details = calcUsageInflation._lastDetails || [];
-  const mult    = calcUsageInflation(playerRoster, playerStats, propType, nbaPlayerStats);
   return {
     mult,
     totalBoost:     parseFloat((mult - 1.0).toFixed(3)),
+    teammateBoost:  parseFloat((calcUsageInflation._lastTeammate || 0).toFixed(4)),
     details,
-    usgBased:       details.some(d => d.method === 'USG_PCT redistribution'),
+    usgBased:       details.some(d => d.method === 'USG_PCT redistribution' || d.method === 'production share'),
     injuredPlayers: (playerRoster?.injured || []).map(p => ({
       name:     p.name,
       status:   p.status,
@@ -2429,9 +2555,10 @@ function projectMinutes(playerStats, ctx, propType) {
   // rebounds projection would blend a points-calibrated minutes bump with
   // a rebounds-calibrated rate multiplier — two different signals treated
   // as if they were split halves of the same one).
-  const usageMult = calcUsageInflation(ctx.playerRoster, playerStats, propType || 'points', ctx.nbaPlayerStats || []);
+  const usageMult = calcUsageInflation(ctx.playerRoster, playerStats, propType || 'points', ctx.nbaPlayerStats || [], ctx.league || 'nba');
   if (usageMult > 1.0 && projMin > 0) {
-    const minutesBump = Math.min(0.15, (usageMult - 1.0) * 0.35);
+    // The share of the lift that arrives as extra minutes is the one measured on two seasons of games (about 0.6 for points), not a guess.
+    const minutesBump = Math.min(0.20, (usageMult - 1.0) * modelParams.usageMinutesShare(propType || 'points'));
     const before = projMin;
     projMin *= (1 + minutesBump);
     details.push({ label: 'teammate-out role bump', minutes: parseFloat((projMin - before).toFixed(1)) });
@@ -2444,9 +2571,9 @@ function projectMinutes(playerStats, ctx, propType) {
 
   // Back-to-back — half the effect lands on minutes (rest management),
   // the other half on the efficiency/form side in buildProjection.
-  if (ctx.gameContext?.isBackToBack && projMin > 0) {
+  if (ctx.gameContext?.isBackToBack && projMin > 0 && modelParams.get().rest.minutes !== 1) {
     const before = projMin;
-    projMin *= 0.96;
+    projMin *= modelParams.get().rest.minutes;
     details.push({ label: 'back-to-back rest management', minutes: parseFloat((projMin - before).toFixed(1)) });
   }
 
@@ -2562,30 +2689,38 @@ function countOverUnder(mu, stdDev, postedLine) {
   const pmf = countPmf(mu, variance, kMax);
   const cdf = k => { let t = 0; for (let i = 0; i <= Math.min(k, kMax); i++) t += pmf[i]; return t; };
   const whole = Number.isInteger(line);
-  const push = whole ? pmf[line] || 0 : 0, under = whole ? cdf(line - 1) : cdf(Math.floor(line)), over = 1 - cdf(whole ? line : Math.floor(line));
+  const push = whole ? pmf[line] || 0 : 0, over = 1 - cdf(whole ? line : Math.floor(line));
   const live = 1 - push;
   if (!(live > 1e-9)) return null;
   const o = Math.max(0, Math.min(1, over / live));
-  return { overProbability: parseFloat(o.toFixed(3)), underProbability: parseFloat((1 - o).toFixed(3)) };
+  return { overProbability: parseFloat(o.toFixed(3)), underProbability: parseFloat((1 - o).toFixed(3)), pushProbability: parseFloat(push.toFixed(3)) };
 }
 function calcOverUnderProbability(projection, stdDev, postedLine, propType) {
   if (!projection || !stdDev || stdDev <= 0 || !postedLine) return null;
+  // Anything that is not a real finite number (a broken stat file, a feed returning text) gets "no answer", not an exception from deep inside the count model.
+  if (!Number.isFinite(Number(projection)) || !Number.isFinite(Number(stdDev)) || !Number.isFinite(parseFloat(postedLine))) return null;
   if (usesCountModel(propType, projection)) { const c = countOverUnder(projection, stdDev, postedLine); if (c) return c; }
-  const zLine = (parseFloat(postedLine) - projection) / stdDev;
-  // A count stat (points, blocks, steals, etc.) can't go below 0, but the
-  // raw normal approximation assigns real probability mass there anyway —
-  // most noticeable for low-projection props (e.g. a 0.8 projection with
-  // a proportionally wide floor'd stdDev can put ~5% of the fitted curve
-  // below zero). Truncate at 0 and renormalize over the valid [0, ∞)
-  // domain instead of silently leaving that impossible mass in the split.
+  // A count stat (points, blocks, steals, etc.) can't go below 0, but the raw normal approximation assigns real probability mass there
+  // anyway: truncate at 0 and renormalize over the valid [0, infinity) domain instead of silently leaving that impossible mass in the split.
+  const line = parseFloat(postedLine);
   const zZero = (0 - projection) / stdDev;
   const massBelowZero = normalCdf(zZero);
   const validMass = 1 - massBelowZero;
-  const under = validMass > 0.0001
-    ? Math.max(0, Math.min(1, (normalCdf(zLine) - massBelowZero) / validMass))
-    : (zLine <= zZero ? 0 : 1); // degenerate: projection deeply negative relative to stdDev
+  const cdf = x => validMass > 0.0001
+    ? Math.max(0, Math.min(1, (normalCdf((x - projection) / stdDev) - massBelowZero) / validMass))
+    : (x <= 0 ? 0 : 1);                       // degenerate: projection deeply negative relative to stdDev
+  // A whole-number line can land exactly on the number, which refunds the bet: that sliver is left out of both sides and reported as
+  // the push chance. A half-number line cannot push.
+  if (Number.isInteger(line) && line > 0) {
+    const lo = cdf(line - 0.5), hi = cdf(line + 0.5), push = Math.max(0, hi - lo), live = 1 - push;
+    if (live > 1e-9) {
+      const o = Math.max(0, Math.min(1, (1 - hi) / live));
+      return { overProbability: parseFloat(o.toFixed(3)), underProbability: parseFloat((1 - o).toFixed(3)), pushProbability: parseFloat(push.toFixed(3)) };
+    }
+  }
+  const under = cdf(line);
   const over = 1 - under;
-  return { overProbability: parseFloat(over.toFixed(3)), underProbability: parseFloat(under.toFixed(3)) };
+  return { overProbability: parseFloat(over.toFixed(3)), underProbability: parseFloat(under.toFixed(3)), pushProbability: 0 };
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -2622,8 +2757,8 @@ async function fetchGameContext(playerTeam, opponent, todayGame) {
     );
     if (playedYesterday) {
       ctx.isBackToBack = true;
-      ctx.b2bAdj = 0.92; // -8% on second night of back-to-back
-      ctx.details.push('Back-to-back: -8% projection adjustment');
+      ctx.b2bAdj = modelParams.get().rest.stats;   // measured, not assumed: see rest in model_params.json (about 1.0: no penalty)
+      if (ctx.b2bAdj !== 1) ctx.details.push(`Back-to-back: ${((ctx.b2bAdj - 1) * 100).toFixed(0)}% projection adjustment`);
     }
   } catch (_) {}
 
@@ -2754,13 +2889,13 @@ const WNBA_ABBR_TO_NAME = {
 let wnbaRosterCache     = {};
 let lastWnbaRosterFetch = {};
 
-async function fetchWNBARoster(teamName) {
+async function fetchWNBARoster(teamName, { force = false } = {}) {
   const abbr = resolveWNBATeam(teamName);
   if (!abbr) return { error: `Unknown WNBA team: ${teamName}`, players: [] };
 
   const now = Date.now();
-  const TWO_HOURS = 2 * 60 * 60 * 1000;
-  if (wnbaRosterCache[abbr] && (now - (lastWnbaRosterFetch[abbr] || 0)) < TWO_HOURS) {
+  const TWO_HOURS = ROSTER_TTL_MS;
+  if (!force && wnbaRosterCache[abbr] && (now - (lastWnbaRosterFetch[abbr] || 0)) < TWO_HOURS) {
     return wnbaRosterCache[abbr];
   }
 
@@ -3133,8 +3268,8 @@ async function fetchWNBAGameContext(playerTeam, opponent) {
       g.away.toLowerCase().includes(playerTeam.toLowerCase())
     );
     if (playedYesterday) {
-      ctx.isBackToBack = true; ctx.b2bAdj = 0.92;
-      ctx.details.push('Back-to-back: -8% projection adjustment');
+      ctx.isBackToBack = true; ctx.b2bAdj = modelParams.get().rest.stats;
+      if (ctx.b2bAdj !== 1) ctx.details.push(`Back-to-back: ${((ctx.b2bAdj - 1) * 100).toFixed(0)}% projection adjustment`);
     }
   } catch (_) {}
 
@@ -3273,6 +3408,7 @@ function buildProjection(playerStats, ctx, propType) {
   const h2h  = ctx.h2hStats || null;
   const league = ctx.league || 'nba';
   const drivers = []; // real computed deltas, in stat units — explanation comes FROM these, not invented after the fact
+  let posAllowed = null;  // the position-allowed multiplier, set in the general path below and logged on scan rows
 
   const COMBO_PROPS = {
     'pra':['pts','reb','ast'], 'pr':['pts','reb'],
@@ -3322,7 +3458,19 @@ function buildProjection(playerStats, ctx, propType) {
       : parseFloat(playerStats.seasonAvg[statKey]);
     if (!isFinite(seasonVal) || !seasonVal) seasonVal = null;
   }
-  const shrunkBase = shrink(l10FromLog, seasonVal, recentGamesCount, 8);
+  // Decay weighting (switched on per stat by the lab only if it beats the fixed 10-game window by 1% or more; on the last refit it did not:
+  // the best settings were within 0.6% of what is already here). Newest game first; weights halve every `halfLifeGames` games.
+  const decayHalfLife = modelParams.get().decay.halfLifeGames[propType], decayLambda = modelParams.get().decay.lambda[propType] ?? 0.7;
+  const decayLog = playerStats.gameLog20 || recentGames || [];
+  let decayed = null;
+  if (decayHalfLife > 0 && decayLog.length >= 8) {
+    const g = Math.pow(0.5, 1 / decayHalfLife); let num = 0, den = 0;
+    decayLog.forEach((gm, i) => { const w = Math.pow(g, i); num += w * getGameVal(gm); den += w; });
+    decayed = num / den;
+  }
+  const shrunkBase = decayed != null
+    ? (seasonVal != null ? decayLambda * decayed + (1 - decayLambda) * seasonVal : decayed)
+    : shrink(l10FromLog, seasonVal, recentGamesCount, 8);
   if (!canDecomposePoints && seasonVal != null && Math.abs(shrunkBase - l10FromLog) > 0.05) {
     drivers.push({ label: 'regression toward season baseline', value: parseFloat((shrunkBase - l10FromLog).toFixed(1)) });
   }
@@ -3374,11 +3522,11 @@ function buildProjection(playerStats, ctx, propType) {
   const minutesRatio = recentMinAvg > 0 ? minutesProj.projectedMinutes / recentMinAvg : 1.0;
 
   const playerPos = playerStats?.player?.position;
-  const usageMult = calcUsageInflation(ctx.playerRoster, playerStats, propType, ctx.nbaPlayerStats || []);
+  const usageMult = calcUsageInflation(ctx.playerRoster, playerStats, propType, ctx.nbaPlayerStats || [], league);
   // Usage signal is split across two channels so it isn't counted twice:
   // 35% already landed on minutes (projectMinutes' "role bump"), the
   // remaining 65% applies here to the per-minute production rate.
-  const rateUsageMult = 1 + 0.65 * (usageMult - 1.0);
+  const rateUsageMult = 1 + (1 - modelParams.usageMinutesShare(propType)) * (usageMult - 1.0);   // whatever minutes did not carry (see projectMinutes)
 
   const oppAdj = calcOpponentAdjustment(propType, ctx.oppFourFact, league);
   const playerTeamPace = ctx.playerTeamAdvanced?.PACE;
@@ -3481,6 +3629,12 @@ function buildProjection(playerStats, ctx, propType) {
     }
     if (Math.abs(proj - before2) > 0.05) drivers.push({ label: 'opponent matchup', value: parseFloat((proj - before2).toFixed(1)) });
 
+    // What this defense gives up to the player's group (guards/forwards/centers) in this stat, beyond its overall points allowed (lib/dvp.js).
+    const beforeDvp = proj;
+    posAllowed = league === 'nba' ? dvpLib.positionAllowedMultiplier({ data: loadDvp(), team: ctx.oppAdvanced?.TEAM_NAME, position: playerPos, propType, params: modelParams.get().positionAllowed }) : null;
+    if (posAllowed) proj *= posAllowed.mult;
+    if (Math.abs(proj - beforeDvp) > 0.05) drivers.push({ label: 'opponent allowed to this position', value: parseFloat((proj - beforeDvp).toFixed(1)) });
+
     const before3 = proj;
     proj *= rateUsageMult;
     if (Math.abs(proj - before3) > 0.05) drivers.push({ label: 'usage rate (teammate/role)', value: parseFloat((proj - before3).toFixed(1)) });
@@ -3504,35 +3658,10 @@ function buildProjection(playerStats, ctx, propType) {
   }
   if (playerStats.minutesStability === 'VOLATILE') proj *= 0.97;
 
-  // ── HOME/AWAY SPLIT — applies to all paths ─────────────────────
-  // `home` was already tagged on every game in the log (used for display
-  // in tooltips/last5 tables) but never turned into a real signal —
-  // confirmed nothing in this function referenced it before this. Only
-  // applied when the upcoming game's home/away status is actually known
-  // and there's a real sample in both splits; shrunk toward 1.0 (no
-  // adjustment) so a handful of games can't swing this like a real
-  // season-long split would, and capped tighter than the primary drivers
-  // since this is a secondary signal, not a headline one.
-  const isHomeGame = ctx.gameContext?.isHome;
-  if (isHomeGame != null) {
-    const splitLog = playerStats.gameLog20 || recentGames || [];
-    const homeVals = splitLog.filter(g => g.home === true).map(getGameVal);
-    const awayVals = splitLog.filter(g => g.home === false).map(getGameVal);
-    if (homeVals.length >= 3 && awayVals.length >= 3) {
-      const homeAvg = homeVals.reduce((a,b)=>a+b,0) / homeVals.length;
-      const awayAvg = awayVals.reduce((a,b)=>a+b,0) / awayVals.length;
-      const overallAvg = (homeAvg + awayAvg) / 2;
-      if (overallAvg > 0) {
-        const splitAvg = isHomeGame ? homeAvg : awayAvg;
-        const sampleN = isHomeGame ? homeVals.length : awayVals.length;
-        const shrunkRatio = shrink(splitAvg / overallAvg, 1.0, sampleN, 8);
-        const homeAwayMult = Math.max(0.9, Math.min(1.1, shrunkRatio));
-        const before = proj;
-        proj *= homeAwayMult;
-        if (Math.abs(proj - before) > 0.05) drivers.push({ label: `${isHomeGame ? 'home' : 'road'} split (${sampleN}-game sample)`, value: parseFloat((proj - before).toFixed(1)) });
-      }
-    }
-  }
+  // ── HOME/AWAY SPLIT — removed ───────────────────────────────────
+  // This used to scale the projection by the player's own home or road average from his last 20 games (shrunk toward 1.0, capped at +-10%).
+  // The replay lab tested exactly that on about 13,000 player-games in each of two seasons: the adjustment predicted nothing (slope between
+  // -0.2 and 0.2 for points, rebounds, assists and threes) and made the average miss slightly worse. A player's own home/road gap is noise.
 
   // ── OVERALL SANITY CAP ──────────────────────────────────────────
   // Pace (±8%), the opponent-matchup adjustment, usage (up to ~±19.5%
@@ -3555,6 +3684,15 @@ function buildProjection(playerStats, ctx, propType) {
     }
   }
 
+  // ── LEARNED BIAS CORRECTION ─────────────────────────────────────
+  // Graded results showed the model running about 10% high on points and assists. The nightly fit (fitBias) scales it back by what actually happened.
+  const biasMult = biasLib.multFor(biasTable, league, propType);
+  if (biasMult !== 1) {
+    const before = proj;
+    proj *= biasMult;
+    drivers.push({ label: 'learned bias correction', value: parseFloat((proj - before).toFixed(1)) });
+  }
+
   // ── DISTRIBUTION + PROBABILITY ─────────────────────────────────
   // Estimated from actual recent game-to-game variance, floored by a
   // per-stat minimum coefficient of variation so a small, coincidentally
@@ -3566,10 +3704,13 @@ function buildProjection(playerStats, ctx, propType) {
   let sampleStdDev = null;
   if (gameVals.length >= 3) {
     const mean = gameVals.reduce((a,b)=>a+b,0) / gameVals.length;
-    sampleStdDev = Math.sqrt(gameVals.reduce((s,v)=>s+Math.pow(v-mean,2),0) / gameVals.length);
+    sampleStdDev = Math.sqrt(gameVals.reduce((s,v)=>s+Math.pow(v-mean,2),0) / Math.max(1, gameVals.length - 1));   // n-1: a small sample under-states its own spread
   }
   const MIN_CV = { points:0.28, pra:0.25, pr:0.28, pa:0.28, ra:0.32, rebounds:0.35, assists:0.35, '3pm':0.55, steals:0.6, blocks:0.6 };
-  const stdDev = Math.max(sampleStdDev || 0, (MIN_CV[propType] || 0.35) * Math.max(proj, 0.1));
+  // The spread of real outcomes around a number was measured on graded picks (points land about 6.6 from the line, far wider than the old
+  // 28% floor implied); where that is fitted it replaces the floor. Combos and count stats keep the floor until the lab fits them.
+  const fittedSd = isCombo ? null : modelParams.spreadSd(propType, proj);
+  const stdDev = Math.max(sampleStdDev || 0, fittedSd != null ? fittedSd : (MIN_CV[propType] || 0.35) * Math.max(proj, 0.1));
   const zRange = 1.28; // ~80% interval
 
   const confidence = calcConfidence({
@@ -3580,6 +3721,8 @@ function buildProjection(playerStats, ctx, propType) {
   const dvpCoeff = calcDvPCoeff(ctx.oppAdvanced?.DEF_RATING, playerPos, ctx.playerPlaytypes, ctx.oppDefPlaytypes, propType, league);
 
   return {
+    biasMult,
+    positionMult:      posAllowed ? parseFloat(posAllowed.mult.toFixed(4)) : null,
     projection:        parseFloat(proj.toFixed(1)),
     medianProjection:  parseFloat(proj.toFixed(1)), // normal approx — see stdDev note above
     lowerBound:        parseFloat(Math.max(0, proj - zRange*stdDev).toFixed(1)),
@@ -3607,7 +3750,7 @@ function buildProjection(playerStats, ctx, propType) {
     // showing it would misrepresent what actually moved the number.
     dvpCoeff:          canDecomposePoints ? null : parseFloat(dvpCoeff.toFixed(3)),
     usageMult:         parseFloat(usageMult.toFixed(3)),
-    injuryBreakdown:   calcInjuryBreakdown(ctx.playerRoster, playerStats, propType, ctx.nbaPlayerStats || []),
+    injuryBreakdown:   calcInjuryBreakdown(ctx.playerRoster, playerStats, propType, ctx.nbaPlayerStats || [], league),
     opponentAdjustment: oppAdj.details,
     gameContextMult:   parseFloat(gameContextMult.toFixed(3)),
     gameTotal:         gc?.total || null,
@@ -3648,37 +3791,24 @@ function buildProjection(playerStats, ctx, propType) {
 // let a cached projection go stale against a moving line with nothing to
 // invalidate it. Recomputed fresh every request instead — same pattern as
 // liveMarket below.
-function blendWithMarket(mathProjection, consensusLine, bookCount) {
-  if (!mathProjection || consensusLine == null || !bookCount || bookCount < 2) return mathProjection;
+function blendWithMarket(mathProjection, consensusLine, bookCount, propType) {
+  if (!mathProjection || consensusLine == null || !bookCount || bookCount < 1) return mathProjection;
   const proj = mathProjection.projection;
   if (!proj) return mathProjection;
 
-  // Confidence 25→97 (buildProjection's own scale) maps to market weight
-  // 0.40→0.12: a shakier projection leans harder on the market; a
-  // well-supported one barely moves for it.
-  const conf = mathProjection.confidence ?? 60;
-  const confT = Math.max(0, Math.min(1, (conf - 25) / (97 - 25)));
-  const marketWeight = 0.40 - 0.28 * confT;
-
-  const rawGap = consensusLine - proj;
-  // Same spirit as buildProjection's combined-adjustment sanity cap — one
-  // disagreeing market shouldn't be able to drag the number more than 20%
-  // off what the model itself computed.
-  const cappedGap = Math.max(-0.20 * proj, Math.min(0.20 * proj, rawGap));
-  const blended = proj + marketWeight * cappedGap;
-  if (Math.abs(blended - proj) < 0.05) return mathProjection;
-
-  const shift = parseFloat((blended - proj).toFixed(1));
-  const zRange = mathProjection.zRange || 1.28;
+  // The projection shown stays the model's own number. Alongside it goes a market-blended estimate, because on 647 graded picks the posted
+  // line missed the real stat by less than the model did (best mix about 15% model; points 10%, assists 25%). The blended estimate is what the
+  // win chance and EV lean on; it is shown as a secondary figure. The share comes from model_params.json so the lab can refit it, and with fewer
+  // books behind the line the model keeps a little more of the say.
+  const wMean = modelParams.forProp(modelParams.get().market.weightModelMean, propType, 0.15);
+  const bookFactor = bookCount >= 4 ? 1 : bookCount >= 2 ? 0.9 : 0.75;
+  const wModel = wMean + (1 - wMean) * (1 - bookFactor);
+  const marketWeight = 1 - wModel;
+  const blended = proj + marketWeight * (consensusLine - proj);
   return {
     ...mathProjection,
-    projection:        parseFloat(blended.toFixed(1)),
-    medianProjection:  parseFloat(blended.toFixed(1)),
-    lowerBound:        parseFloat(Math.max(0, blended - zRange * mathProjection.stdDev).toFixed(1)),
-    upperBound:        parseFloat((blended + zRange * mathProjection.stdDev).toFixed(1)),
-    preMarketProjection: proj,
-    marketBlend: { consensusLine, bookCount, weight: parseFloat(marketWeight.toFixed(2)), shift },
-    drivers: [...mathProjection.drivers, { label: `market consensus blend (${bookCount} books)`, value: shift }],
+    marketBlendProjection: parseFloat(blended.toFixed(1)),
+    marketBlend: { consensusLine, bookCount, weight: parseFloat(marketWeight.toFixed(2)), shift: parseFloat((blended - proj).toFixed(1)) },
   };
 }
 
@@ -3710,38 +3840,11 @@ function calcEdgeScore(mathProj, postedLine) {
 // own probability estimate (calcOverUnderProbability) instead of someone
 // else's projection.
 // ════════════════════════════════════════════════════════════════
-function americanToImplied(price) {
-  if (price == null) return null;
-  const p = parseFloat(price);
-  if (!isFinite(p) || p === 0) return null;
-  return p > 0 ? 100 / (p + 100) : -p / (-p + 100);
-}
 function americanToDecimal(price) {
   if (price == null) return null;
   const p = parseFloat(price);
   if (!isFinite(p) || p === 0) return null;
   return p > 0 ? 1 + p / 100 : 1 + 100 / -p;
-}
-// A two-way (Over/Under) market's own implied probabilities always sum to
-// more than 1 — the extra is the book's built-in margin ("vig"). Dividing
-// each side by that sum removes it, leaving a fair estimate of what the
-// market actually thinks the true probability is. Falls back to the raw
-// (vig-included) implied probability for just the one side when the other
-// side's price isn't available — worse, but still usable.
-function devigTwoWay(overPrice, underPrice) {
-  const po = americanToImplied(overPrice), pu = americanToImplied(underPrice);
-  if (po != null && pu != null && (po + pu) > 0) {
-    return { over: po / (po + pu), under: pu / (po + pu) };
-  }
-  return { over: po, under: pu };
-}
-// Expected value per $1 staked, from the model's own win probability
-// against the price actually being offered. Positive = the model thinks
-// this is a better bet than the price implies.
-function calcExpectedValue(modelProb, price) {
-  const dec = americanToDecimal(price);
-  if (modelProb == null || dec == null) return null;
-  return parseFloat((modelProb * (dec - 1) - (1 - modelProb)).toFixed(4));
 }
 // Fractional-Kelly stake suggestion, as a fraction of bankroll. Uses
 // quarter-Kelly (a standard discount for real bankrolls, since full Kelly
@@ -3761,28 +3864,112 @@ function calcKellyStake(modelProb, price, kellyMultiplier = 0.25, maxFraction = 
   if (fullKelly <= 0) return 0;
   return parseFloat(Math.min(fullKelly * kellyMultiplier, maxFraction).toFixed(4));
 }
-// One call, everything a UI needs: fair market probability (de-vigged),
-// the model's edge over that fair price, real EV, and a stake suggestion —
-// for whichever side (over/under) the model's projection actually favors.
-function calcRealEdge(direction, overProb, underProb, overPrice, underPrice) {
-  const isOver = direction === 'OVER' || direction === 'LEAN_OVER';
-  const modelProb = isOver ? overProb : underProb;
-  const price = isOver ? overPrice : underPrice;
-  if (modelProb == null || price == null) return null;
-  const fairProb = devigTwoWay(overPrice, underPrice)[isOver ? 'over' : 'under'];
-  // modelProb stays the raw number (it's what gets logged and scored). When the
-  // calibrator is on, EV, edge and stake use the corrected chance instead.
+
+// ════════════════════════════════════════════════════════════════
+// WHAT TO SHOW FOR A PROP, IN ONE PLACE
+// Each side is priced at its own best number (the lowest Over line, the highest Under line). The win chance starts from what every book
+// together says (vig removed) and the model only nudges it; the side with the better expected value is the call. With no market at all the
+// model stands alone but is pulled hard toward 50%, because its raw chances ran far too high on the app's own record.
+// ════════════════════════════════════════════════════════════════
+const pct1 = p => (p == null || !isFinite(p) ? null : parseFloat((p * 100).toFixed(1)));
+const round3 = p => parseFloat(p.toFixed(3));
+
+function assessProp({ propType, rawProjection, sd, books }) {
+  if (!books || !(rawProjection > 0) || !(sd > 0)) return null;
+  const mp = modelParams.get().market;
+  const wProb = modelParams.forProp(mp.weightModelProb, propType, 0.05);
   const calOn = !!(calibrationModel && calibrationModel.active);
-  const usedProb = calOn ? calibrate(modelProb) : modelProb;
+  const offers = market.bestOffers(books);
+  const sideOf = name => {
+    const o = offers[name];
+    if (!o) return null;
+    const probs = calcOverUnderProbability(rawProjection, sd, o.point, propType);
+    if (!probs) return null;
+    const modelProb = name === 'over' ? probs.overProbability : probs.underProbability;
+    const modelUsed = calOn ? calibrate(modelProb) : modelProb;
+    const fair = market.marketFairAt(books, o.point, sd, { bookWeights: mp.bookWeights || {} });
+    const marketProb = fair ? (name === 'over' ? fair.over : fair.under) : null;
+    const prob = marketProb != null ? market.blendLogit(modelUsed, marketProb, wProb) : market.shrinkToHalf(modelUsed, mp.modelOnlyKeep);
+    const push = probs.pushProbability || 0;
+    return { side: name, line: o.point, book: o.book, price: o.price, modelProb, modelUsed, marketProb, prob, push, books: fair ? fair.books : 0, ev: market.expectedValue(prob, o.price, push) };
+  };
+  const over = sideOf('over'), under = sideOf('under');
+  const ranked = [over, under].filter(Boolean).sort((x, y) => (y.ev ?? -9) - (x.ev ?? -9));
+  return ranked.length ? { over, under, best: ranked[0] } : null;
+}
+
+function buildRealEdge(o) {
+  const calOn = !!(calibrationModel && calibrationModel.active);
+  const breakEven = market.impliedFromAmerican(o.price);
   return {
-    price,
-    modelProb: parseFloat((modelProb * 100).toFixed(1)),
-    calibrated: calOn,
-    calibratedProb: calOn ? parseFloat((usedProb * 100).toFixed(1)) : null,
-    fairMarketProb: fairProb != null ? parseFloat((fairProb * 100).toFixed(1)) : null,
-    probEdge: fairProb != null ? parseFloat(((usedProb - fairProb) * 100).toFixed(1)) : null,
-    expectedValue: calcExpectedValue(usedProb, price),
-    kellyStake: calcKellyStake(usedProb, price),
+    price: o.price,
+    modelProb: pct1(o.modelProb),                         // the model's own raw chance: what calibration is fitted on and what is logged
+    calibrated: calOn, calibratedProb: calOn ? pct1(o.modelUsed) : null,
+    fairMarketProb: pct1(o.marketProb),                   // what every book together says, vig removed
+    finalProb: pct1(o.prob),                              // the chance the EV is worked out from
+    breakEvenProb: pct1(breakEven),
+    probEdge: o.prob != null && breakEven != null ? parseFloat(((o.prob - breakEven) * 100).toFixed(1)) : null,
+    pushProbability: o.push || 0,
+    bookCount: o.books || 0,
+    expectedValue: o.ev,
+    kellyStake: calcKellyStake(o.prob, o.price),
+  };
+}
+
+// Shared by the NBA and WNBA slate scans: turns one candidate and its raw projection into the result row everything downstream reads.
+// `scan` is a compact record of the numbers behind it, kept for every scanned prop (not just the ones that look good) so the model can be
+// judged fairly later.
+function buildCandidateResult({ league, cand, playerName, playerTeam, opponent, rawProjection }) {
+  const projection = blendWithMarket(rawProjection, cand.consensusLine, cand.bookCount, cand.propType);
+  const a = assessProp({ propType: cand.propType, rawProjection: rawProjection.projection, sd: rawProjection.stdDev, books: cand.books });
+  const best = a && a.best;
+  const line = best ? best.line : cand.line;
+  const edge = calcEdgeScore(rawProjection.projection, line);
+  const prob = best
+    ? { overProbability: round3(best.side === 'over' ? best.prob : 1 - best.prob), underProbability: round3(best.side === 'under' ? best.prob : 1 - best.prob), pushProbability: best.push }
+    : null;
+  const evalLine = cand.consensusLine ?? cand.line;
+  let scan = null;
+  if (evalLine != null) {
+    const m = calcOverUnderProbability(rawProjection.projection, rawProjection.stdDev, evalLine, cand.propType);
+    const f = cand.books ? market.marketFairAt(cand.books, evalLine, rawProjection.stdDev, { bookWeights: modelParams.get().market.bookWeights || {} }) : null;
+    const wProb = modelParams.forProp(modelParams.get().market.weightModelProb, cand.propType, 0.05);
+    const finalOver = m ? (f ? market.blendLogit(m.overProbability, f.over, wProb) : market.shrinkToHalf(m.overProbability, modelParams.get().market.modelOnlyKeep)) : null;
+    scan = {
+      evalLine, modelProjection: rawProjection.projection, biasMult: rawProjection.biasMult ?? 1,
+      // what the forward checks (lib/evaluate.js, forwardChecks) need: the teammate-out lift applied to this prop, and the position-allowed multiplier
+      tmBoost: rawProjection.injuryBreakdown?.teammateBoost ?? null, posMult: rawProjection.positionMult ?? null, blended: projection.marketBlendProjection ?? rawProjection.projection, sd: rawProjection.stdDev,
+      modelOver: m ? m.overProbability : null, marketOver: f ? round3(f.over) : null, finalOver: finalOver != null ? round3(finalOver) : null,
+      books: Object.entries(cand.books || {}).map(([b, e]) => [b, e.Over?.point ?? e.Under?.point ?? null, e.Over?.price ?? null, e.Under?.price ?? null]),
+      best: best ? { side: best.side, line: best.line, price: best.price, prob: best.prob, ev: best.ev } : null,
+    };
+  }
+  return {
+    league, player: playerName, team: playerTeam, opponent,
+    propType: cand.propType, line, book: best ? best.book : cand.book,
+    direction: best ? best.side.toUpperCase() : (edge == null ? null : edge > 0 ? 'OVER' : edge < 0 ? 'UNDER' : null),
+    consensusLine: cand.consensusLine ?? null, bookCount: cand.bookCount ?? null,
+    marketEdge: cand.consensusLine != null ? calcEdgeScore(rawProjection.projection, cand.consensusLine) : null,
+    projection: rawProjection.projection, modelProjection: rawProjection.projection, blendedProjection: projection.marketBlendProjection ?? rawProjection.projection, confidence: projection.confidence,
+    edge, ...(prob || {}),
+    realEdge: best ? buildRealEdge(best) : null,
+    scan,
+  };
+}
+
+// What the analyzer shows against the live market: the better side at its own best number, with the market-anchored chance and EV.
+// The model's own number (mathProjection.projection) is what drives the model's chance; the market-blended estimate rides alongside it.
+function buildLiveMarket(mathProjection, propLines, propType) {
+  if (!mathProjection || !propLines || propLines.error || !propLines.lines) return null;
+  const raw = mathProjection.projection;
+  const a = assessProp({ propType, rawProjection: raw, sd: mathProjection.stdDev, books: propLines.lines });
+  if (!a || !a.best) return null;
+  const b = a.best, edge = calcEdgeScore(mathProjection.projection, b.line);
+  const offer = o => (o ? { line: o.line, book: o.book, price: o.price, prob: pct1(o.prob), ev: o.ev } : null);
+  return {
+    line: b.line, book: b.book, side: b.side.toUpperCase(), consensusLine: propLines.consensusLine, bookCount: propLines.bookCount,
+    edge, overProbability: round3(b.side === 'over' ? b.prob : 1 - b.prob), underProbability: round3(b.side === 'under' ? b.prob : 1 - b.prob), pushProbability: b.push,
+    realEdge: buildRealEdge(b), offers: { over: offer(a.over), under: offer(a.under) }, modelProjection: raw, blendedProjection: mathProjection.marketBlendProjection ?? raw,
   };
 }
 
@@ -3803,30 +3990,17 @@ const NBA_BRIDGE_TTL = 30 * 60 * 1000;
 // nba.com with parallel requests no matter how many players are
 // looked up at once.
 // ─────────────────────────────────────────────────────
-let bridgeChain = Promise.resolve();
-let lastBridgeCallTs = 0;
+// Two lanes: a visitor waiting on an analysis goes first; the slate scan, its top-up and grading run in the low lane
+// (bridgeLane marks them) and only use the gaps. Two lookups can run at once (one at most from the low lane), still
+// started at least BRIDGE_MIN_GAP_MS apart, so nba.com never sees a burst.
 const BRIDGE_MIN_GAP_MS = 600;
-
 const BRIDGE_MAX_QUEUE = 30;
-let bridgePending = 0;
+const bridgeLane = new AsyncLocalStorage();
+const bridgeQueue = createLaneQueue({ concurrency: envNum(process.env.BRIDGE_CONCURRENCY, 2), lowConcurrency: 1, minGapMs: BRIDGE_MIN_GAP_MS, maxHigh: BRIDGE_MAX_QUEUE });
 function enqueueBridge(taskFn) {
-  // Beyond this many waiting jobs a visitor would just be stuck behind minutes of queue; refuse instead.
-  if (bridgePending >= BRIDGE_MAX_QUEUE) return Promise.resolve({ error: 'Busy: too many lookups waiting. Try again in a minute.' });
-  bridgePending++;
-  const scheduled = bridgeChain.then(async () => {
-    const wait = BRIDGE_MIN_GAP_MS - (Date.now() - lastBridgeCallTs);
-    if (wait > 0) await new Promise(r => setTimeout(r, wait));
-    try {
-      return await taskFn();
-    } finally {
-      lastBridgeCallTs = Date.now();
-      bridgePending--;
-    }
-  });
-  // Keep the queue alive regardless of whether this task succeeds or fails
-  bridgeChain = scheduled.then(() => {}, () => {});
-  return scheduled;
+  return bridgeQueue.enqueue(taskFn, bridgeLane.getStore() === 'low' ? 'low' : 'high');
 }
+const inBackground = fn => bridgeLane.run('low', fn);
 
 async function fetchViaBridge(playerName, season = currentNbaSeason()) {
   if (security.badString(playerName) || security.badString(season)) return { error: 'Invalid name' };
@@ -4347,23 +4521,14 @@ app.get('/api/wnba/prop-context', async (req, res) => {
     }
   }
   if (mathProjection && propLines && !propLines.error) {
-    mathProjection = blendWithMarket(mathProjection, propLines.consensusLine, propLines.bookCount);
+    mathProjection = blendWithMarket(mathProjection, propLines.consensusLine, propLines.bookCount, propType || 'points');
   }
 
   // Real edge/EV against the LIVE market line (propLines.softestLine),
   // independent of whatever the user has typed into the line field —
   // computed fresh every request, never attached to mathProjection itself
   // (which is cached across requests; the market line isn't).
-  let liveMarket = null;
-  if (mathProjection && propLines && !propLines.error && propLines.softestLine != null) {
-    const liveEdge = calcEdgeScore(mathProjection.projection, propLines.softestLine);
-    const liveProb = calcOverUnderProbability(mathProjection.projection, mathProjection.stdDev, propLines.softestLine, propType);
-    liveMarket = {
-      line: propLines.softestLine, consensusLine: propLines.consensusLine, bookCount: propLines.bookCount,
-      edge: liveEdge, ...liveProb,
-      realEdge: liveEdge != null && liveProb ? calcRealEdge(liveEdge > 0 ? 'OVER' : 'UNDER', liveProb.overProbability, liveProb.underProbability, propLines.overPrice, propLines.underPrice) : null,
-    };
-  }
+  const liveMarket = buildLiveMarket(mathProjection, propLines, propType || 'points');
 
   res.json({
     fetchedAt: new Date().toISOString(),
@@ -4394,6 +4559,7 @@ app.get('/api/prop-context', async (req, res) => {
   if (!player || !opponent) return res.status(400).json({ error: 'player and opponent required' });
 
   console.log(`[Analyze] ${player} vs ${opponent} — ${propType}`);
+  const _marks = [['start', Date.now()]], mark = name => _marks.push([name, Date.now()]);
 
   // Load nba stats from cache (disk read at most every 5 min)
   const nbaStats = loadNBAStats();
@@ -4409,8 +4575,19 @@ app.get('/api/prop-context', async (req, res) => {
   // Start H2H bridge immediately — it takes longest (nba_api multi-season)
   const h2hBridgePromise = fetchH2HViaBridge(player, opponent);
 
+  // Everything that only needs a team name starts now, while the player's game log is still being fetched. The team comes
+  // from the local season file; if the log later says otherwise (a trade since the file was refreshed), that roster is fetched again.
+  const guessAbbr = nbaStats?.playerStats ? fuzzyMatchPlayer(nbaStats.playerStats, player)?.TEAM_ABBREVIATION : null;
+  const guessedTeam = guessAbbr ? NBA_API_ABBR_TO_NAME[String(guessAbbr).toLowerCase()] || null : null;
+  const guessedRosterP = guessedTeam ? fetchESPNRoster(guessedTeam) : null;
+  const guessedEnrichP = guessedRosterP ? guessedRosterP.then(r => enrichInjuryAbsence(r, 'nba')).catch(() => {}) : null;
+  guessedRosterP?.catch(() => {});
+  const oppRosterP = fetchESPNRoster(opponent), lineupsP = fetchLineups();
+  oppRosterP.catch(() => {}); lineupsP.catch(() => {});
+
   const playerStats = await fetchPlayerStats(player);
   const playerTeamName = playerStats?.player?.team || '';
+  mark('player stats');
 
   if (sameTeam(playerTeamName, opponent)) {
     return res.status(400).json({
@@ -4419,12 +4596,13 @@ app.get('/api/prop-context', async (req, res) => {
   }
 
   const [oppRoster, lineups, propLines] = await Promise.all([
-    fetchESPNRoster(opponent),
-    fetchLineups(),
+    oppRosterP,
+    lineupsP,
     fetchPropLines(player, propType || 'points', { opponent, playerTeam: playerTeamName }),
   ]);
 
   // ═══════════════════════════════════════════════════════════════
+  mark('roster, lineups, prop lines');
   // WAVE 2 — Player roster + game context simultaneously
   // BDL H2H fallback runs here only if bridge found nothing
   // ═══════════════════════════════════════════════════════════════
@@ -4435,17 +4613,30 @@ app.get('/api/prop-context', async (req, res) => {
     todaysGames.find(g => g.visitor_team.full_name.toLowerCase().includes(opponent.toLowerCase().split(' ').pop()))?.visitor_team?.id ||
     null;
 
-  // Await H2H bridge (was started before wave 1 — likely done by now)
-  const bridgeH2H = await h2hBridgePromise;
-
-  const [playerRoster, gameContext, bdlH2HFallback] = await Promise.all([
-    playerTeamName ? fetchESPNRoster(playerTeamName).then(async r => { await enrichInjuryAbsence(r, 'nba'); return r; }) : Promise.resolve(null),
-    fetchGameContext(playerTeamName || player, opponent, null),
-    // BDL H2H runs in parallel — only if bridge returned nothing
-    (!bridgeH2H && playerStats?.player?.id && oppTeamId)
-      ? fetchH2HStats(playerStats.player.id, null, oppTeamId, [2025, 2024, 2023])
-      : Promise.resolve(null),
+  // The head-to-head lookup (started before wave 1) is awaited at the same time as the roster and game-context work below,
+  // not before it: the two used to run one after the other, which added the whole head-to-head wait to every cold lookup.
+  const _parts = [];
+  const timed = (label, p) => { const t = Date.now(); return Promise.resolve(p).then(v => { _parts.push(`${label} ${Date.now() - t}ms`); return v; }); };
+  // Looking up how long each injured teammate has been out takes a game-log lookup apiece. The roster itself is quick, so the
+  // page waits for the lookups only briefly (ENRICH_BUDGET_MS); whatever is unfinished keeps going in the background and
+  // counts as "unknown" (half weight, as it always has) for this answer, which is then not cached so the next one is complete.
+  const useGuess = !!(guessedRosterP && playerTeamName && resolveESPNTeam(guessedTeam) === resolveESPNTeam(playerTeamName));
+  const rosterP = !playerTeamName ? Promise.resolve(null) : useGuess ? guessedRosterP : fetchESPNRoster(playerTeamName);
+  const enrichP = !playerTeamName ? Promise.resolve() : useGuess ? guessedEnrichP : rosterP.then(r => enrichInjuryAbsence(r, 'nba')).catch(() => {});
+  const wave2 = Promise.all([
+    timed('player roster', rosterP),
+    timed('game context', fetchGameContext(playerTeamName || player, opponent, null)),
   ]);
+  wave2.catch(() => {});   // if the head-to-head lookup throws first, this must not become an unhandled rejection
+  const bridgeH2H = await timed('h2h wait', h2hBridgePromise);
+  mark('h2h');
+  const [playerRoster, gameContext] = await wave2;
+  const absenceDone = await Promise.race([enrichP.then(() => true), new Promise(r => setTimeout(() => r(false), envNum(process.env.ENRICH_BUDGET_MS, 800)))]);
+  if (!absenceDone) _parts.push('injury lookups unfinished (not cached)');
+  // BDL H2H runs only if the bridge returned nothing
+  const bdlH2HFallback = (!bridgeH2H && playerStats?.player?.id && oppTeamId)
+    ? await fetchH2HStats(playerStats.player.id, null, oppTeamId, [2025, 2024, 2023])
+    : null;
 
   // ═══════════════════════════════════════════════════════════════
   // ASSEMBLE H2H — pick best available source
@@ -4515,7 +4706,9 @@ app.get('/api/prop-context', async (req, res) => {
   if (todayGame && gameContext) {
     gameContext.isHome = todayGame.home_team.full_name.toLowerCase().includes(playerTeamName.toLowerCase());
   }
+  mark('roster + game context');
   const teamMargins = playerTeamName ? await getTeamGameMargins('nba', playerTeamName) : [];
+  mark('team margins');
 
   // ── Pull ALL new stat categories for this player and opponent ──
 
@@ -4653,31 +4846,24 @@ app.get('/api/prop-context', async (req, res) => {
       nbaPlayerStats: nbaStats?.playerAdvanced || nbaStats?.playerStats || [],  // for USG_PCT
     }, propType || 'points');
     if (mathProjection) {
-      setCachedProjection(player, propType || 'points', mathProjection, cacheSignature);
+      if (absenceDone) setCachedProjection(player, propType || 'points', mathProjection, cacheSignature);
       console.log(`[Proj] Calculated: ${player} ${propType} → ${mathProjection.projection} (${mathProjection.methodology})`);
     }
   } else {
     console.log(`[Proj] Cache hit: ${player} ${propType} → ${mathProjection.projection}`);
   }
   if (mathProjection && propLines && !propLines.error) {
-    mathProjection = blendWithMarket(mathProjection, propLines.consensusLine, propLines.bookCount);
+    mathProjection = blendWithMarket(mathProjection, propLines.consensusLine, propLines.bookCount, propType || 'points');
   }
 
   // Real edge/EV against the LIVE market line (propLines.softestLine),
   // independent of whatever the user has typed into the line field —
   // computed fresh every request, never attached to mathProjection itself
   // (which is cached across requests; the market line isn't).
-  let liveMarket = null;
-  if (mathProjection && propLines && !propLines.error && propLines.softestLine != null) {
-    const liveEdge = calcEdgeScore(mathProjection.projection, propLines.softestLine);
-    const liveProb = calcOverUnderProbability(mathProjection.projection, mathProjection.stdDev, propLines.softestLine, propType);
-    liveMarket = {
-      line: propLines.softestLine, consensusLine: propLines.consensusLine, bookCount: propLines.bookCount,
-      edge: liveEdge, ...liveProb,
-      realEdge: liveEdge != null && liveProb ? calcRealEdge(liveEdge > 0 ? 'OVER' : 'UNDER', liveProb.overProbability, liveProb.underProbability, propLines.overPrice, propLines.underPrice) : null,
-    };
-  }
+  const liveMarket = buildLiveMarket(mathProjection, propLines, propType || 'points');
 
+  mark('projection');
+  console.log(`[Analyze] timing ${player}: ` + _marks.slice(1).map(([n, t], k) => `${n} ${t - _marks[k][1]}ms`).join(', ') + ` | in parallel: ${_parts.join(', ')} | total ${Date.now() - _marks[0][1]}ms`);
   res.json({
     fetchedAt:          new Date().toISOString(),
     date:               getToday(),
@@ -4709,6 +4895,7 @@ app.get('/api/prop-context', async (req, res) => {
     oppShotDefense,
     oppRoster,
     oppRanks,          // rank 1-30 for each key stat
+    positionAllowed: dvpLib.positionTable({ data: loadDvp(), team: opponent, position: playerStats?.player?.position }),   // what the opponent gives up to guards, forwards and centers
     playerTeamRanks,
     // Player team
     playerTeamAdvanced,
@@ -4739,11 +4926,14 @@ const SLATE_PROP_MARKETS = { points: 'player_points', rebounds: 'player_rebounds
 // Locked per calendar day, not a rolling TTL — the top 3 for today should
 // stay the same all day rather than shuffling as odds move or the scan reruns.
 const topPlaysCache = {}; // league -> { data, dateKey }
-const MAX_SLATE_EVENTS           = 6;
+const MAX_SLATE_EVENTS           = envNum(process.env.MAX_SLATE_EVENTS, 15); // every game on the board (the biggest NBA night is 15)
 const MAX_CANDIDATES_PER_EVENT   = 20; // fair per-game share — see note below
-const MAX_SLATE_CANDIDATES       = 150; // generous overall safety ceiling only
+const MAX_SLATE_CANDIDATES       = MAX_SLATE_EVENTS * MAX_CANDIDATES_PER_EVENT; // generous overall safety ceiling only
 
-async function fetchSlateCandidates(sportKey) {
+// `onlyIds` limits the fetch to those games (the top-up that fills in games the books had not posted yet);
+// `report` receives one { id, home, away, commence, count, ok } per game asked, so the caller can tell
+// "no props posted" from "the request failed".
+async function fetchSlateCandidates(sportKey, { onlyIds = null, report = null } = {}) {
   // "Tonight's slate" means games that tip off later TODAY. The Odds API
   // lists every upcoming game (the NBA list started two weeks out), and the
   // scan used to take the first 6 regardless — paying 3 credits per game to
@@ -4752,7 +4942,8 @@ async function fetchSlateCandidates(sportKey) {
   // are skipped too (their lines are live, not pre-game).
   const now = Date.now(), today = getToday();
   const events = (await getOddsEvents(sportKey))
-    .filter(ev => { const t = new Date(ev.commence_time); return t.getTime() > now && toLocalDateStr(t) === today; })
+    .filter(ev => { const t = new Date(ev.commence_time); return t.getTime() > now && toLocalDateStr(t) === today && (!onlyIds || onlyIds.has(ev.id)); })
+    .sort((a, b) => new Date(a.commence_time) - new Date(b.commence_time))   // earliest tip-off first, so those games fill in first
     .slice(0, MAX_SLATE_EVENTS);
 
   // Cap PER EVENT, not globally across the concatenated list — events are
@@ -4762,6 +4953,7 @@ async function fetchSlateCandidates(sportKey) {
   // one fast-responding game could eat the entire candidate budget).
   const perEventResults = await Promise.allSettled(events.map(async (event) => {
     const candidates = [];
+    let ok = false;
     try {
       const oddsRes = await axios.get(`${ODDS_BASE}/sports/${sportKey}/events/${event.id}/odds`, {
         params: {
@@ -4774,6 +4966,7 @@ async function fetchSlateCandidates(sportKey) {
       // — every book kept (not just the first-seen one) so a consensus line
       // and the actual price can both be computed below, the same real data
       // fetchPropLines already collects for the single-player analyzer.
+      ok = true;
       const seen = {};
       for (const bm of (oddsRes.data.bookmakers || [])) {
         for (const mkt of (bm.markets || [])) {
@@ -4805,11 +4998,14 @@ async function fetchSlateCandidates(sportKey) {
           player, propType, line: softestLine, book: softestBook,
           consensusLine: parseFloat(consensusLine.toFixed(1)), bookCount: overPoints.length,
           overPrice: softest.Over?.price ?? null, underPrice: softest.Under?.price ?? null,
+          books,                       // every book's Over/Under number and price: the market's fair chance and the best price on each side come from these
           homeTeam: event.home_team, awayTeam: event.away_team,
         });
       }
     } catch (_) { /* skip this event, keep scanning the rest */ }
-    return candidates.slice(0, MAX_CANDIDATES_PER_EVENT);
+    const kept = candidates.slice(0, MAX_CANDIDATES_PER_EVENT);
+    if (report) report.push({ id: event.id, home: event.home_team, away: event.away_team, commence: event.commence_time, count: kept.length, ok });
+    return kept;
   }));
   const candidates = perEventResults.flatMap(r => r.status === 'fulfilled' ? r.value : []);
   return candidates.slice(0, MAX_SLATE_CANDIDATES);
@@ -4869,23 +5065,7 @@ async function evaluateNBACandidate(cand) {
   // version of that same pick are always the same number as what the
   // analyzer would show for it, instead of two silently different
   // definitions of "the projection" living side by side in the app.
-  const projection = blendWithMarket(rawProjection, cand.consensusLine, cand.bookCount);
-
-  const edge = calcEdgeScore(projection.projection, cand.line);
-  const prob = calcOverUnderProbability(projection.projection, projection.stdDev, cand.line, cand.propType);
-  return {
-    league: 'nba', player: playerStats.player.name, team: playerTeam, opponent,
-    propType: cand.propType, line: cand.line, book: cand.book,
-    // Consensus (median across every book posting a line) — the projection
-    // above is already blended toward it (blendWithMarket), so marketEdge
-    // below shows how much edge survives after that blend, not the raw
-    // model-vs-market gap.
-    consensusLine: cand.consensusLine ?? null, bookCount: cand.bookCount ?? null,
-    marketEdge: cand.consensusLine != null ? calcEdgeScore(projection.projection, cand.consensusLine) : null,
-    projection: projection.projection, confidence: projection.confidence,
-    edge, ...prob,
-    realEdge: calcRealEdge(edge > 0 ? 'OVER' : 'UNDER', prob?.overProbability, prob?.underProbability, cand.overPrice, cand.underPrice),   // prob is null when there is no posted line
-  };
+  return buildCandidateResult({ league: 'nba', cand, playerName: playerStats.player.name, playerTeam, opponent, rawProjection });
 }
 
 async function evaluateWNBACandidate(cand) {
@@ -4920,19 +5100,7 @@ async function evaluateWNBACandidate(cand) {
     nbaPlayerStats: wnbaStats?.playerAdvanced || [], league: 'wnba',
   }, cand.propType);
   if (!rawProjection) return null;
-  const projection = blendWithMarket(rawProjection, cand.consensusLine, cand.bookCount);
-
-  const edge = calcEdgeScore(projection.projection, cand.line);
-  const prob = calcOverUnderProbability(projection.projection, projection.stdDev, cand.line, cand.propType);
-  return {
-    league: 'wnba', player: playerStats.player.name, team: playerTeam, opponent,
-    propType: cand.propType, line: cand.line, book: cand.book,
-    consensusLine: cand.consensusLine ?? null, bookCount: cand.bookCount ?? null,
-    marketEdge: cand.consensusLine != null ? calcEdgeScore(projection.projection, cand.consensusLine) : null,
-    projection: projection.projection, confidence: projection.confidence,
-    edge, ...prob,
-    realEdge: calcRealEdge(edge > 0 ? 'OVER' : 'UNDER', prob?.overProbability, prob?.underProbability, cand.overPrice, cand.underPrice),   // prob is null when there is no posted line
-  };
+  return buildCandidateResult({ league: 'wnba', cand, playerName: playerStats.player.name, playerTeam, opponent, rawProjection });
 }
 
 // Shared by /api/top-plays and /api/team-picks — both are just different
@@ -4956,14 +5124,27 @@ function loadSlateScanCacheFromDisk() {
   } catch (_) { return {}; }
 }
 function saveSlateScanCacheToDisk(cache) {
-  try { fs.writeFileSync(SLATE_CACHE_FILE, JSON.stringify(cache)); } catch (_) {}
+  // Written to a temporary file and then swapped in: a crash half way through a plain write leaves a broken file, the next start finds
+  // no scan, and the whole day's odds credits are spent again on a re-scan.
+  try { const tmp = SLATE_CACHE_FILE + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(cache)); fs.renameSync(tmp, SLATE_CACHE_FILE); } catch (_) {}
 }
 const slateScanCache = loadSlateScanCacheFromDisk(); // league -> { data: {candidates, results}, dateKey, v }
+// A scan saved before the model's own number became the projection holds the market-blended number in `projection`. Switch those rows over once,
+// from what they already carry, so the page shows the right thing straight away without paying for a re-scan.
+for (const entry of Object.values(slateScanCache)) {
+  if (!entry?.data?.results || entry.shown === 'model') continue;
+  for (const r of entry.data.results) {
+    if (r.modelProjection == null || r.blendedProjection !== undefined) continue;
+    r.blendedProjection = r.projection; r.projection = r.modelProjection;
+    r.edge = calcEdgeScore(r.projection, r.line); r.marketEdge = r.consensusLine != null ? calcEdgeScore(r.projection, r.consensusLine) : null;
+  }
+  entry.shown = 'model';
+}
 // Bump whenever projection/confidence math changes: the scan is cached on
 // disk for the whole day (to protect the Odds API quota), so without a
 // version stamp a logic change would keep serving numbers from the OLD
 // formula until midnight.
-const SLATE_LOGIC_VERSION = 2; // 2 = continuous confidence score (calcConfidence)
+const SLATE_LOGIC_VERSION = 3; // 2 = continuous confidence score (calcConfidence); 3 = market-anchored chances, per-side best prices, EV-based calls
 // An empty scan (0 candidates) is ambiguous — could mean a real quota/key
 // failure, or just no props posted yet — so it's NOT trusted for the rest
 // of the day like a real successful scan is. Real bug this fixed: a key
@@ -4978,7 +5159,10 @@ const EMPTY_SCAN_RETRY_MS = 20 * 60 * 1000;
 // picks and the prop board at once, and each would spend its own Odds credits on the same scan.
 // Callers that arrive while a scan is running now share its result.
 const slateScanInflight = {};
-async function collectSlateResults(league) {
+const slateScanPartial = {};   // league -> { dateKey, data } while a scan runs: what has been worked out so far
+// Callers that only want to SHOW the board (prop-board) pass allowPartial and get whatever is ready at once.
+// Callers that cache the answer for the day (top plays, team picks) wait for the finished scan.
+async function collectSlateResults(league, { allowPartial = false } = {}) {
   const today = getToday();
   const cached = slateScanCache[league];
   if (cached && cached.dateKey === today && cached.v === SLATE_LOGIC_VERSION) {
@@ -4991,29 +5175,101 @@ async function collectSlateResults(league) {
   const budget = currentCreditBudget();
   if (budget.known && !budget.canScan && process.env.ODDS_ALLOW_LOW_CREDITS !== '1') return { candidates: [], results: [], skipped: 'low Odds credits' };
   if (!slateScanInflight[league]) {
-    slateScanInflight[league] = scanSlate(league, today).finally(() => { delete slateScanInflight[league]; });
+    slateScanInflight[league] = scanSlate(league, today).finally(() => { delete slateScanInflight[league]; delete slateScanPartial[league]; });
   }
+  const part = slateScanPartial[league];
+  if (allowPartial && part && part.dateKey === today) return { ...part.data, partial: true };
+  if (allowPartial) return { candidates: [], results: [], partial: true };   // still asking the books which games have props
   return slateScanInflight[league];
+}
+
+// Players are worked through a few at a time (a player's own props one after another, so the stats are fetched once).
+// Each finished prop goes straight into `out`, which is why a board shown mid-scan fills in game by game.
+const SLATE_EVAL_CONCURRENCY = envNum(process.env.SLATE_EVAL_CONCURRENCY, 3);
+async function evaluateCandidatesInto(league, candidates, out) {
+  return inBackground(() => evaluateCandidatesIntoNow(league, candidates, out));
+}
+async function evaluateCandidatesIntoNow(league, candidates, out) {
+  const evaluate = league === 'wnba' ? evaluateWNBACandidate : evaluateNBACandidate;
+  const byPlayer = new Map();
+  for (const cand of candidates) {
+    if (!byPlayer.has(cand.player)) byPlayer.set(cand.player, []);
+    byPlayer.get(cand.player).push(cand);
+  }
+  const queue = [...byPlayer.values()];
+  const worker = async () => {
+    while (queue.length) {
+      for (const cand of queue.shift()) {
+        try {
+          const r = await evaluate(cand);
+          if (r) out.push({ ...r, homeTeam: cand.homeTeam, awayTeam: cand.awayTeam });
+        } catch (_) { /* one bad candidate shouldn't sink the whole scan */ }
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.max(1, SLATE_EVAL_CONCURRENCY) }, worker));
 }
 
 async function scanSlate(league, today) {
   const sportKey = league === 'wnba' ? 'basketball_wnba' : 'basketball_nba';
-  const candidates = await fetchSlateCandidates(sportKey);
-  const evaluate = league === 'wnba' ? evaluateWNBACandidate : evaluateNBACandidate;
-
+  const report = [];
+  const candidates = await fetchSlateCandidates(sportKey, { report });
   const results = [];
-  for (const cand of candidates) {
-    try {
-      const r = await evaluate(cand);
-      if (r) results.push({ ...r, homeTeam: cand.homeTeam, awayTeam: cand.awayTeam });
-    } catch (_) { /* one bad candidate shouldn't sink the whole scan */ }
-  }
-  const data = { candidates, results };
+  const data = { candidates, results, eventInfo: eventInfoFrom(report) };
+  slateScanPartial[league] = { dateKey: today, data };
+  await evaluateCandidatesInto(league, candidates, results);
+  // The injury report the scan just priced with: the late-news job compares later reports against this.
+  data.injurySig = {};
+  try { for (const r of report) for (const t of [r.home, r.away]) if (!(t in data.injurySig)) data.injurySig[t] = injurySig(await (league === 'wnba' ? fetchWNBARoster : fetchESPNRoster)(t)); } catch (_) {}
   slateScanCache[league] = { data, dateKey: today, ts: Date.now(), v: SLATE_LOGIC_VERSION };
   saveSlateScanCacheToDisk(slateScanCache);
+  logScanProps(league, results);
   // Preseason picks cannot be graded (the stats feed has no preseason games), so they would only sit in the track record as noise.
   if (datachecks.inSeason(league, new Date())) autoLogSlatePicks(league, results);
   return data;
+}
+
+// Books post player props at different times, so a game with none at scan time is asked again later: once its
+// tip-off is within FILL_WINDOW, at most every FILL_GAP, up to FILL_TRIES times. Games that already have props are
+// not touched, and the call is skipped when the credits cannot cover it (about 3 per game). New props are merged into
+// today's scan, and the day-locked top-picks / team-picks answers are dropped so they include the new games.
+const FILL_GAP_MS = 40 * 60 * 1000, FILL_WINDOW_MS = envNum(process.env.SLATE_FILL_WINDOW_HOURS, 8) * 3600 * 1000, FILL_TRIES = 8, FILL_COST_PER_GAME = 3;
+const slateFillInflight = {};
+async function fillMissingProps(league) {
+  if (slateFillInflight[league]) return slateFillInflight[league];
+  const run = async () => {
+    const today = getToday(), c = slateScanCache[league];
+    if (!c || c.dateKey !== today || c.v !== SLATE_LOGIC_VERSION || slateScanInflight[league]) return 'no finished scan to top up';
+    const sportKey = league === 'wnba' ? 'basketball_wnba' : 'basketball_nba';
+    const now = Date.now();
+    const events = (await getOddsEvents(sportKey)).filter(ev => { const t = new Date(ev.commence_time); return t.getTime() > now && toLocalDateStr(t) === today; });
+    const info = c.data.eventInfo || {};
+    // a scan saved before games were tracked one by one: a game that already has props in it is not asked again
+    const haveGame = new Set((c.data.candidates || []).map(x => `${x.awayTeam}@${x.homeTeam}`));
+    const todo = eventsDueForFill(events, info, haveGame, now, { gapMs: FILL_GAP_MS, windowMs: FILL_WINDOW_MS, tries: FILL_TRIES });
+    if (!todo.length) return 'every game has props or is not due yet';
+    const b = currentCreditBudget();
+    if (b.known && b.remaining < todo.length * FILL_COST_PER_GAME + b.critAt && process.env.ODDS_ALLOW_LOW_CREDITS !== '1') return `skipped: ${b.remaining} credits left`;
+    const report = [];
+    const fresh = await fetchSlateCandidates(sportKey, { onlyIds: new Set(todo.map(e => e.id)), report });
+    const newResults = [];
+    await evaluateCandidatesInto(league, fresh, newResults);
+    const cur = slateScanCache[league];
+    if (!cur || cur.dateKey !== today) return 'the day changed during the top-up';
+    cur.data.eventInfo = eventInfoFrom(report, cur.data.eventInfo);
+    if (fresh.length) {
+      cur.data.candidates = [...cur.data.candidates, ...fresh];
+      cur.data.results = [...cur.data.results, ...newResults];
+      delete topPlaysCache[league]; delete teamPicksCache[league];
+      if (datachecks.inSeason(league, new Date())) autoLogSlatePicks(league, newResults);
+      logScanProps(league, newResults);
+    }
+    saveSlateScanCacheToDisk(slateScanCache);
+    const got = report.filter(r => r.count > 0).length;
+    return `asked ${report.length} game${report.length === 1 ? '' : 's'}, ${got} had props (${fresh.length} added)`;
+  };
+  slateFillInflight[league] = run().finally(() => { delete slateFillInflight[league]; });
+  return slateFillInflight[league];
 }
 
 // ── AUTO-LOG — every real pick from the daily slate scan gets saved to
@@ -5026,23 +5282,30 @@ async function scanSlate(league, today) {
 // candidate it merely looked at. Runs once per fresh (non-cached) scan;
 // deduped against what's already logged today so a cache-miss retry
 // can't double-log the same pick.
+// The picks are the three best props in each game (one per player), ranked by expected value at the best available price: see lib/picks.js. There is
+// no minimum, so a game with lines always has picks. A pick is marked as VALUE when its expected value also clears a small bar (`minEv`, 3%): the
+// others are the best available, not strong bets, and the page says so.
+const MIN_PICK_EV = () => modelParams.get().market.minEv ?? 0.03;
+function isRealPick(r) { return !!(r && r.realEdge && r.realEdge.expectedValue != null && r.realEdge.expectedValue >= MIN_PICK_EV() && r.direction); }
+const byValue = (a, b) => ((b.realEdge?.expectedValue ?? -9) - (a.realEdge?.expectedValue ?? -9)) || (b.confidence - a.confidence);
+
 function autoLogSlatePicks(league, results) {
-  const withEdge = (results || []).filter(r => Math.abs(r.edge) >= 1.0);
-  if (!withEdge.length) return;
+  const withEdge = picksLib.flattenPicks(picksLib.topPicksPerGame(results));      // the top three in each game
+  if (!withEdge.length) return 0;
   const today = getToday();
   const entries = loadCLV();
   const already = new Set(entries
     .filter(e => e.source === 'auto' && e.date === today && e.league === league)
-    .map(e => `${e.player}|${e.propType}|${e.line}`));
+    .map(e => `${e.player}|${e.propType}`));                                     // one bet per player and prop a day: a line that moves later is not a second pick
   let added = 0;
   for (const r of withEdge) {
-    const key = `${r.player}|${r.propType}|${r.line}`;
+    const key = `${r.player}|${r.propType}`;
     if (already.has(key)) continue;
     already.add(key);
     entries.unshift({
       id: nextId(), date: today, savedAt: new Date().toISOString(), league,
       player: r.player, opp: r.opponent, propType: r.propType, line: r.line,
-      projection: r.projection, verdict: r.edge > 0 ? 'OVER' : 'UNDER',
+      projection: r.projection, modelProjection: r.modelProjection ?? null, blendedProjection: r.blendedProjection ?? null, verdict: r.direction,
       edge: r.edge, confidence: r.confidence,
       closingLine: null, result: null, actualStat: null, clv: null, notes: '',
       source: 'auto', confVersion: CONFIDENCE_FORMULA_VERSION,
@@ -5050,10 +5313,20 @@ function autoLogSlatePicks(league, results) {
       // What calibration and the backtest score later: the model's RAW chance for
       // the logged side, the price it was compared to, and the EV that implied.
       modelProb: r.realEdge?.modelProb ?? null, price: r.realEdge?.price ?? null, ev: r.realEdge?.expectedValue ?? null,
+      marketProb: r.realEdge?.fairMarketProb ?? null, finalProb: r.realEdge?.finalProb ?? null,
     });
     added++;
   }
   if (added) { saveCLV(entries); console.log(`[AutoLog] ${league}: logged ${added} picks for ${today}`); }
+  return added;
+}
+// Picks are logged when a game's lines are scanned. A restart after the scan (or a change in how picks are chosen) would otherwise leave today's
+// picks unlogged, so this catches up from the saved scan: only games that have not started, so no pick is ever logged with the game under way.
+function logPicksForUnstartedGames(league) {
+  const c = slateScanCache[league];
+  if (!c || c.dateKey !== getToday() || c.v !== SLATE_LOGIC_VERSION || !datachecks.inSeason(league, new Date())) return 0;
+  const now = Date.now(), started = new Set(Object.values(c.data.eventInfo || {}).filter(i => new Date(i.commence).getTime() <= now).map(i => `${i.away}@${i.home}`));
+  return autoLogSlatePicks(league, (c.data.results || []).filter(r => !started.has(`${r.awayTeam}@${r.homeTeam}`))) || 0;
 }
 
 // ── AUTO-GRADE — fills in result/actualStat for every auto-logged pick
@@ -5106,60 +5379,96 @@ async function autoGradePendingPicks() {
   return `graded ${graded} of ${pending.length} waiting${unmatched ? `, ${unmatched} had no matching game` : ''}`;
 }
 
+// Every prop the scan looked at goes in the scan log, whether or not it looks like a pick: judging the model only on the picks it chose to
+// make is what hid how much of its "edge" was noise. Only logged in season (the stats feed has no preseason games to grade against).
+function logScanProps(league, results) {
+  if (!datachecks.inSeason(league, new Date())) return 0;
+  const today = getToday(), at = new Date().toISOString();
+  const rows = (results || []).filter(r => r.scan).map(r => ({ date: today, league, player: r.player, propType: r.propType, data: { ...r.scan, team: r.team, opponent: r.opponent, confidence: r.confidence, direction: r.direction, at } }));
+  try { return rows.length ? store.addScanProps(rows) : 0; } catch (e) { console.error('[ScanLog] could not save:', e.message); return 0; }
+}
+// Fills in each logged prop's real stat once its game is over, with the same game matching the pick grader uses.
+async function gradeScanProps() {
+  const today = getToday();
+  const pending = store.scanPropsPending(today, 400);
+  if (!pending.length) return 'nothing waiting to grade';
+  const threeDaysAgo = toLocalDateStr(new Date(Date.now() - 3 * 86400000));
+  let graded = 0, aside = 0;
+  for (const row of pending) {
+    try {
+      const stats = row.league === 'wnba' ? await fetchWNBAPlayerStats(row.player) : await fetchPlayerStats(row.player);
+      if (!stats || stats.error) { if (row.date <= threeDaysAgo) { store.setScanNote(row.id, 'player stats could not be loaded'); aside++; } continue; }
+      const game = findGameForPick(stats, { league: row.league, player: row.player, date: row.date });
+      if (!game) { if (row.date <= threeDaysAgo) { store.setScanNote(row.id, 'no matching game (did not play, or not in the log)'); aside++; } continue; }
+      if (store.saveScanGrade(row.id, gradeStatValue(game, row.propType))) graded++;
+    } catch (_) { /* retried on the next run */ }
+  }
+  try { store.pruneScanProps(toLocalDateStr(new Date(Date.now() - 400 * 86400000))); } catch (_) {}
+  return `graded ${graded} of ${pending.length} logged props${aside ? `, set aside ${aside}` : ''}`;
+}
+
 async function computeTopPlays(league) {
   const { candidates, results } = await collectSlateResults(league);
 
-  // Only surface real edges — matches the app's existing "never bet on a
-  // PASS-tier signal" rule (see calcEdgeScore/verdict thresholds elsewhere).
-  const withEdge = results.filter(r => Math.abs(r.edge) >= 1.0);
-  withEdge.sort((a, b) => (b.confidence - a.confidence) || (Math.abs(b.edge) - Math.abs(a.edge)));
-  // One pick per player (their most confident prop) — the Top 3 was showing the same player twice.
-  const seenPlayers = new Set();
-  const onePerPlayer = withEdge.filter(r => !seenPlayers.has(r.player) && seenPlayers.add(r.player));
-
+  const gamePicks = picksLib.flattenPicks(picksLib.topPicksPerGame(results));       // the three best props in each game, by expected value
+  bestBets.markLive(gamePicks);                                                     // so a Top 3 card can carry the same best-bet tag as its game row
+  // The three most confident of those game picks, one per player: a prop has to be among its game's best by value to qualify, and confidence orders
+  // them. (Ranking every prop on the slate by confidence alone was never tested: the graded record of 68% comes from this pool.) Once the first complete scan of the day has produced three, they are frozen
+  // for the rest of the day (see freezeTopPlays): lines move and games get topped up, but the list on the page does not.
   return {
     league, generatedAt: new Date().toISOString(),
     scanned: candidates.length, evaluated: results.length,
-    topPlays: onePerPlayer.slice(0, 3).map(r => ({
+    topPlays: picksLib.mostConfident(gamePicks, 3).map(r => ({
       player: r.player, playerId: lookupPlayerId(league, r.player), team: r.team, opponent: r.opponent,
+      homeTeam: r.homeTeam ?? null, awayTeam: r.awayTeam ?? null,
       propType: r.propType, line: r.line, book: r.book,
-      direction: r.edge > 0 ? 'OVER' : 'UNDER',
-      projection: r.projection, edge: r.edge, confidence: r.confidence,
+      direction: r.direction,
+      projection: r.projection, modelProjection: r.modelProjection ?? null, blendedProjection: r.blendedProjection ?? null, edge: r.edge, confidence: r.confidence,
       overProbability: r.overProbability ?? null, underProbability: r.underProbability ?? null,
       consensusLine: r.consensusLine ?? null, bookCount: r.bookCount ?? null, marketEdge: r.marketEdge ?? null,
-      realEdge: r.realEdge ?? null,
+      realEdge: r.realEdge ?? null, bestBet: !!r.bestBet,
     })),
   };
+}
+
+// The day's Top 3 is saved the first time a complete scan yields three, and served as is until the date changes (it survives restarts and cache
+// clears). The saved days also stay in a short history, so the picks as they were shown can be graded later.
+const TOP3_KEY = lg => `top3:${lg}`;
+function frozenTopPlays(league, today = getToday()) {
+  try { const f = JSON.parse(store.getMeta(TOP3_KEY(league)) || 'null'); return f && f.dateKey === today && f.data?.topPlays?.length ? f.data : null; } catch (_) { return null; }
+}
+function freezeTopPlays(league, data, today = getToday()) {
+  if (!data || data.fallback || (data.topPlays || []).length < 3) return false;      // not enough yet (a partial scan): keep recomputing until there are three
+  try {
+    store.setMeta(TOP3_KEY(league), JSON.stringify({ dateKey: today, frozenAt: new Date().toISOString(), data }));
+    const hist = parseMeta('top3:history', []).filter(h => !(h.date === today && h.league === league));
+    hist.unshift({ date: today, league, frozenAt: new Date().toISOString(), plays: data.topPlays.map(p => ({ player: p.player, team: p.team, opponent: p.opponent, propType: p.propType, line: p.line, direction: p.direction, confidence: p.confidence, ev: p.realEdge?.expectedValue ?? null })) });
+    store.setMeta('top3:history', JSON.stringify(hist.slice(0, 120)));
+    try { store.addEvent('top3', 'info', `Top 3 for ${league.toUpperCase()} locked for ${today}: ${data.topPlays.map(p => `${p.player} ${p.direction} ${p.line} ${p.propType} (conf ${Math.round(p.confidence)})`).join('; ')}`); } catch (_) {}
+    return true;
+  } catch (e) { console.error('[TopPlays] could not save the day\'s top 3:', e.message); return false; }
 }
 
 // One top pick per team per game — for the "today's games" landing view,
 // as opposed to /api/top-plays' single cross-slate top 3.
 async function computeTeamPicks(league) {
-  const { results } = await collectSlateResults(league);
-
-  const games = {};
-  for (const r of results) {
-    if (Math.abs(r.edge) < 1.0) continue; // same "real edge only" rule as top plays
-    const gameKey = `${r.awayTeam}@${r.homeTeam}`;
-    if (!games[gameKey]) games[gameKey] = { home: r.homeTeam, away: r.awayTeam, byTeam: {} };
-    const existing = games[gameKey].byTeam[r.team];
-    const better = !existing || r.confidence > existing.confidence ||
-      (r.confidence === existing.confidence && Math.abs(r.edge) > Math.abs(existing.edge));
-    if (better) games[gameKey].byTeam[r.team] = r;
-  }
+  const { candidates, results } = await collectSlateResults(league);
+  const perGame = picksLib.topPicksPerGame(results);
+  bestBets.markLive(picksLib.flattenPicks(perGame));                            // a preview of today's best bets; the tracker uses the day's full log
 
   return {
     league, generatedAt: new Date().toISOString(),
-    games: Object.values(games).map(g => ({
-      home: g.home, away: g.away,
-      picks: Object.values(g.byTeam).map(r => ({
-        team: r.team, player: r.player, playerId: lookupPlayerId(league, r.player), opponent: r.opponent,
+    scanned: (candidates || []).length,                 // how many props were looked at: zero means the scan failed, not that nothing was good enough
+    games: [...perGame.values()].filter(p => p.length).map(picks => ({
+      home: picks[0].homeTeam, away: picks[0].awayTeam,
+      picks: picks.map((r, i) => ({
+        rank: i + 1, team: r.team, player: r.player, playerId: lookupPlayerId(league, r.player), opponent: r.opponent,
         propType: r.propType, line: r.line, book: r.book,
-        direction: r.edge > 0 ? 'OVER' : 'UNDER',
-        projection: r.projection, edge: r.edge, confidence: r.confidence,
+        direction: r.direction,
+        projection: r.projection, modelProjection: r.modelProjection ?? null, blendedProjection: r.blendedProjection ?? null, edge: r.edge, confidence: r.confidence,
         overProbability: r.overProbability ?? null, underProbability: r.underProbability ?? null,
         consensusLine: r.consensusLine ?? null, bookCount: r.bookCount ?? null, marketEdge: r.marketEdge ?? null,
-        realEdge: r.realEdge ?? null,
+        realEdge: r.realEdge ?? null, value: isRealPick(r), bestBet: !!r.bestBet,
       })),
     })),
   };
@@ -5247,6 +5556,8 @@ function isCacheStillFresh(cached, today) {
 app.get('/api/top-plays', async (req, res) => {
   const league  = (req.query.league || 'nba').toLowerCase() === 'wnba' ? 'wnba' : 'nba';
   const today   = getToday();
+  const frozen  = frozenTopPlays(league, today);
+  if (frozen) return res.json({ ...frozen, cached: true, frozen: true });            // today's list is locked until tomorrow
   const cached  = topPlaysCache[league];
   if (isCacheStillFresh(cached, today)) {
     return res.json({ ...cached.data, cached: true });
@@ -5273,7 +5584,8 @@ app.get('/api/top-plays', async (req, res) => {
     }
   }
   topPlaysCache[league] = { data, dateKey: today };
-  res.json({ ...data, cached: false });
+  const locked = freezeTopPlays(league, data, today);
+  res.json({ ...data, cached: false, ...(locked ? { frozen: true } : {}) });
 });
 
 // Every scanned prop for the Today page's prop board: the same day-locked slate scan the top picks
@@ -5281,24 +5593,32 @@ app.get('/api/top-plays', async (req, res) => {
 app.get('/api/prop-board', async (req, res) => {
   const league = (req.query.league || 'nba').toLowerCase() === 'wnba' ? 'wnba' : 'nba';
   try {
-    const { candidates, results } = await collectSlateResults(league);
+    const { candidates, results, partial } = await collectSlateResults(league, { allowPartial: true });
+    const ranks = picksLib.pickRanks(results);                       // 1-3 for the three best props in each game
+    bestBets.markLive(picksLib.flattenPicks(picksLib.topPicksPerGame(results)));
     const all = (results || []).filter(r => r.realEdge || r.line != null).map(r => ({
+        gameRank: ranks.get(picksLib.rowKey(r)) ?? null, value: isRealPick(r), bestBet: !!r.bestBet,
         player: r.player, playerId: lookupPlayerId(league, r.player), team: r.team, opponent: r.opponent,
         homeTeam: r.homeTeam, awayTeam: r.awayTeam,
         propType: r.propType, line: r.line, book: r.book,
-        direction: r.edge > 0 ? 'OVER' : r.edge < 0 ? 'UNDER' : 'PASS',
-        projection: r.projection, edge: r.edge, confidence: r.confidence,
+        direction: r.direction || 'PASS',
+        projection: r.projection, modelProjection: r.modelProjection ?? null, blendedProjection: r.blendedProjection ?? null, edge: r.edge, confidence: r.confidence,
         overProbability: r.overProbability ?? null, underProbability: r.underProbability ?? null,
         consensusLine: r.consensusLine ?? null, bookCount: r.bookCount ?? null, realEdge: r.realEdge ?? null,
       }));
     // Free accounts and guests see the top of the board; Pro sees every prop.
     const limited = paywallOn() && !isProReq(req);
-    res.json({ league, date: getToday(), scanned: (candidates || []).length, props: limited ? billingLib.freeBoard(all) : all, ...(limited ? { limited: true, total: all.length } : {}) });
+    res.json({ league, date: getToday(), scanned: (candidates || []).length, props: limited ? freeWithPicks(all) : all, ...(partial ? { scanning: true } : {}), ...(limited ? { limited: true, total: all.length } : {}) });
   } catch (err) {
     res.json({ league, date: getToday(), scanned: 0, props: [], error: err.message });
   }
 });
 
+// Free accounts see the top of the board, and always every game's top three picks: those are the heart of the free page.
+function freeWithPicks(all) {
+  const keep = new Set(billingLib.freeBoard(all).map(p => `${p.player}|${p.propType}|${p.line}`));
+  return all.filter(p => p.gameRank || keep.has(`${p.player}|${p.propType}|${p.line}`));
+}
 const teamPicksCache = {}; // league -> { data, dateKey, ts } — same freshness rule as topPlaysCache
 app.get('/api/team-picks', async (req, res) => {
   const league = (req.query.league || 'nba').toLowerCase() === 'wnba' ? 'wnba' : 'nba';
@@ -5312,7 +5632,7 @@ app.get('/api/team-picks', async (req, res) => {
   if (hasOddsKey) {
     try {
       data = await computeTeamPicks(league);
-      if (!data.games.length) scanFailed = true;
+      if (data.scanned === 0) scanFailed = true;   // nothing came back at all (key or quota problem). No qualifying pick is NOT a failed scan.
     } catch (err) {
       console.error(`[TeamPicks] ${league} scan failed:`, err.message);
       scanFailed = true;
@@ -5363,6 +5683,7 @@ app.post('/api/analyze', analyzeRateLimiter, (req, res, next) => {
   if (!process.env.ANTHROPIC_KEY || process.env.ANTHROPIC_KEY.includes('your_')) {
     return res.status(500).json({ error: 'Anthropic API key not configured in .env' });
   }
+  if (req.body.stream === true) return streamAnalysis(req, res, prompt);
   try {
     const claudeRes = await axios.post(
       `${ANTHROPIC_BASE}/v1/messages`,
@@ -5386,6 +5707,61 @@ app.post('/api/analyze', analyzeRateLimiter, (req, res, next) => {
     res.status(500).json({ error: errMsg, status: errStatus });
   }
 });
+
+// Streamed version of the call above: the text is passed on as it is written (server-sent events: {t:"..."} pieces,
+// then {done:true} or {error:"..."}), so the page can start reading after a second or two instead of after the whole
+// answer. Same gates and limits as the plain route. The analysis counts as used once text has started to arrive; one that
+// fails before any text is released, like a failed plain call. Stops waiting if the model goes quiet for 30 s or runs past 90 s.
+const STREAM_IDLE_MS = 30000, STREAM_MAX_MS = 90000;
+async function streamAnalysis(req, res, prompt) {
+  let started = false, spent = false, finished = false;
+  const abort = new AbortController();
+  res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache, no-transform', 'X-Accel-Buffering': 'no' });
+  const send = o => { if (!res.writableEnded) res.write(`data: ${JSON.stringify(o)}\n\n`); };
+  const spend = () => { if (!spent) { spent = true; if (req.analysisTicket) store.finishTicket(req.analysisTicket); } };
+  res.on('close', () => { if (!finished) abort.abort(); });
+  let idle, overall;
+  const stop = () => { clearTimeout(idle); clearTimeout(overall); };
+  try {
+    const upstream = await axios.post(`${ANTHROPIC_BASE}/v1/messages`,
+      { model: 'claude-sonnet-5', max_tokens: 4096, thinking: { type: 'disabled' }, stream: true, messages: [{ role: 'user', content: prompt }] },
+      { headers: { 'x-api-key': process.env.ANTHROPIC_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, timeout: 60000, responseType: 'stream', signal: abort.signal });
+    await new Promise((resolve, reject) => {
+      const bump = () => { clearTimeout(idle); idle = setTimeout(() => { abort.abort(); reject(new Error('The AI stopped responding.')); }, STREAM_IDLE_MS); };
+      overall = setTimeout(() => { abort.abort(); reject(new Error('The AI took too long.')); }, STREAM_MAX_MS);
+      bump();
+      let buf = '';
+      upstream.data.on('data', chunk => {
+        bump();
+        buf += chunk.toString('utf8');
+        let at;
+        while ((at = buf.indexOf('\n\n')) >= 0) {
+          const block = buf.slice(0, at); buf = buf.slice(at + 2);
+          const line = block.split('\n').find(l => l.startsWith('data:'));
+          if (!line) continue;
+          let ev; try { ev = JSON.parse(line.slice(5).trim()); } catch (_) { continue; }
+          if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta' && ev.delta.text) { started = true; spend(); send({ t: ev.delta.text }); }
+          else if (ev.type === 'error') return reject(new Error(ev.error?.message || 'The AI reported an error.'));
+          else if (ev.type === 'message_stop') return resolve();
+        }
+      });
+      upstream.data.on('end', resolve);
+      upstream.data.on('error', reject);
+    });
+    stop(); finished = true;
+    if (!started) throw new Error('The AI returned no text.');
+    send({ done: true }); res.end();
+  } catch (err) {
+    stop(); finished = true;
+    let msg = err.message || 'Unknown error';
+    if (err.response?.data?.on) {                                  // an error body arrives as a stream too
+      try { const body = await new Promise(r => { let t = ''; err.response.data.on('data', d => t += d); err.response.data.on('end', () => r(t)); err.response.data.on('error', () => r(t)); }); msg = JSON.parse(body)?.error?.message || msg; } catch (_) {}
+    }
+    if (!spent && req.analysisTicket) store.releaseTicket(req.analysisTicket);      // nothing was delivered, so it is not spent
+    console.error(`[Claude] Stream error ${err.response?.status || ''}:`, msg);
+    send({ error: msg }); res.end();
+  }
+}
 
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
@@ -5662,7 +6038,7 @@ app.get('/api/debug', async (req, res) => {
 // for endless made-up names cannot slowly use up the server's memory: past the limit the oldest entries are dropped.
 const CACHE_CAP = 1500;
 function capCache(c) { const k = Object.keys(c); if (k.length > CACHE_CAP) for (const key of k.slice(0, k.length - CACHE_CAP)) delete c[key]; }
-setInterval(() => { for (const c of [projectionCache, playerStatsCache, lastPlayerStatsFetch, nbaApiBridgeCache, shotChartCache]) capCache(c); }, 5 * 60 * 1000).unref();
+setInterval(() => { for (const c of [projectionCache, playerStatsCache, lastPlayerStatsFetch, nbaApiBridgeCache, shotChartCache, propLinesCache, playerIdCache]) capCache(c); }, 5 * 60 * 1000).unref();
 
 // ─────────────────────────────────────────────────────
 // SCHEDULED JOBS
@@ -5718,6 +6094,80 @@ cron.schedule('0 10 * * *', async () => {
   await Promise.allSettled(['nba', 'wnba'].map(lg => trackJob('slate-scan-' + lg, () => collectSlateResults(lg).then(() => 'scanned'))()
     .catch(err => console.error(`[AutoLog] ${lg} scan failed:`, err.message))));
 });
+// ── LATE NEWS ──────────────────────────────────────────────────────────────────────────────────────────
+// The morning scan prices every prop with the injury report as it was then. When a regular is ruled out or comes back afterwards, the props for
+// that game are worked out again with fresh odds (the old prices are stale once news lands). A game is looked at about every 15 minutes
+// until tip-off, and re-priced at most once per 20; it only costs odds credits (about 3) when something actually changed.
+const REPROJECT_GAP_MS = 20 * 60 * 1000;
+function injurySig(roster) {
+  return (roster?.injured || []).filter(p => ['out', 'doubtful', 'questionable'].includes(String(p.status || '').toLowerCase()))
+    .map(p => `${p.name}:${String(p.status).toLowerCase()}`).sort();
+}
+function describeInjuryChange(before = [], after = []) {
+  const status = list => new Map(list.map(x => { const i = x.lastIndexOf(':'); return [x.slice(0, i), x.slice(i + 1)]; }));
+  const b = status(before), a = status(after), parts = [];
+  for (const [name, st] of a) if (b.get(name) !== st) parts.push(`${name} ${st}`);
+  for (const name of b.keys()) if (!a.has(name)) parts.push(`${name} cleared`);
+  return parts.slice(0, 6).join(', ');
+}
+// One run per league at a time: a run with several changed games can outlast the 15 minutes before the next tick, and two runs would price (and pay for) the same game twice.
+const reprojectInflight = {};
+async function reprojectChangedGames(league) {
+  if (reprojectInflight[league]) return 'previous check still running';
+  reprojectInflight[league] = reprojectChangedGamesOnce(league).finally(() => { delete reprojectInflight[league]; });
+  return reprojectInflight[league];
+}
+async function reprojectChangedGamesOnce(league) {
+  const today = getToday(), c = slateScanCache[league];
+  if (!c || c.dateKey !== today || c.v !== SLATE_LOGIC_VERSION || slateScanInflight[league] || slateFillInflight[league]) return 'no finished scan to check';
+  if (!datachecks.inSeason(league, new Date())) return 'out of season';
+  const sportKey = league === 'wnba' ? 'basketball_wnba' : 'basketball_nba', rosterOf = league === 'wnba' ? fetchWNBARoster : fetchESPNRoster;
+  const info = c.data.eventInfo || {}, now = Date.now();
+  c.data.injurySig = c.data.injurySig || {};
+  const due = Object.entries(info).filter(([, i]) => i.count > 0 && new Date(i.commence).getTime() - now > 5 * 60e3 && (!i.reprojectedAt || now - i.reprojectedAt >= REPROJECT_GAP_MS));
+  if (!due.length) return 'no game due';
+  const changed = [];
+  for (const [id, i] of due) {
+    const sigs = {};
+    for (const team of [i.home, i.away]) sigs[team] = injurySig(await rosterOf(team, { force: true }));
+    const unseen = [i.home, i.away].some(t => c.data.injurySig[t] === undefined);
+    if (unseen) { for (const t of [i.home, i.away]) if (c.data.injurySig[t] === undefined) c.data.injurySig[t] = sigs[t]; continue; }   // first look: this is the baseline the scan used
+    const diff = [i.home, i.away].map(t => describeInjuryChange(c.data.injurySig[t], sigs[t])).filter(Boolean).join('; ');
+    if (diff) changed.push({ id, i, sigs, diff });
+  }
+  if (!changed.length) return `checked ${due.length} game${due.length === 1 ? '' : 's'}: no injury changes`;
+  let redone = 0, skipped = 0; const notes = [];
+  for (const { id, i, sigs, diff } of changed) {
+    const b = currentCreditBudget();
+    if (b.known && b.remaining < FILL_COST_PER_GAME + b.critAt && process.env.ODDS_ALLOW_LOW_CREDITS !== '1') { skipped++; continue; }
+    const report = [];
+    const fresh = await fetchSlateCandidates(sportKey, { onlyIds: new Set([id]), report });
+    const newResults = [];
+    await evaluateCandidatesInto(league, fresh, newResults);
+    const cur = slateScanCache[league];
+    if (!cur || cur.dateKey !== today) return 'the day changed during the update';
+    const sameGame = x => x.homeTeam === i.home && x.awayTeam === i.away;
+    if (fresh.length) {
+      cur.data.candidates = [...cur.data.candidates.filter(x => !sameGame(x)), ...fresh];
+      cur.data.results = [...cur.data.results.filter(x => !sameGame(x)), ...newResults.map(r => ({ ...r, homeTeam: i.home, awayTeam: i.away }))];
+      for (const r of newResults) { if (r.scan) { try { store.updateScanProp({ date: today, league, player: r.player, propType: r.propType, data: { ...r.scan, team: r.team, opponent: r.opponent, confidence: r.confidence, direction: r.direction, at: new Date().toISOString() } }); } catch (_) {} } }
+      if (datachecks.inSeason(league, new Date())) autoLogSlatePicks(league, newResults);
+      delete topPlaysCache[league]; delete teamPicksCache[league];
+    }
+    info[id].reprojectedAt = now; for (const t of [i.home, i.away]) cur.data.injurySig[t] = sigs[t];
+    redone++; notes.push(`${i.away} @ ${i.home}: ${diff}`);
+    try { store.addEvent('reproject', 'info', `Re-priced ${newResults.length} ${league.toUpperCase()} props for ${i.away} @ ${i.home} after an injury update (${diff}).`); } catch (_) {}
+  }
+  saveSlateScanCacheToDisk(slateScanCache);
+  return `${redone} game${redone === 1 ? '' : 's'} re-priced${skipped ? `, ${skipped} skipped (low credits)` : ''}: ${notes.join(' | ')}`.slice(0, 400);
+}
+
+// Games the books had not posted props for at scan time are asked again as their tip-off gets close.
+cron.schedule('*/20 * * * *', () => Promise.allSettled(['nba', 'wnba'].map(lg => trackJob('slate-fill-' + lg, () => fillMissingProps(lg))()
+  .catch(err => console.error(`[SlateFill] ${lg} failed:`, err.message)))));
+setTimeout(() => { for (const lg of ['nba', 'wnba']) { try { logPicksForUnstartedGames(lg); } catch (e) { console.error('[AutoLog] catch-up failed:', e.message); } } }, 45 * 1000);
+setTimeout(() => Promise.allSettled(['nba', 'wnba'].map(lg => trackJob('slate-fill-' + lg, () => fillMissingProps(lg))().catch(() => {}))), 90 * 1000);
+cron.schedule('*/15 * * * *', () => Promise.allSettled(['nba', 'wnba'].map(lg => trackJob('reproject-' + lg, () => reprojectChangedGames(lg))().catch(err => console.error(`[Reproject] ${lg} failed:`, err.message)))));
 // Closing-line capture — cheap tick (the events list is free); only spends
 // odds requests within CLOSING_WINDOW_MIN of a tip-off with pending picks.
 const trackedClosing = trackJob('closing-lines', captureClosingLines);
@@ -5727,7 +6177,7 @@ setTimeout(() => trackedClosing().catch(err => console.error('[Closing] failed:'
 // everything auto-logged for days that have already fully passed.
 // The daily pipeline: grade finished games, refit the calibrator on the graded history,
 // then score everything for the backtest report.
-cron.schedule('0 6 * * *', () => runDailyPipeline().catch(err => console.error('[Pipeline] failed:', err.message)));
+cron.schedule('0 6 * * *', () => { if (pipelineRunning) return; pipelineRunning = true; runDailyPipeline().catch(err => console.error('[Pipeline] failed:', err.message)).finally(() => { pipelineRunning = false; }); });
 cron.schedule('0 3 * * *', () => trackJob('backup', async () => `wrote ${path.basename(store.backup(path.join(__dirname, 'backups')) || 'nothing (no file database)')}`)().catch(err => console.error('[Backup] failed:', err.message)));
 cron.schedule('5 3 * * *', () => trackJob('offsite-backup', async () => { const r = await uploadOffsite(); return `uploaded ${r.key} (${Math.round(r.bytes / 1024)} KB)`; })().catch(err => { console.error('[Offsite] failed:', err.message); }));
 // The credit count only used to update when a real odds request happened, so after adding credits the app kept believing it
@@ -5753,12 +6203,14 @@ lastRosterFetch = {};
 console.log('[STARTUP] Roster cache cleared — fetching fresh rosters on first request');
 
 fetchTodaysGames().then(() => {
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log('\n  WIN AI — NBA Props Engine');
     console.log(`  Running → http://localhost:${PORT}`);
     console.log('  ESPN rosters: LIVE (no key needed)');
     console.log('  Stat files: run python fetch_stats.py to refresh\n');
   });
+  // A client gets 20 s to finish its headers and 2 minutes for the whole request: half-open connections cannot be held forever.
+  server.headersTimeout = 20000; server.requestTimeout = 120000; server.keepAliveTimeout = 5000;
 });
 
 // ═══════════════════════════════════════════════════════════════════
@@ -5770,7 +6222,6 @@ function calcTeamRankings(nbaStats) {
   if (!nbaStats?.teamAdvanced) return null;
 
   const teams   = nbaStats.teamAdvanced    || [];
-  const base    = nbaStats.teamBase        || [];
   const opp     = nbaStats.teamOppShooting || [];
   const misc    = nbaStats.teamMisc        || [];
   const paint   = nbaStats.teamPaintDef    || [];
@@ -6849,13 +7300,6 @@ function healthSnapshot() {
   };
 }
 
-// The Odds API's events list costs 0 credits but its response still reports how many credits
-// are left, so this keeps the credit meter current without spending anything.
-async function refreshOddsCredits() {
-  if (!oddsKeyConfigured()) return 'no ODDS_API_KEY set';
-  await axios.get(`${ODDS_BASE}/sports/basketball_wnba/events`, { params: { apiKey: process.env.ODDS_API_KEY }, timeout: 10000 });
-  return oddsApiHealth.remaining != null ? `${oddsApiHealth.remaining} credits left` : 'no credit count returned';
-}
 
 // Alert only when a check gets worse, and note when it clears; never on every tick.
 const activeIssues = new Map();
@@ -6900,6 +7344,16 @@ async function runBacktest() {
   store.saveBacktest(report);
   return report;
 }
+// Learns how far off the model's projections have been, from every graded scan prop (not only picks), and starts using it from the next scan.
+function refitBias() {
+  const rows = [];
+  for (const lg of ['nba', 'wnba']) for (const r of store.gradedScanProps(lg)) rows.push({ league: lg, propType: r.propType, actual: Number(r.actual), modelProjection: r.data && r.data.modelProjection, biasMult: r.data && r.data.biasMult });
+  const table = biasLib.fitBias(rows);
+  biasTable = table;
+  store.setMeta('bias:model', JSON.stringify({ fittedAt: new Date().toISOString(), table }));
+  const parts = Object.entries(table).map(([k, e]) => `${k} x${e.mult} (${e.n} props, raw ratio ${e.ratio})`);
+  return parts.length ? parts.join('; ') : `not enough graded props yet (needs ${biasLib.MIN_N} per stat)`;
+}
 async function refitCalibration() {
   const model = calibration.fit(loadCLV().filter(e => e.source === 'auto'));
   const was = !!(calibrationModel && calibrationModel.active);
@@ -6908,17 +7362,94 @@ async function refitCalibration() {
   if (model.active !== was) store.addEvent('calibration', 'info', `Calibration turned ${model.active ? 'on' : 'off'}. ${model.reason}`);
   return model;
 }
+// ── DAILY GRADING REPORT ───────────────────────────────────────────────────────────────────────────────
+// After each day's grading, the admin gets a report of how the picks came out: yesterday's record, the running record, how the model did against
+// the posted line on every logged prop, and what is still waiting. It is always saved (the Grading tab on the admin page, and the event log); it is
+// also pushed to ADMIN_ALERT_WEBHOOK (Discord or Slack) and emailed to ADMIN_EMAIL when those are set up. Only the system's own picks are in it:
+// people's saved props are theirs.
+function collectReportInputs(date) {
+  const all = loadCLV().filter(e => e.source === 'auto');
+  const picks = all.filter(e => ['WIN', 'LOSS', 'PUSH'].includes(e.result)).map(e => ({ league: e.league || 'nba', day: gradeDateOf(e), result: e.result, player: e.player, propType: e.propType, verdict: e.verdict, line: e.line, actualStat: e.actualStat, confidence: e.confidence, ev: e.ev, id: e.id }));
+  const allPicks = all.map(e => ({ id: e.id, league: e.league || 'nba', player: e.player, propType: e.propType, day: gradeDateOf(e), result: e.result, confidence: e.confidence, ev: e.ev, setAside: !!e.gradeNote }));
+  const pickCounts = { waiting: all.filter(e => e.result == null && !e.gradeNote).length, setAside: all.filter(e => e.result == null && e.gradeNote).length };
+  const scan = {}; for (const lg of ['nba', 'wnba']) scan[lg] = { counts: store.scanCounts(lg), graded: store.gradedScanProps(lg) };
+  const top3 = []; for (const h of parseMeta('top3:history', [])) for (const p of h.plays || []) top3.push({ date: h.date, league: h.league, player: p.player, propType: p.propType, line: p.line, direction: p.direction, confidence: p.confidence, ev: p.ev, actual: store.scanPropActual(h.date, h.league, p.player, p.propType) });
+  const b = currentCreditBudget();
+  return { date, picks, allPicks, pickCounts, scan, top3, bias: biasTable, calibration: calibrationModel ? { active: calibrationModel.active, reason: calibrationModel.reason } : null, credits: b.known ? b.remaining : null };
+}
+function parseMeta(k, d) { try { return JSON.parse(store.getMeta(k) || ''); } catch (_) { return d; } }
+async function sendGradingReport({ force = false } = {}) {
+  const date = toLocalDateStr(new Date(Date.now() - 86400000));                 // the day that just finished
+  if (!force && store.getMeta('grading-report:date') === date) return `already sent for ${date}`;
+  const report = buildGradingReport(collectReportInputs(date)), sentAt = new Date().toISOString();
+  const history = parseMeta('grading-report:history', []).filter(h => h.date !== date);          // a rebuilt report replaces that day's earlier one
+  history.unshift({ date, headline: report.headline, sentAt, text: report.text, data: report.data });
+  store.setMeta('grading-report:history', JSON.stringify(history.slice(0, 30)));
+  store.setMeta('grading-report:last', JSON.stringify({ ...report, sentAt }));
+  store.addEvent('grading-report', 'info', report.headline);
+  const delivered = [];
+  try {                                                                           // Discord cuts messages at 2000 characters
+    const note = report.text.length > 1800 ? report.text.slice(0, 1780).replace(/\n[^\n]*$/, '') + '\n... full report on the admin page (Grading tab)' : report.text;
+    const r = await alerts.notify({ key: `grading-report:${date}:${force ? Date.now() : 'daily'}`, level: 'info', kind: 'report', message: note, record: false });
+    if (r.sent) delivered.push('webhook');
+  } catch (_) {}
+  const to = String(process.env.ADMIN_EMAIL || '').trim();
+  if (to && mailer.configured) {
+    try { await mailer.sendPlain({ to, subject: `WIN AI grading report: ${report.headline}`, text: report.text }); delivered.push('email'); }
+    catch (e) { console.error('[Report] email failed:', e.message); store.addEvent('grading-report', 'warn', `The grading report email could not be sent: ${e.message}`); }
+  }
+  if (!force) store.setMeta('grading-report:date', date);                        // a manual send must not use up the day's automatic one
+  return `${report.headline} | sent to: ${delivered.length ? delivered.join(' + ') : 'the admin page only (no webhook or email set up)'}`;
+}
+app.get('/api/admin/grading-report', requireAdmin, (req, res) => {
+  const hist = parseMeta('grading-report:history', []);
+  res.json({
+    last: parseMeta('grading-report:last', null), history: hist.map(h => ({ date: h.date, headline: h.headline, sentAt: h.sentAt, day: h.data?.picks?.day || null })),
+    delivery: { adminPage: true, webhook: alerts.configured, email: !!(mailer.configured && String(process.env.ADMIN_EMAIL || '').trim()), emailConfigured: mailer.configured, adminEmailSet: !!String(process.env.ADMIN_EMAIL || '').trim() },
+    nextRun: 'after the nightly grading (6 AM, or a few minutes after start if that was missed)',
+  });
+});
+// Every locked Top 3, newest first, each pick with its result once the game is graded (the same grading the report uses).
+app.get('/api/admin/top3', requireAdmin, (req, res) => {
+  const days = parseMeta('top3:history', []).map(h => ({ date: h.date, league: h.league, frozenAt: h.frozenAt,
+    plays: (h.plays || []).map(p => { const actual = store.scanPropActual(h.date, h.league, p.player, p.propType); return { ...p, actual, result: top3Result({ ...p, actual }) }; }) }));
+  res.json({ days });
+});
+app.get('/api/admin/grading-report/:date', requireAdmin, (req, res) => {
+  const h = parseMeta('grading-report:history', []).find(x => x.date === req.params.date);
+  return h ? res.json(h) : res.status(404).json({ error: 'No report for that day.' });
+});
+app.post('/api/admin/grading-report/send', requireAdmin, async (req, res) => res.json({ result: await sendGradingReport({ force: true }) }));
+
 async function runDailyPipeline() {
-  await trackJob('grade', autoGradePendingPicks)();
+  await trackJob('grade', () => inBackground(autoGradePendingPicks))();
+  await trackJob('grade-scan', () => inBackground(gradeScanProps))();
+  await trackJob('bias', async () => refitBias())();
   await trackJob('backfill', async () => `filled ${backfillModelChances()} picks with their stored model chance`)();
   await trackJob('calibration', async () => (await refitCalibration()).reason)();
   await trackJob('backtest', async () => { const r = await runBacktest(); return `${r.totals.graded} graded picks scored`; })();
+  store.setMeta('pipeline:last', String(Date.now()));
+  await trackJob('grading-report', () => sendGradingReport())().catch(err => console.error('[Report] failed:', err.message));
 }
+// The 6 AM run only happens if the machine is awake then. On a laptop that sleeps it silently never ran, so calibration sat on 18 picks for
+// weeks. This catches up: whenever the last full run is over 20 hours old (checked a couple of minutes after start and then hourly) it runs.
+let pipelineRunning = false;
+async function ensurePipelineFresh() {
+  if (pipelineRunning) return 'already running';
+  const last = Number(store.getMeta('pipeline:last') || 0);
+  if (Date.now() - last < 20 * 3600e3) return 'fresh';
+  pipelineRunning = true;
+  try { await runDailyPipeline(); return 'ran'; } finally { pipelineRunning = false; }
+}
+cron.schedule('23 * * * *', () => ensureDvpFresh().catch(err => console.error('[DvP] refresh failed:', err.message)));
+cron.schedule('17 * * * *', () => ensurePipelineFresh().catch(err => console.error('[Pipeline] catch-up failed:', err.message)));
 async function initAdminJobs() {
   backfillModelChances();
   if (!store.latestCalibration()) await refitCalibration();
   if (!store.latestBacktest()) await runBacktest();
   setTimeout(() => runHealthCheck().catch(() => {}), 25000);
+  setTimeout(() => ensureDvpFresh().catch(err => console.error('[DvP] refresh failed:', err.message)), 60000);
+  setTimeout(() => ensurePipelineFresh().catch(err => console.error('[Pipeline] catch-up failed:', err.message)), 120000);
 }
 
 app.get('/api/admin/health', requireAdmin, async (req, res) => {
@@ -6934,6 +7465,13 @@ app.get('/api/admin/backtest', requireAdmin, (req, res) => {
   });
 });
 app.post('/api/admin/backtest/run', requireAdmin, async (req, res) => res.json({ ts: new Date().toISOString(), report: await runBacktest() }));
+// How the model is really doing, scored on every logged prop (not only picks): average miss of the model, the displayed projection and the
+// line itself, and the Brier / log-loss of the model's chance, the market's and the blend.
+app.get('/api/admin/scanlog', requireAdmin, (req, res) => {
+  const league = req.query.league === 'wnba' ? 'wnba' : 'nba';
+  const rows = store.gradedScanProps(league);
+  res.json({ league, counts: store.scanCounts(league), metrics: evaluateLib.scanMetrics(rows), bands: { model: evaluateLib.calibrationBands(rows, 'modelOver'), final: evaluateLib.calibrationBands(rows, 'finalOver') }, params: modelParams.info() });
+});
 app.get('/api/admin/calibration', requireAdmin, (req, res) => {
   const picks = loadCLV();
   res.json({
@@ -6952,8 +7490,11 @@ const ADMIN_JOBS = {
   calibration: () => trackJob('calibration', async () => (await refitCalibration()).reason)(),
   backup: () => trackJob('backup', async () => `wrote ${path.basename(store.backup(path.join(__dirname, 'backups')) || 'nothing (no file database)')}`)(),
   health: () => runHealthCheck(),
+  dvp: () => trackJob('dvp', runDvpFetch)(),
+  bias: () => trackJob('bias', async () => refitBias())(),
   'closing-lines': () => trackedClosing(),
   credits: () => trackJob('credits', refreshOddsCredits)(),
+  'grading-report': () => trackJob('grading-report', () => sendGradingReport({ force: true }))(),
   datachecks: () => runDataChecks(),
 };
 app.post('/api/admin/jobs/:name/run', requireAdmin, async (req, res) => {
@@ -7004,12 +7545,12 @@ app.post('/api/admin/users/:id/:action(disable|enable|comp|uncomp)', requireAdmi
 function mtimeOf(f) { try { return fs.statSync(path.join(__dirname, f)).mtimeMs; } catch (_) { return null; } }
 const BACKUP_DIR = path.join(__dirname, 'backups');
 const STAT_FILE = { nba: 'player_stats.json', wnba: 'wnba_player_stats.json' };
-// The same Python scripts the 7 AM jobs run. One attempt, five minute limit.
+// The same Python scripts the 7 AM jobs run. One attempt, twenty minute limit.
 function runStatsScript(league) {
   return new Promise((resolve, reject) => {
     const [cmd, script] = league === 'nba' ? ['python3', 'fetch_stats.py'] : ['python3', 'fetch_wnba_stats.py'];
     const py = spawn(cmd, [script], { cwd: __dirname });
-    const timer = setTimeout(() => { py.kill(); reject(new Error('timed out after 5 minutes')); }, 5 * 60 * 1000);
+    const timer = setTimeout(() => { py.kill(); reject(new Error('timed out after 20 minutes')); }, 20 * 60 * 1000);   // the NBA script makes about 60 calls to nba.com and retries slow ones
     py.on('error', err => { clearTimeout(timer); reject(err); });
     py.on('close', code => {
       clearTimeout(timer);
@@ -7120,8 +7661,9 @@ else if (process.env.HEARTBEAT_URL) console.warn('[Monitoring] HEARTBEAT_URL mus
 let recentFaults = [];
 function noteFault(kind, err, route = '') {
   const now = Date.now();
-  recentFaults = recentFaults.filter(t => now - t < 60000);
-  recentFaults.push(now);
+  // Only faults in the process itself count toward the exit limit. A bad request is that visitor's problem: counting it would let
+  // anyone switch the site off by sending enough of them.
+  if (kind !== 'route') { recentFaults = recentFaults.filter(t => now - t < 60000); recentFaults.push(now); }
   console.error(`[${kind}]`, err && err.stack ? err.stack.split('\n').slice(0, 4).join('\n') : err);
   try { errorLog.record({ source: kind === 'route' ? 'server' : 'process', route, message: `${kind === 'route' ? '' : kind + ': '}${err && err.message ? err.message : err}` }); } catch (_) {}
   if (recentFaults.length > 20) { console.error('[Fatal] too many faults in a minute, exiting for a clean restart'); process.exit(1); }

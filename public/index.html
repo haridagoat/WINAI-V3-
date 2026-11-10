@@ -369,6 +369,19 @@
   .outlier-strip p{font-size:12px;line-height:1.6;}
   .outlier-strip strong{color:var(--gold);}
   .loading-state{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;}
+  .ai-live{margin:14px 0;padding:12px 14px;border:1px solid var(--border2);border-radius:10px;background:var(--surface2);}
+  .ai-live-hdr{display:flex;align-items:center;gap:10px;font-family:var(--label);font-size:11px;letter-spacing:1px;color:var(--gold);flex-wrap:wrap;}
+  .ai-live-hdr span:last-child{color:var(--muted);letter-spacing:0;font-family:var(--body);}
+  .ai-live-hdr.err{color:var(--red);letter-spacing:0;font-family:var(--body);font-size:13px;}
+  .ai-live-note{margin-top:6px;font-size:12px;color:var(--muted);}
+  :root{color-scheme:dark;}   /* the page is dark: native dropdowns, scrollbars and autofill should be too */
+  .sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0;}
+  .skip-link{position:absolute;left:8px;top:-60px;z-index:1000;background:var(--surface);color:var(--text);border:2px solid var(--gold);border-radius:8px;padding:10px 16px;font-family:var(--body);font-size:14px;}
+  .skip-link:focus{top:8px;}
+  [data-kb]:focus-visible,.suggestion-item.kb-active{outline:2px solid var(--muted2);outline-offset:-2px;}
+  .suggestion-item.kb-active{background:var(--surface);color:var(--gold);}
+  .spinner.sm{width:14px;height:14px;border-width:2px;flex:none;}
+  @media (prefers-reduced-motion:reduce){.spinner.sm{animation-duration:2.4s;}}
   .spinner{width:36px;height:36px;border:2px solid var(--border2);border-top-color:var(--gold);border-radius:50%;animation:spin 0.8s linear infinite;}
   @keyframes spin{to{transform:rotate(360deg)}}
   .loading-steps{display:flex;flex-direction:column;gap:4px;align-items:center;}
@@ -1443,6 +1456,7 @@
   .td-tp-s{color:var(--muted);font-size:13.5px;margin-top:3px;}
   .td-call{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;}
   .td-big{font-family:var(--display);font-weight:800;font-size:40px;line-height:1;letter-spacing:.02em;}
+  .td-model{display:block;font-family:var(--body);font-weight:400;font-size:11px;letter-spacing:0;color:var(--muted);text-transform:none;white-space:nowrap;}
   .td-pill{display:inline-block;font-family:var(--label);font-weight:700;font-size:12px;letter-spacing:.12em;padding:1px 8px;border-radius:5px;border:1px solid var(--border2);color:var(--muted2);text-transform:uppercase;white-space:nowrap;}
   .td-pill.pos{background:var(--pos-bg);border-color:var(--pos-line);color:var(--pos);}
   .td-pill.neg{background:var(--neg-bg);border-color:var(--neg-line);color:var(--neg);}
@@ -1463,6 +1477,18 @@
   .td-mchip{display:flex;flex-direction:column;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:5px 12px;min-width:92px;}
   .td-mchip span{font-family:var(--label);font-weight:700;font-size:11.5px;letter-spacing:.14em;color:var(--muted);text-transform:uppercase;}
   .td-mchip b{font-family:var(--display);font-weight:800;font-size:22px;letter-spacing:.02em;}
+  .td-gps{display:flex;flex-direction:column;gap:2px;margin:2px 0 10px;}
+  .td-gp{display:grid;grid-template-columns:28px minmax(0,1fr) auto auto auto;align-items:center;gap:8px;padding:8px 6px;border-radius:8px;cursor:pointer;}
+  .td-gp:hover{background:var(--surface2);}
+  .td-gp .td-rk{position:static;color:var(--muted);font-family:var(--label);font-size:13px;}
+  .td-gp-n{min-width:0;} .td-gp-n b{display:block;font-weight:600;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;} .td-gp-n small{display:block;color:var(--muted);font-size:11.5px;}
+  .td-gp-c{color:var(--muted2);font-size:13px;font-variant-numeric:tabular-nums;} .td-gp-ev{font-family:var(--label);font-weight:700;font-size:14px;font-variant-numeric:tabular-nums;min-width:56px;text-align:right;}
+  .td-gp-ev.pos{color:var(--pos);} .td-gp-ev.neg{color:var(--muted2);}
+  .td-val{font-family:var(--label);font-weight:700;font-size:10.5px;letter-spacing:.12em;padding:1px 6px;border-radius:5px;border:1px solid var(--pos-line,var(--border2));color:var(--pos);background:var(--pos-bg,transparent);grid-column:auto;}
+  .td-gp-empty{color:var(--muted);font-size:14px;padding:8px 6px 12px;}
+  .td-best{font-family:var(--label);font-weight:700;font-size:10.5px;letter-spacing:.12em;padding:1px 6px;border-radius:5px;border:1px solid var(--border2);color:var(--text);background:var(--surface2);white-space:nowrap;}
+  .td-valnote{margin:0 0 14px;} .td-valnote .td-val{vertical-align:1px;}
+  @media (max-width:560px){.td-gp{grid-template-columns:24px minmax(0,1fr) auto auto;} .td-gp-c{display:none;}}
   .td-gm-f{display:flex;justify-content:space-between;align-items:center;gap:10px;border-top:1px solid var(--border);padding-top:10px;color:var(--muted2);font-size:14px;}
   /* tap targets: at least 40px tall on the controls that were 16 to 30px */
   .td-seg button{min-height:40px}
@@ -1510,6 +1536,7 @@
 </style>
 </head>
 <body>
+<a class="skip-link" href="#main">Skip to content</a>
 <header>
   <div class="logo">WIN AI <span>NBA + WNBA PROPS ENGINE</span></div>
   <div style="display:flex;align-items:center;gap:16px;">
@@ -1558,13 +1585,15 @@
 </nav>
 <div class="fresh-banner" id="fresh-banner" role="status" hidden></div>
 
+<main id="main" tabindex="-1">
+<h1 class="sr-only" id="page-h1" hidden></h1>
 <div id="panel-today" class="panel active">
   <div id="today-root"><div class="td-empty">Loading today's slate...</div></div>
 </div>
 
 <div id="panel-analyzer" class="panel">
   <div class="top-plays-box">
-    <div class="top-plays-title">Top 3 Most Confident — NBA <span class="top-plays-refresh" onclick="renderTopPlays('nba')" title="Refresh">⟳</span></div>
+    <div class="top-plays-title">Top 3 Most Confident — NBA <span class="top-plays-refresh" onclick="renderTopPlays('nba')" title="Refresh" aria-label="Refresh top plays">⟳</span></div>
     <div id="top-plays-nba" class="top-plays-grid"><div class="top-plays-empty">Loading tonight's slate...</div></div>
   </div>
   <div class="analyzer-grid">
@@ -1638,7 +1667,7 @@
 
 <div id="panel-wnba" class="panel">
   <div class="top-plays-box">
-    <div class="top-plays-title">Top 3 Most Confident — WNBA <span class="top-plays-refresh" onclick="renderTopPlays('wnba')" title="Refresh">⟳</span></div>
+    <div class="top-plays-title">Top 3 Most Confident — WNBA <span class="top-plays-refresh" onclick="renderTopPlays('wnba')" title="Refresh" aria-label="Refresh top plays">⟳</span></div>
     <div id="top-plays-wnba" class="top-plays-grid"><div class="top-plays-empty">Loading tonight's slate...</div></div>
   </div>
   <div class="analyzer-grid">
@@ -1762,7 +1791,9 @@
   </div>
 </div>
 
-<p class="rg-foot">WIN AI is analytics, not betting advice. Must be 21+. If gambling is a problem, call <a href="tel:18004262537">1-800-GAMBLER</a>.</p>
+</main>
+
+<footer><p class="rg-foot">WIN AI is analytics, not betting advice. Must be 21+. If gambling is a problem, call <a href="tel:18004262537">1-800-GAMBLER</a>.</p></footer>
 
 <script>
 // Tells the owner when the page breaks for someone: a short, scrubbed message, at most 3 per page load.
@@ -1941,7 +1972,7 @@ function onPlayerInput(val, league='nba') {
   if (val.length < 2) { box.classList.remove('open'); return; }
   const matches = list.filter(p => p.toLowerCase().includes(val.toLowerCase())).slice(0, 6);
   if (!matches.length) { box.classList.remove('open'); return; }
-  box.innerHTML = matches.map(p => `<div class="suggestion-item" onclick="selectPlayer('${p.replace(/'/g,"\\'")}','${league}')">${escapeHtml(p)}</div>`).join('');
+  box.innerHTML = matches.map((p, i) => `<div class="suggestion-item" role="option" id="${idFor(league, 'sug-p')}-${i}" data-name="${escapeHtml(p)}" data-league="${league}">${escapeHtml(p)}</div>`).join('');
   box.classList.add('open');
   // Also trigger matchup lookup for manual typing (debounced 800ms)
   clearTimeout(_matchupTimer[league]);
@@ -1959,6 +1990,33 @@ function selectPlayer(name, league='nba') {
   elFor(league, 'opp-status').textContent = '⟳';
   lookupTodayMatchup(name, league);
 }
+// Autocomplete boxes: items carry their text in data attributes (no handler built from feed text) and the inputs work from the
+// keyboard: Arrow keys move through the list, Enter picks, Escape closes.
+(function () {
+  for (const league of ['nba', 'wnba']) {
+    for (const [inputBase, boxBase, pick] of [['player-name', 'player-suggestions', selectPlayer], ['opp-team', 'opp-team-suggestions', selectOppTeam]]) {
+      const input = elFor(league, inputBase), box = elFor(league, boxBase);
+      if (!input || !box) continue;
+      input.setAttribute('role', 'combobox'); input.setAttribute('aria-autocomplete', 'list'); input.setAttribute('aria-expanded', 'false'); input.setAttribute('aria-controls', box.id);
+      box.setAttribute('role', 'listbox');
+      new MutationObserver(() => input.setAttribute('aria-expanded', box.classList.contains('open') ? 'true' : 'false')).observe(box, { attributes: true, attributeFilter: ['class'] });
+      box.addEventListener('mousedown', e => e.preventDefault());           // keep focus in the input while choosing
+      box.addEventListener('click', e => { const it = e.target.closest('.suggestion-item'); if (it) pick(it.dataset.name, it.dataset.league); });
+      input.addEventListener('keydown', e => {
+        if (!box.classList.contains('open')) return;
+        const items = [...box.querySelectorAll('.suggestion-item')];
+        let at = items.findIndex(x => x.classList.contains('kb-active'));
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+          e.preventDefault();
+          at = (at + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+          items.forEach((x, k) => x.classList.toggle('kb-active', k === at));
+          input.setAttribute('aria-activedescendant', items[at].id); items[at].scrollIntoView({ block: 'nearest' });
+        } else if (e.key === 'Enter' && at >= 0) { e.preventDefault(); items[at].click(); }
+        else if (e.key === 'Escape') { box.classList.remove('open'); input.removeAttribute('aria-activedescendant'); }
+      });
+    }
+  }
+})();
 function closeSuggestions(league='nba') { elFor(league, 'player-suggestions').classList.remove('open'); }
 
 // ── OPPONENT TEAM DROPDOWN — all real league teams, filterable ────
@@ -1968,7 +2026,7 @@ function onOppTeamInput(val, league='nba') {
   const list = league === 'wnba' ? WNBA_TEAMS : NBA_TEAMS;
   const matches = val.length < 1 ? list : list.filter(t => t.toLowerCase().includes(val.toLowerCase()));
   if (!matches.length) { box.classList.remove('open'); return; }
-  box.innerHTML = matches.map(t => `<div class="suggestion-item" onclick="selectOppTeam('${t.replace(/'/g,"\\'")}','${league}')">${escapeHtml(t)}</div>`).join('');
+  box.innerHTML = matches.map((t, i) => `<div class="suggestion-item" role="option" id="${idFor(league, 'sug-t')}-${i}" data-name="${escapeHtml(t)}" data-league="${league}">${escapeHtml(t)}</div>`).join('');
   box.classList.add('open');
 }
 function onOppTeamFocus(league='nba') {
@@ -2536,6 +2594,37 @@ BOTTOM LINE: [One sentence. Direct take.]`;
 // doesn't stop a programmatic re-entrant call, and doesn't stop an older
 // request's network response from simply arriving after a newer one's.
 const _analyzeRequestGen = { nba: 0, wnba: 0 };
+const _analyzeAbort = { nba: null, wnba: null };
+// Reads the AI write-up as it is written. onText gets the whole text so far each time more arrives.
+async function streamAnalysisText(prompt, headers, signal, onText) {
+  const res = await fetch('/api/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(headers || {}) }, body: JSON.stringify({ prompt, kind: 'prop', stream: true }), signal });
+  if (!res.ok) { const e = await res.json().catch(() => ({ error: 'Unknown' })); const err = new Error(e.error || `Error ${res.status}`); err.code = e.code; err.status = res.status; throw err; }
+  if (!(res.headers.get('content-type') || '').includes('text/event-stream')) { const j = await res.json(); onText(j.response || ''); return j.response || ''; }   // an older server answers in one piece
+  const reader = res.body.getReader(), dec = new TextDecoder();
+  let buf = '', text = '', done = false;
+  while (!done) {
+    const { value, done: end } = await reader.read();
+    if (end) break;
+    buf += dec.decode(value, { stream: true });
+    let at;
+    while ((at = buf.indexOf('\n\n')) >= 0) {
+      const line = buf.slice(0, at).split('\n').find(l => l.startsWith('data:')); buf = buf.slice(at + 2);
+      if (!line) continue;
+      let ev; try { ev = JSON.parse(line.slice(5).trim()); } catch (_) { continue; }
+      if (ev.error) throw new Error(ev.error);
+      if (ev.t) { text += ev.t; onText(text); }
+      if (ev.done) done = true;
+    }
+  }
+  if (!text) throw new Error('The AI returned no text.');
+  return text;
+}
+const aiWritingNow = text => {
+  const heads = [...text.matchAll(/(?:^|\n)([A-Z][A-Z &]{3,}):/g)].map(m => m[1]);
+  const last = heads[heads.length - 1];
+  const words = text.trim().split(/\s+/).filter(Boolean).length;
+  return `${last ? 'Writing: ' + last.toLowerCase().replace(/(^|\s)\S/g, c => c.toUpperCase()) + ' · ' : ''}${words} words`;
+};
 
 async function analyzeProp(league='nba') {
   const matchupRoute = league === 'wnba' ? '/api/wnba/player-matchup' : '/api/player-matchup';
@@ -2590,32 +2679,66 @@ async function analyzeProp(league='nba') {
   }
 
   showLoading(league);
+  _analyzeAbort[league]?.abort();
+  const abortCtl = _analyzeAbort[league] = new AbortController();
 
   try {
     updateStep(0, league);
-    // Shot charts are fetched here — before the Claude call — and the same
-    // fetched object is used both in the prompt and in the rendered charts,
-    // so Claude can never claim this data is missing while it's on screen.
-    const [ctx, { playerData: playerShotChart, defData: oppShotChart }] = await Promise.all([
-      apiGet(`${contextRoute}?player=${encodeURIComponent(player)}&opponent=${encodeURIComponent(opp)}&propType=${propType}`, ticketHeaders),
-      fetchShotChartData(league, player, opp),
-    ]);
+    // Shot charts load alongside the stats. They no longer hold anything up: the result is drawn without them and they
+    // are filled in when they arrive (the prompt only mentions them if they made it in time).
+    const chartsP = fetchShotChartData(league, player, opp);
+    const ctx = await apiGet(`${contextRoute}?player=${encodeURIComponent(player)}&opponent=${encodeURIComponent(opp)}&propType=${propType}`, ticketHeaders);
     if (!isCurrent()) return;
-    updateStep(1, league);
-    const prompt = buildEnrichedPrompt(player, opp, propType, line, context, ctx, league, playerShotChart, oppShotChart);
-    updateStep(2, league);
-    const claudeRes = await apiPost('/api/analyze', { prompt, kind: 'prop' }, ticketHeaders);
-    if (!isCurrent()) return; // a newer request already rendered its own result
-    updateStep(3, league);
-    const parsedVerdict = parseVerdict(claudeRes.response, { ...ctx, _postedLine: line });
-    elFor(league,'result-area').innerHTML = renderResult(claudeRes.response, player, opp, propType, line, ctx, parsedVerdict, league);
-    _currentAnalysis = { player, opp, propType, line, ctx, league, ...parsedVerdict };
-    if (AUTH.paywall) refreshMe();
-    analysisHistory.unshift({ player, opp, propType, line, league, ...parsedVerdict, raw: claudeRes.response, ctx, playerShotChart, oppShotChart, time: new Date(), result: null, closingLine: null, actualStat: null, clv: null });
+
+    // The projection, chance, EV and drivers come from the server's own math, not from the AI, so they go on screen now.
+    // The AI write-up streams in behind them.
+    const provisional = parseVerdict('', { ...ctx, _postedLine: line });
+    const area = elFor(league,'result-area');
+    area.innerHTML = renderResult('', player, opp, propType, line, ctx, provisional, league, true);
+    _currentAnalysis = { player, opp, propType, line, ctx, league, ...provisional };
+    const entry = { player, opp, propType, line, league, ...provisional, raw: '', ctx, playerShotChart: null, oppShotChart: null, time: new Date(), result: null, closingLine: null, actualStat: null, clv: null };
+    analysisHistory.unshift(entry);
     if (analysisHistory.length > HISTORY_MAX_ENTRIES) analysisHistory.length = HISTORY_MAX_ENTRIES;
+    renderHistory();
+    btn.textContent = 'WRITING ANALYSIS...';
+    let charts = null;
+    chartsP.then(ch => { charts = ch; if (isCurrent() && ch) { entry.playerShotChart = ch.playerData; entry.oppShotChart = ch.defData; renderShotChartsInto(league, player, opp, ch.playerData, ch.defData); } });
+
+    // Give the charts a moment so the AI can use them, but never more than 4 s: the page already has its numbers.
+    const early = await Promise.race([chartsP, new Promise(r => setTimeout(() => r(null), 4000))]);
+    if (!isCurrent()) return;
+    const promptCharts = early || null;
+    const prompt = buildEnrichedPrompt(player, opp, propType, line, context, ctx, league, promptCharts?.playerData, promptCharts?.defData);
+    let text;
+    try {
+      text = await streamAnalysisText(prompt, ticketHeaders, abortCtl.signal, t => {
+        const el = document.getElementById(`ai-live-txt-${league}`);
+        if (el && isCurrent()) el.textContent = aiWritingNow(t);
+      });
+    } catch (e) {
+      if (!isCurrent() || e.name === 'AbortError') return;
+      const box = document.getElementById(`ai-live-${league}`);
+      if (gateError(e, 'analyzer')) { if (box) box.innerHTML = `<div class="ai-live-hdr err">${escapeHtml(e.message || 'The AI write-up is not available right now.')} The numbers above are unaffected.</div>`; }
+      else if (box) box.innerHTML = `<div class="ai-live-hdr err">The AI write-up could not be finished: ${escapeHtml(e.message || 'unknown error')}. The numbers above do not depend on it.</div>`;
+      if (isCurrent()) { btn.disabled = false; btn.textContent = 'ANALYZE PROP'; }
+      return;
+    }
+    if (!isCurrent()) return;
+    // The prompt told the AI there were no shot charts: do not show its "unavailable" paragraph next to charts that did arrive.
+    if (!promptCharts) text = text.replace(/SHOT CHART VS DEFENSE:[\s\S]*?(?=\n[A-Z][A-Z &]+:|$)/i, '');
+    updateStep(3, league);
+    const parsedVerdict = parseVerdict(text, { ...ctx, _postedLine: line });
+    const activeTab = document.querySelector(`#result-toptabs-${league} .result-toptab.active`)?.dataset.key, scrollY = window.scrollY;
+    if (AUTH.paywall) refreshMe();
+    area.innerHTML = renderResult(text, player, opp, propType, line, ctx, parsedVerdict, league);
+    if (activeTab && activeTab !== 'overview') switchResultTab(league, activeTab);
+    window.scrollTo(0, scrollY);
+    _currentAnalysis = { player, opp, propType, line, ctx, league, ...parsedVerdict };
+    Object.assign(entry, parsedVerdict, { raw: text });
+    const ch = charts || await Promise.race([chartsP, new Promise(r => setTimeout(() => r(null), 3000))]);
+    if (ch) { entry.playerShotChart = ch.playerData; entry.oppShotChart = ch.defData; renderShotChartsInto(league, player, opp, ch.playerData, ch.defData); }
     saveHistoryToStorage();
     renderHistory();
-    renderShotChartsInto(league, player, opp, playerShotChart, oppShotChart);
   } catch (err) {
     if (!isCurrent()) return;
     const errMsg = err.message || 'Unknown error';
@@ -2623,7 +2746,7 @@ async function analyzeProp(league='nba') {
       <div class="result-placeholder">
         <div class="placeholder-icon" style="color:var(--red)">✕</div>
         <div class="placeholder-text" style="color:var(--red)">
-          ERROR: ${errMsg}
+          ERROR: ${escapeHtml(errMsg)}
         </div>
         <div style="margin-top:16px;background:var(--surface2);border-radius:8px;padding:14px;text-align:left;max-width:400px;">
           <div style="font-family:var(--label);font-size:11px;color:var(--gold);letter-spacing:1px;margin-bottom:8px;">TROUBLESHOOTING</div>
@@ -2934,7 +3057,7 @@ function glHover(league, e) {
 // Analyzer result tabs (Overview / Shot Chart / Game Log & H2H / Advanced).
 // Scoped by league so the NBA and WNBA panels never toggle each other.
 function switchResultTab(league, key) {
-  document.querySelectorAll(`#result-toptabs-${league} .result-toptab`).forEach(el => el.classList.toggle('active', el.dataset.key === key));
+  document.querySelectorAll(`#result-toptabs-${league} .result-toptab`).forEach(el => { const on = el.dataset.key === key; el.classList.toggle('active', on); el.setAttribute('aria-selected', on ? 'true' : 'false'); });
   document.querySelectorAll(`#result-tabpanels-${league} .result-tabpanel`).forEach(el => el.classList.toggle('active', el.dataset.panel === key));
 }
 
@@ -3119,6 +3242,7 @@ function v2Header(ctx, player, opp, propType, line, projection, edge, league, pl
       <div><div class="k">Projection</div><div class="v ${sign}">${escapeHtml(String(projection))}</div></div>
       <div><div class="k">Edge</div><div class="v ${sign}">${edge > 0 ? '+' : ''}${edge}${edge > 0 ? ' ↑' : edge < 0 ? ' ↓' : ''}</div></div>
     </div>
+    ${ctx?.mathProjection?.marketBlendProjection != null && Math.abs(ctx.mathProjection.marketBlendProjection - ctx.mathProjection.projection) >= 0.3 ? `<div class="v2-range">Market-blended estimate <b>${escapeHtml(String(ctx.mathProjection.marketBlendProjection))}</b> (the model's number pulled toward the books' ${escapeHtml(String(ctx.mathProjection.marketBlend?.bookCount ?? ''))}-book line). The posted line has been closer than the model on graded picks, so the win chance and EV lean on the blend.</div>` : ''}
     ${ctx?.mathProjection?.lowerBound != null ? `<div class="v2-range">80% range ${ctx.mathProjection.lowerBound} to ${ctx.mathProjection.upperBound} ${escapeHtml((V2_PROP[propType] || '').toLowerCase())}.${ctx?.propLines?.softestLine != null ? ` Best line ${v2F(ctx.propLines.softestLine)}${ctx.propLines.softestBook ? ' at ' + escapeHtml(ctx.propLines.softestBook) : ''}${ctx.propLines.consensusLine != null ? `, consensus ${v2F(ctx.propLines.consensusLine)}` : ''}.` : ''}</div>` : ''}`;
 }
 
@@ -3226,7 +3350,7 @@ function v2Injuries(ctx, league, oppLabel) {
 }
 
 // ── RENDER RESULT ─────────────────────────────────────
-function renderResult(raw, player, opp, propType, line, ctx, precomputedVerdict, league='nba') {
+function renderResult(raw, player, opp, propType, line, ctx, precomputedVerdict, league='nba', live=false) {
   const { verdict, confidence, edge, projection } = precomputedVerdict || parseVerdict(raw, ctx);
   const vcMap={'OVER':'over','LEAN_OVER':'lean-over','UNDER':'under','LEAN_UNDER':'lean-under','PASS':'pass'};
   const vc = vcMap[verdict] || 'pass';
@@ -3272,13 +3396,13 @@ function renderResult(raw, player, opp, propType, line, ctx, precomputedVerdict,
   const inferredCount = sourceTags.length - liveCount;
   const sourceBanner = `
     <div class="data-integrity">
-      <div class="data-integrity-hdr" onclick="document.getElementById('di-details-${league}').classList.toggle('open'); this.querySelector('.data-integrity-toggle').textContent = document.getElementById('di-details-${league}').classList.contains('open') ? 'HIDE DETAILS ▲' : 'SHOW DETAILS ▼';">
+      <div class="data-integrity-hdr" aria-expanded="false" onclick="toggleIntegrity('${league}', this)">
         <span class="data-integrity-title">DATA INTEGRITY <span style="color:var(--gold);">[Green Check]</span>: <b>${liveCount} Live Feed${liveCount!==1?'s':''}</b> / ${inferredCount} AI Inferred</span>
         <span class="data-integrity-toggle">SHOW DETAILS ▼</span>
       </div>
       <div class="data-integrity-details" id="di-details-${league}">
         <div class="data-source-grid">
-          ${sourceTags.map(t => `<span class="source-tag ${t.live ? 'live' : 'missing'}">${t.live ? '✓' : '✗'} ${t.label}</span>`).join('')}
+          ${sourceTags.map(t => `<span class="source-tag ${t.live ? 'live' : 'missing'}">${t.live ? '✓' : '✗'} ${escapeHtml(t.label)}</span>`).join('')}
           <span class="source-tag inferred">⚠ AI = inferred from training</span>
         </div>
       </div>
@@ -3341,6 +3465,24 @@ function renderResult(raw, player, opp, propType, line, ctx, precomputedVerdict,
     </table>
     </div>` : '<div style="color:var(--muted);font-size:11px;padding:8px 0;">Run fetch_stats.py to load team rankings</div>';
 
+  // What the opponent gives up per game to guards, forwards and centers (FantasyPros table, NBA only). The player's own group is lit.
+  const _pa = ctx?.positionAllowed;
+  const _paStats = [['pts', 'PTS'], ['reb', 'REB'], ['ast', 'AST'], ['fg3m', '3PM'], ['stl', 'STL'], ['blk', 'BLK']];
+  const posAllowedHtml = _pa && Array.isArray(_pa.rows) ? `
+    <div class="section-divider">
+      ${escapeHtml(opp || 'Opponent')} — Allowed by Position
+      <span style="font-size:11px;color:var(--muted);margin-left:6px;font-family:var(--body);">Per game to every player at that position · ${escapeHtml(_pa.games)} games · green = gives up the fewest, red = the most</span>
+    </div>
+    <div style="overflow-x:auto;">
+    <table class="live-stat-table">
+      <thead><tr><th>POSITION</th>${_paStats.map(([, l]) => `<th>${l}</th>`).join('')}</tr></thead>
+      <tbody>${_pa.rows.map(r => `
+        <tr${r.group === _pa.yourGroup ? ' style="background:rgba(255,255,255,0.06)"' : ''}><td style="color:var(--${r.group === _pa.yourGroup ? 'text' : 'muted'});font-size:11px;white-space:nowrap;">${escapeHtml(r.label)}${r.group === _pa.yourGroup ? ' <span style="color:var(--muted)">· this player</span>' : ''}</td>${_paStats.map(([k]) => `<td class="verified-cell" style="white-space:nowrap;">${escapeHtml(r.stats[k].value)} ${_rb(r.stats[k].rank)}</td>`).join('')}</tr>`).join('')}
+      </tbody>
+    </table>
+    </div>
+    <div style="color:var(--muted);font-size:11px;padding:4px 0 0;">Source: FantasyPros, this season so far. Early in the season a few games can swing these.</div>` : '';
+
   // ESPN roster display
   // Only injured players are shown for each team (not the full ~14-player
   // roster) — the healthy roster is noise for a prop analysis; what
@@ -3358,7 +3500,7 @@ function renderResult(raw, player, opp, propType, line, ctx, precomputedVerdict,
     </div>` : '';
 
   const last5Table = hasStats && stats.last5Games?.length ? `
-    <div class="section-divider">Last 5 Games — Source: ${statsSourceLabel} ✓</div>
+    <div class="section-divider">Last 5 Games — Source: ${escapeHtml(statsSourceLabel)} ✓</div>
     <div style="overflow-x:auto;">
     <table class="mini-table">
       <thead><tr><th>DATE</th><th>OPP</th><th>PTS</th><th>REB</th><th>AST</th><th>MIN</th><th>FG%</th></tr></thead>
@@ -3377,7 +3519,7 @@ function renderResult(raw, player, opp, propType, line, ctx, precomputedVerdict,
         <span>Pace adj: <span style="color:var(--text)">${ctx.mathProjection.oppPace || 'N/A'}</span></span>
         ${ctx.mathProjection.dvpCoeff != null ? `<span>DvP coeff: <span style="color:var(--text)">${ctx.mathProjection.dvpCoeff}x</span></span>` : ''}
         <span>Usage mult: <span style="color:var(--text)">${ctx.mathProjection.usageMult}x</span></span>
-        <span>Form: <span style="color:${ctx.mathProjection.form==='HOT'?'var(--green)':ctx.mathProjection.form==='COLD'?'var(--red)':'var(--muted)'}">${ctx.mathProjection.form}</span></span>
+        <span>Form: <span style="color:${ctx.mathProjection.form==='HOT'?'var(--green)':ctx.mathProjection.form==='COLD'?'var(--red)':'var(--muted)'}">${escapeHtml(ctx.mathProjection.form)}</span></span>
         <span>Math conf: <span style="color:var(--blue)">${fmtConf(ctx.mathProjection.confidence)}%</span></span>
       </div>
       ${ctx.mathProjection.stdDev ? (() => {
@@ -3405,14 +3547,14 @@ function renderResult(raw, player, opp, propType, line, ctx, precomputedVerdict,
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin:8px 0;font-family:var(--body);font-size:11px;">
       <div style="color:var(--gold);letter-spacing:1px;margin-bottom:6px;">MODEL DRIVERS — WHY THE NUMBER MOVED FROM BASELINE ${ctx.mathProjection.l10Avg}</div>
       <div style="display:flex;flex-direction:column;gap:4px;">
-        ${ctx.mathProjection.drivers.map(d => `<div style="display:flex;justify-content:space-between;gap:10px;"><span style="color:var(--muted);">${d.label}</span><span style="color:${d.value>0?'var(--green)':'var(--red)'};">${d.value>0?'+':''}${d.value}</span></div>`).join('')}
+        ${ctx.mathProjection.drivers.map(d => `<div style="display:flex;justify-content:space-between;gap:10px;"><span style="color:var(--muted);">${escapeHtml(d.label)}</span><span style="color:${d.value>0?'var(--green)':'var(--red)'};">${d.value>0?'+':''}${d.value}</span></div>`).join('')}
       </div>
     </div>` : ''}` : '';
 
   // Textual analysis as collapsible drawers — reuses the same accordion the
   // Daily Matchups dashboard already uses, so heavy AI prose no longer
   // stretches the Overview tab.
-  const acBody = (t) => `<div class="ta-block-body" style="padding:2px 4px 4px;">${t}</div>`;
+  const acBody = (t) => `<div class="ta-block-body" style="padding:2px 4px 4px;">${aiHtml(t)}</div>`;
   const textualAccordions = (mathOutlook || matchupConsistency || riskFactors) ? `
     <div class="section-divider">Textual Analysis</div>
     ${mathOutlook ? renderAccordionItem(`acc-mathout-${league}`, 'Mathematical Outlook', acBody(mathOutlook), true) : ''}
@@ -3422,8 +3564,8 @@ function renderResult(raw, player, opp, propType, line, ctx, precomputedVerdict,
   const recommendations = (bottomLine || alternativePlays) ? `
     <div class="recommend-box">
       <div class="recommend-title"><span>💡</span>Recommendations</div>
-      ${bottomLine ? `<div class="recommend-row"><span class="recommend-label">KEY TAKEAWAY / OUTLOOK</span>${bottomLine}</div>` : ''}
-      ${alternativePlays ? `<div class="recommend-row"><span class="recommend-label">ALTERNATIVE PLAYS</span>${alternativePlays}</div>` : ''}
+      ${bottomLine ? `<div class="recommend-row"><span class="recommend-label">KEY TAKEAWAY / OUTLOOK</span>${aiHtml(bottomLine)}</div>` : ''}
+      ${alternativePlays ? `<div class="recommend-row"><span class="recommend-label">ALTERNATIVE PLAYS</span>${aiHtml(alternativePlays)}</div>` : ''}
     </div>` : '';
 
   const playerId = ctx?.playerAdvancedStats?.PLAYER_ID || null;
@@ -3439,12 +3581,12 @@ function renderResult(raw, player, opp, propType, line, ctx, precomputedVerdict,
     if (!hLog.length && !hMeta && !h2h) return '';
     var out = '<div class="section-divider" style="display:flex;align-items:center;justify-content:space-between;"><span>Head-to-Head History</span>';
     if (src==='nba_api') out += '<span style="font-size:11px;color:var(--green);">LIVE nba_api</span>';
-    if (trend) out += '<span style="font-size:11px;color:'+tcolor+';">'+trend+'</span>';
+    if (trend) out += '<span style="font-size:11px;color:'+tcolor+';">'+escapeHtml(trend)+'</span>';
     out += '</div>';
     if (hMeta && hMeta.gamesVsOpp) {
       out += '<div style="background:var(--surface2);border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:11px;">';
-      out += '<span style="color:var(--muted);">AVG over '+hMeta.gamesVsOpp+' games (recency-weighted): </span>';
-      out += '<b>'+hMeta.pts+'pts</b> / <b>'+hMeta.reb+'reb</b> / <b>'+hMeta.ast+'ast</b>';
+      out += '<span style="color:var(--muted);">AVG over '+escapeHtml(hMeta.gamesVsOpp)+' games (recency-weighted): </span>';
+      out += '<b>'+escapeHtml(hMeta.pts)+'pts</b> / <b>'+escapeHtml(hMeta.reb)+'reb</b> / <b>'+escapeHtml(hMeta.ast)+'ast</b>';
       if (hMeta.fga) out += ' | FGA: '+hMeta.fga;
       if (hMeta.fgPct) out += ' FG%: '+(hMeta.fgPct>1?(hMeta.fgPct).toFixed(0)+'%':(hMeta.fgPct*100).toFixed(0)+'%');
       if (hMeta.fg3m) out += ' | 3PM: '+hMeta.fg3m;
@@ -3468,24 +3610,24 @@ function renderResult(raw, player, opp, propType, line, ctx, precomputedVerdict,
         var fgstr  = (g.fgm!=null?g.fgm:'—')+'/'+(g.fga!=null?g.fga:'—');
         var weight = i===0?' ★':i===1?' ◆':i===2?' ◇':'';
         out += '<tr style="background:'+bg+';border-bottom:1px solid var(--border);">';
-        out += '<td style="padding:5px 7px;color:var(--muted);white-space:nowrap;text-align:center;">'+(g.date||'—')+'</td>';
-        out += '<td style="padding:5px 7px;color:var(--text);white-space:nowrap;text-align:center;font-size:11px;">'+(g.matchup||'—')+weight+'</td>';
-        out += '<td style="padding:5px 7px;color:'+wlColor+';text-align:center;font-weight:bold;">'+(g.wl||'—')+'</td>';
-        out += '<td style="padding:5px 7px;color:var(--text);text-align:center;font-weight:bold;">'+(g.pts!=null?g.pts:'—')+'</td>';
-        out += '<td style="padding:5px 7px;color:var(--text);text-align:center;">'+(g.reb!=null?g.reb:'—')+'</td>';
-        out += '<td style="padding:5px 7px;color:var(--text);text-align:center;">'+(g.ast!=null?g.ast:'—')+'</td>';
-        out += '<td style="padding:5px 7px;color:var(--muted);text-align:center;">'+fgstr+'</td>';
-        out += '<td style="padding:5px 7px;color:var(--muted);text-align:center;">'+fgPct+'</td>';
-        out += '<td style="padding:5px 7px;color:var(--muted);text-align:center;">'+fg3str+'</td>';
-        out += '<td style="padding:5px 7px;color:var(--muted);text-align:center;">'+(g.min||'—')+'</td>';
-        out += '<td style="padding:5px 7px;color:'+pmColor+';text-align:center;">'+(pm!=null?(pm>0?'+':'')+pm:'—')+'</td>';
+        out += '<td style="padding:5px 7px;color:var(--muted);white-space:nowrap;text-align:center;">'+escapeHtml(g.date||'—')+'</td>';
+        out += '<td style="padding:5px 7px;color:var(--text);white-space:nowrap;text-align:center;font-size:11px;">'+escapeHtml(g.matchup||'—')+weight+'</td>';
+        out += '<td style="padding:5px 7px;color:'+wlColor+';text-align:center;font-weight:bold;">'+escapeHtml(g.wl||'—')+'</td>';
+        out += '<td style="padding:5px 7px;color:var(--text);text-align:center;font-weight:bold;">'+escapeHtml(g.pts!=null?g.pts:'—')+'</td>';
+        out += '<td style="padding:5px 7px;color:var(--text);text-align:center;">'+escapeHtml(g.reb!=null?g.reb:'—')+'</td>';
+        out += '<td style="padding:5px 7px;color:var(--text);text-align:center;">'+escapeHtml(g.ast!=null?g.ast:'—')+'</td>';
+        out += '<td style="padding:5px 7px;color:var(--muted);text-align:center;">'+escapeHtml(fgstr)+'</td>';
+        out += '<td style="padding:5px 7px;color:var(--muted);text-align:center;">'+escapeHtml(fgPct)+'</td>';
+        out += '<td style="padding:5px 7px;color:var(--muted);text-align:center;">'+escapeHtml(fg3str)+'</td>';
+        out += '<td style="padding:5px 7px;color:var(--muted);text-align:center;">'+escapeHtml(g.min||'—')+'</td>';
+        out += '<td style="padding:5px 7px;color:'+pmColor+';text-align:center;">'+escapeHtml(pm!=null?(pm>0?'+':'')+pm:'—')+'</td>';
         out += '</tr>';
       });
       out += '</tbody></table>';
       out += '<div style="font-size:11px;color:var(--muted);padding:4px 4px;"> ★ Most recent &nbsp; ◆ 2nd most recent &nbsp; ◇ 3rd most recent — recency-weighted in projection</div>';
       out += '</div>';
     }
-    if (h2h) out += '<div class="analysis-box">'+h2h+'</div>';
+    if (h2h) out += '<div class="analysis-box">'+aiHtml(h2h)+'</div>';
     return out;
   }());
 
@@ -3514,23 +3656,25 @@ function renderResult(raw, player, opp, propType, line, ctx, precomputedVerdict,
     ${v2WrittenAnalysis(v2f, v2Word, line)}
     ${h2hSection}
     ${v2Injuries(ctx, league, opp)}
+    ${live ? `<div class="ai-live" id="ai-live-${league}"><div class="ai-live-hdr"><span class="spinner sm"></span><b>AI WRITE-UP IN PROGRESS</b><span id="ai-live-txt-${league}">starting...</span></div><div class="ai-live-note">The projection, chance, EV and drivers above are already final. The AI adds its own read, risks and alternatives below when it finishes.</div></div>` : ''}
     ${textualAccordions}
     ${recommendations}
     ${outlierStrip}`;
 
   const shotChartTab = `
     <div id="shotchart-container-${league}"><div class="top-plays-empty">Loading shot charts...</div></div>
-    ${shotChart?`<div class="section-divider">Shot Chart vs Defense</div><div class="analysis-box">${shotChart}</div>`:''}
+    ${shotChart?`<div class="section-divider">Shot Chart vs Defense</div><div class="analysis-box">${aiHtml(shotChart)}</div>`:''}
     ${renderPlaytypeBreakdown(ctx, player, opp, league)}`;
 
   const advancedTab = `
     ${chips}
     ${mathBreakdownBox}
     ${defStats}
+    ${posAllowedHtml}
     ${last5Table}
     <div class="section-divider">Key Factors</div>
     <div class="factor-grid" style="grid-template-columns:1fr;">${factorHTML || '<div class="top-plays-empty">No factors listed</div>'}</div>
-    ${blowout?`<div class="section-divider">Blowout Scenario</div><div class="analysis-box">${blowout}</div>`:''}
+    ${blowout?`<div class="section-divider">Blowout Scenario</div><div class="analysis-box">${aiHtml(blowout)}</div>`:''}
     ${fullAnalysis?`<div class="analysis-text">${escapeHtml(fullAnalysis).replace(/\n/g,'<br>')}</div>`:''}`;
 
   const sidebar = v2Sidebar(ctx, v2f, edge, projection, line, propType, verdict, vc, confidence);
@@ -3541,8 +3685,8 @@ function renderResult(raw, player, opp, propType, line, ctx, precomputedVerdict,
     <div class="result-shell">
       <div class="result-main-col">
         ${v2Header(ctx, player, opp, propType, line, projection, edge, league, playerId)}
-        <div class="result-toptabs" id="result-toptabs-${league}">
-          ${tabDefs.map(([k,label],i) => `<div class="result-toptab ${i===0?'active':''}" data-key="${k}" onclick="switchResultTab('${league}','${k}')">${label}</div>`).join('')}
+        <div class="result-toptabs" id="result-toptabs-${league}" role="tablist" aria-label="Result sections">
+          ${tabDefs.map(([k,label],i) => `<div class="result-toptab ${i===0?'active':''}" data-key="${k}" aria-selected="${i===0}" onclick="switchResultTab('${league}','${k}')">${label}</div>`).join('')}
         </div>
         <div id="result-tabpanels-${league}">
           <div class="result-tabpanel active" data-panel="overview">${overviewTab}</div>
@@ -3585,7 +3729,7 @@ function renderDayStrip() {
   strip.innerHTML = days.map(d => {
     const ds = toDateStr(d);
     const isSel = ds === toDateStr(matchupSelectedDate);
-    return `<div class="day-chip ${isSel ? 'active' : ''}" onclick="selectMatchupDay('${ds}')">${fmtDayLabel(d)}</div>`;
+    return `<div class="day-chip ${isSel ? 'active' : ''}" aria-pressed="${isSel ? 'true' : 'false'}" onclick="selectMatchupDay('${ds}')">${fmtDayLabel(d)}</div>`;
   }).join('');
 }
 
@@ -3607,12 +3751,20 @@ async function loadScheduleForDate(dateStr) {
     const data = await apiGet(`/api/schedule?date=${dateStr}`);
     const games = data.games || [];
     strip.innerHTML = games.length
-      ? games.map(g => `<div class="game-chip" onclick="prefillMatchup('${escapeJsStr(g.away)}','${escapeJsStr(g.home)}','${g.league}')"><div><span class="chip-league">${g.league.toUpperCase()}</span>${g.away.split(' ').slice(-1)[0]} @ ${g.home.split(' ').slice(-1)[0]}</div><div style="font-size:11px;color:var(--muted);margin-top:2px;">${g.gameTime||g.status||'TBD'}</div></div>`).join('')
+      ? games.map(g => `<div class="game-chip" role="button" tabindex="0" data-away="${escapeHtml(g.away)}" data-home="${escapeHtml(g.home)}" data-league="${escapeHtml(g.league)}"><div><span class="chip-league">${escapeHtml(String(g.league).toUpperCase())}</span>${escapeHtml(String(g.away).split(' ').slice(-1)[0])} @ ${escapeHtml(String(g.home).split(' ').slice(-1)[0])}</div><div style="font-size:11px;color:var(--muted);margin-top:2px;">${escapeHtml(g.gameTime||g.status||'TBD')}</div></div>`).join('')
       : '<div class="game-chip">No games this day</div>';
   } catch (err) {
     strip.innerHTML = '<div class="game-chip">Could not load schedule</div>';
   }
 }
+// Game chips carry their teams in data attributes; one listener handles click and Enter/Space (no inline handler built from feed text).
+(function () {
+  const strip = document.getElementById('schedule-strip');
+  if (!strip) return;
+  const open = e => { const c = e.target.closest('.game-chip[data-home]'); if (c) prefillMatchup(c.dataset.away, c.dataset.home, c.dataset.league); };
+  strip.addEventListener('click', open);
+  strip.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(e); } });
+})();
 function escapeJsStr(s) { return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
 
 // ── DAILY MATCHUPS — team select dropdowns ─────────────────────────
@@ -4114,7 +4266,7 @@ async function analyzeMatchup() {
 function renderAccordionItem(id, title, bodyHtml, openByDefault, previewHtml) {
   return `
     <div class="mu-accordion-item${openByDefault ? ' open' : ''}" id="${id}">
-      <div class="mu-accordion-header" onclick="toggleAccordion('${id}')">
+      <div class="mu-accordion-header" aria-expanded="${openByDefault ? 'true' : 'false'}" onclick="toggleAccordion('${id}')">
         <span class="mu-accordion-title-wrap">
           <span class="mu-accordion-title">${escapeHtml(title)}</span>
         </span>
@@ -4124,8 +4276,19 @@ function renderAccordionItem(id, title, bodyHtml, openByDefault, previewHtml) {
       <div class="mu-accordion-body">${bodyHtml}</div>
     </div>`;
 }
+function toggleIntegrity(league, hdr) {
+  const d = document.getElementById(`di-details-${league}`);
+  if (!d) return;
+  const open = d.classList.toggle('open');
+  const t = hdr.querySelector('.data-integrity-toggle');
+  if (t) t.textContent = open ? 'HIDE DETAILS ▲' : 'SHOW DETAILS ▼';
+  hdr.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
 function toggleAccordion(id) {
-  document.getElementById(id)?.classList.toggle('open');
+  const el = document.getElementById(id);
+  if (!el) return;
+  const open = el.classList.toggle('open');
+  el.querySelector('.mu-accordion-header')?.setAttribute('aria-expanded', open ? 'true' : 'false');
 }
 
 
@@ -4169,13 +4332,15 @@ function jumpToAnalyzePlayer(name, propText, opponent, league) {
 
 
 // ── HISTORY ───────────────────────────────────────────
+// A stored verdict is shown only if it is one of the known ones (saved history can be edited in the browser).
+function safeVerdict(v) { return /^(OVER|UNDER|LEAN_OVER|LEAN_UNDER|PASS)$/.test(String(v)) ? String(v) : 'PASS'; }
 function renderHistory() {
   const el = document.getElementById('history-list');
   if (!analysisHistory.length) { el.innerHTML = '<div style="color:var(--muted);font-family:var(--body);font-size:11px;padding:16px 0;">NO ANALYSES YET</div>'; return; }
   el.innerHTML = analysisHistory.map((h, i) => `
     <div class="history-item" onclick="loadHistory(${i})">
       <div><div class="h-player">${escapeHtml(h.player)} <span style="font-family:var(--body);font-size:11px;color:${h.league==='wnba'?'#d2d2d8':'var(--gold)'};letter-spacing:1px;">${(h.league||'nba').toUpperCase()}</span></div><div class="h-meta">${h.propType?.toUpperCase()} ${h.line} · vs ${escapeHtml(h.opp)} · ${confNumHtml(h.confidence)} · ${h.time?.toLocaleTimeString()}</div></div>
-      <div class="h-verdict ${(h.verdict||'pass').toLowerCase().replace('_','-')}">${(h.verdict||'PASS').replace('_',' ')}</div>
+      <div class="h-verdict ${safeVerdict(h.verdict).toLowerCase().replace('_','-')}">${safeVerdict(h.verdict).replace('_',' ')}</div>
     </div>`).join('');
 }
 
@@ -4201,6 +4366,29 @@ function escapeHtml(str) {
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
   }[c]));
 }
+
+// ── KEYBOARD ACCESS ─────────────────────────────────────────────
+// Parts of the page that react to a click but are drawn as plain <div>/<span>/<th> get a button's keyboard behaviour here:
+// focusable, announced with a role, and Enter or Space presses them. New ones are picked up as the page redraws.
+const KB_CONTROLS = [['.result-toptab', 'tab'], ['.mu-accordion-header', 'button'], ['.data-integrity-hdr', 'button'], ['.day-chip', 'button'], ['.history-item', 'button'], ['.top-plays-refresh', 'button'], ['th.s', null]];
+function kbify() {
+  for (const [sel, role] of KB_CONTROLS) document.querySelectorAll(`${sel}:not([data-kb])`).forEach(el => {
+    el.dataset.kb = '1'; el.tabIndex = 0;
+    if (role && !el.getAttribute('role')) el.setAttribute('role', role);
+  });
+}
+let _kbQueued = false;
+new MutationObserver(() => { if (_kbQueued) return; _kbQueued = true; requestAnimationFrame(() => { _kbQueued = false; kbify(); }); }).observe(document.body, { childList: true, subtree: true });
+document.addEventListener('keydown', e => {
+  if ((e.key !== 'Enter' && e.key !== ' ') || e.altKey || e.ctrlKey || e.metaKey) return;
+  const el = e.target;
+  if (!el?.dataset?.kb) return;
+  e.preventDefault(); el.click();
+});
+kbify();
+
+// AI answers and text from outside feeds are untrusted: they are always shown as text, never as markup.
+function aiHtml(t) { return escapeHtml(t).replace(/\n/g, '<br>'); }
 
 async function apiGet(url, headers) {
   const res = await fetch(url, headers ? { headers } : undefined);
@@ -4306,6 +4494,9 @@ function switchTab(name) {
   document.getElementById('nav-btn-sport')?.classList.toggle('on', name in NAV_SPORT);
   document.getElementById('nav-btn-tools')?.classList.toggle('on', name in NAV_TOOLS);
   closeNavMenu();
+  const h1 = document.getElementById('page-h1');
+  if (h1) { const label = NAV_SPORT[name] ? NAV_SPORT[name] + ' prop analyzer' : (NAV_TOOLS[name] || '').toLowerCase().replace(/(^|\s)\S/g, c => c.toUpperCase()); h1.textContent = label; h1.hidden = name === 'today'; }   // Today draws its own heading
+  document.title = (NAV_SPORT[name] ? NAV_SPORT[name] + ' prop analyzer' : (NAV_TOOLS[name] || 'Today').toLowerCase().replace(/(^|\s)\S/g, c => c.toUpperCase())) + ' · WIN AI';
   gpSync(name);
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.getElementById('panel-'+name)?.classList.add('active');
@@ -4315,10 +4506,14 @@ function switchTab(name) {
   if (name==='wnba') renderTopPlays('wnba');
   if (name==='today') renderTodayPage(document.getElementById('today-league-select')?.value || 'nba');
 }
+// Enter starts an analysis only from the form's own text fields. Anywhere else on the page (a tab, a button, a list item, the
+// autocomplete box) Enter does what that control does and nothing more: every analysis uses up one of the day's.
 document.addEventListener('keydown', e => {
-  if (e.key!=='Enter') return;
-  if (document.getElementById('panel-analyzer').classList.contains('active') && !document.getElementById('analyze-btn').disabled) analyzeProp('nba');
-  else if (document.getElementById('panel-wnba').classList.contains('active') && !document.getElementById('analyze-btn-wnba').disabled) analyzeProp('wnba');
+  if (e.key !== 'Enter' || e.defaultPrevented || e.isComposing) return;
+  const field = e.target.closest?.('#player-name,#opp-team,#prop-line,#player-name-wnba,#opp-team-wnba,#prop-line-wnba');
+  if (!field) return;
+  const league = field.id.endsWith('-wnba') ? 'wnba' : 'nba';
+  if (document.getElementById(league === 'wnba' ? 'panel-wnba' : 'panel-analyzer').classList.contains('active') && !document.getElementById(league === 'wnba' ? 'analyze-btn-wnba' : 'analyze-btn').disabled) analyzeProp(league);
 });
 
 let _todayPicks = []; // flat list so onclick can reference by index (player names can contain quotes/apostrophes)
@@ -4336,45 +4531,65 @@ async function renderTodayPage() {
   const token = window._tdToken = Date.now() + Math.random();
   if (!TD.data) root.innerHTML = '<div class="td-empty">Loading today\'s slate...</div>';
   try {
-    const get = (u, d) => apiGet(u).catch(() => d);
-    // Stage 1: the quick data (games, the prop board, the record). It paints at once.
-    const [nbaS, wnbaS, nbaB, wnbaB, clv] = await Promise.all([
-      get('/api/today', { games: [] }), get('/api/wnba/today', { games: [] }),
+    let scheduleFailures = 0;
+    const get = (u, d) => apiGet(u).catch(() => { if (/^\/api\/(wnba\/)?today$/.test(u)) scheduleFailures++; return d; });
+    // Stage 0: the games alone. They come straight from the schedule, so the page never waits on anything slower.
+    const [nbaS, wnbaS] = await Promise.all([get('/api/today', { games: [] }), get('/api/wnba/today', { games: [] })]);
+    if (window._tdToken !== token) return;
+    // Both schedules failed: that is an outage, not an empty slate, and it must not read as "no games today".
+    if (scheduleFailures === 2) {
+      TD.data = null;
+      root.innerHTML = `<div class="td-empty" role="alert"><b>Could not load today's games</b>The server did not answer. Your connection or the site may be down for a moment.<br><button type="button" class="td-link" style="margin-top:10px" onclick="renderTodayPage()">Try again</button></div>`;
+      return;
+    }
+    const games = [...(nbaS.games || []).map(g => ({ ...g, league: 'nba' })), ...(wnbaS.games || []).map(g => ({ ...g, league: 'wnba' }))];
+    if (!TD.data || TD.data.games.length !== games.length) {
+      TD.data = { games, props: [], limited: false, boardTotal: 0, fallback: { nba: false, wnba: false }, fbPlays: [], clv: null, teamPicks: { nba: [], wnba: [] }, loadingPicks: games.length > 0, loadingBoard: games.length > 0 };
+      TD.conf = uniqueConfs([]);
+      paintToday();
+      tdLoadLines(games);
+      tdLoadInjuries(games);
+    }
+    // Stage 1: the prop board and the record. On a cold start the board waits for the slate scan, which can take minutes.
+    const [nbaB, wnbaB, clv] = await Promise.all([
       get('/api/prop-board?league=nba', { props: [] }), get('/api/prop-board?league=wnba', { props: [] }),
       get('/api/clv', null),
     ]);
     if (window._tdToken !== token) return;
-    const games = [...(nbaS.games || []).map(g => ({ ...g, league: 'nba' })), ...(wnbaS.games || []).map(g => ({ ...g, league: 'wnba' }))];
     const props = [...(nbaB.props || []).map(p => ({ ...p, league: 'nba' })), ...(wnbaB.props || []).map(p => ({ ...p, league: 'wnba' }))];
     const limited = !!(nbaB.limited || wnbaB.limited), boardTotal = (nbaB.total ?? (nbaB.props || []).length) + (wnbaB.total ?? (wnbaB.props || []).length);
     // No posted lines (Odds API down or out of credits): the server falls back to model-only picks.
     // They get their own honest template: never dressed up as a real line-based pick.
     // only meaningful for a league that actually has games today
     const hasG = lg => games.some(g => g.league === lg);
+    const liveProps = lg => (TD.data?.props || props).some(p => p.league === lg);   // the board can fill in while the picks are still being worked out
     const fallbackOf = (teamNba, teamWnba) => ({
-      nba: hasG('nba') && (!!(teamNba && teamNba.fallback) || !(nbaB.props || []).length),
-      wnba: hasG('wnba') && (!!(teamWnba && teamWnba.fallback) || !(wnbaB.props || []).length),
+      nba: hasG('nba') && (!!(teamNba && teamNba.fallback) || !liveProps('nba')),
+      wnba: hasG('wnba') && (!!(teamWnba && teamWnba.fallback) || !liveProps('wnba')),
     });
     const stage1Fb = fallbackOf(null, null);
-    TD.data = { games, props, limited, boardTotal, fallback: stage1Fb, fbPlays: [], clv, teamPicks: { nba: [], wnba: [] }, loadingPicks: games.length > 0 };
+    TD.data = { games, props, limited, boardTotal, fallback: stage1Fb, fbPlays: [], clv, teamPicks: { nba: [], wnba: [] }, loadingPicks: games.length > 0, loadingBoard: !!(nbaB.scanning || wnbaB.scanning) && !props.length, scanning: !!(nbaB.scanning || wnbaB.scanning) };
     TD.conf = uniqueConfs([...props]);
     paintToday();
     tdLoadLines(games);
     tdLoadInjuries(games);
+    tdScheduleBoardRefresh(token);
     // Stage 2: the slow part (team picks and, with no live lines, the model-only plays). On a cold start this can take a
     // minute or more, so it fills in afterwards instead of holding the whole page back.
     if (!games.length) return;
     const [nbaTeam, wnbaTeam] = await Promise.all([get('/api/team-picks?league=nba', { games: [] }), get('/api/team-picks?league=wnba', { games: [] })]);
     if (window._tdToken !== token) return;
     const fallback = fallbackOf(nbaTeam, wnbaTeam);
-    const fbPlays = [];
-    await Promise.all(['nba', 'wnba'].filter(lg => fallback[lg]).map(async lg => {
-      const tp = await get(`/api/top-plays?league=${lg}`, { fallbackPlays: [] });
-      (tp.fallbackPlays || []).forEach(p => fbPlays.push({ ...p, league: lg }));
+    const fbPlays = [], lockedTops = [];
+    // The headline Top 3 is the day's three most confident picks, locked by the server until tomorrow: the same list on every visit.
+    await Promise.all(['nba', 'wnba'].filter(lg => games.some(g => g.league === lg)).map(async lg => {
+      const tp = await get(`/api/top-plays?league=${lg}`, { fallbackPlays: [], topPlays: [] });
+      if (fallback[lg]) (tp.fallbackPlays || []).forEach(p => fbPlays.push({ ...p, league: lg }));
+      else (tp.topPlays || []).forEach(p => lockedTops.push({ ...p, league: lg, value: isValuePick(p) }));
     }));
     if (window._tdToken !== token) return;
-    TD.data = { ...TD.data, fallback, fbPlays, teamPicks: { nba: nbaTeam.games || [], wnba: wnbaTeam.games || [] }, loadingPicks: false };
-    TD.conf = uniqueConfs([...props, ...fbPlays]);
+    TD.data = { ...TD.data, fallback, fbPlays, lockedTops, teamPicks: { nba: nbaTeam.games || [], wnba: wnbaTeam.games || [] }, loadingPicks: false };
+    TD.conf = uniqueConfs([...TD.data.props, ...fbPlays, ...lockedTops]);
     paintToday();
     tdLoadLines(games);
     tdLoadInjuries(games);
@@ -4383,8 +4598,46 @@ async function renderTodayPage() {
   }
 }
 
+// Books post props at different times, so a game with none yet gets them later. While the scan is still running, or any game
+// that has not started is still without props, the board is asked again (15 s during a scan, 5 min otherwise).
+function tdScheduleBoardRefresh(token) {
+  clearTimeout(window._tdBoardTimer);
+  const D = TD.data;
+  if (!D || !D.games.length) return;
+  const now = Date.now();
+  const missing = D.games.some(g => Date.parse(g.status) > now && !D.props.some(p => tdSameGame(p, g)));
+  if (!D.scanning && !missing) return;
+  window._tdBoardTimer = setTimeout(async () => {
+    if (window._tdToken !== token || !document.getElementById('today-root')) return;
+    if (document.hidden) return tdScheduleBoardRefresh(token);
+    const get = (u, d) => apiGet(u).catch(() => d);
+    const [nbaB, wnbaB] = await Promise.all([get('/api/prop-board?league=nba', null), get('/api/prop-board?league=wnba', null)]);
+    if (window._tdToken !== token || !nbaB || !wnbaB) return tdScheduleBoardRefresh(token);
+    const props = [...(nbaB.props || []).map(p => ({ ...p, league: 'nba' })), ...(wnbaB.props || []).map(p => ({ ...p, league: 'wnba' }))];
+    const scanning = !!(nbaB.scanning || wnbaB.scanning);
+    if (props.length !== TD.data.props.length || scanning !== !!TD.data.scanning) {
+      TD.data = { ...TD.data, props, scanning, loadingBoard: scanning && !props.length, boardTotal: (nbaB.total ?? (nbaB.props || []).length) + (wnbaB.total ?? (wnbaB.props || []).length) };
+      TD.conf = uniqueConfs([...props, ...(TD.data.fbPlays || [])]);
+      paintToday();
+      tdLoadLines(TD.data.games);
+      tdLoadInjuries(TD.data.games);
+    }
+    tdScheduleBoardRefresh(token);
+  }, D.scanning ? 15000 : 5 * 60 * 1000);
+}
+
 function tdShown(p) { return TD.conf?.get(p) ?? p.confidence; }
 function tdOpenIdx(p) { return _todayPicks.push(p) - 1; }
+
+// A pick is a prop whose expected value at its best price clears a small bar. (It used to be "the projection is 1.0 or more from the line",
+// which the market-anchored projection can no longer reach: the projection is mostly the line now.)
+// The projection shown is the model's own number. The books' line has been closer to the real stat than the model on graded picks, so a market-blended
+// estimate is kept alongside it (the win chance and EV lean on that), and shown under the projection whenever it differs.
+const modelNote = p => (p?.blendedProjection != null && Math.abs(p.blendedProjection - p.projection) >= 0.3
+  ? `<small class="td-model" title="The model's number blended with the books' line. The posted line has been closer than the model on graded picks, so the win chance and EV lean on this.">market-blend ${escapeHtml(p.blendedProjection)}</small>` : '');
+const EV_PICK_MIN = 0.03;
+const isValuePick = p => (p?.realEdge?.expectedValue ?? -1) >= EV_PICK_MIN;
+const byValueDesc = (a, b) => ((b.realEdge?.expectedValue ?? -9) - (a.realEdge?.expectedValue ?? -9)) || (b.confidence - a.confidence);
 
 function tdTopCard(p, i) {
   const idx = tdOpenIdx(p), conf = tdShown(p), fb = p.line == null;
@@ -4392,28 +4645,46 @@ function tdTopCard(p, i) {
   const opp = (p.opponent || '').split(' ').pop(), team = (p.team || '').split(' ').pop();
   return `<div class="td-card td-tp" data-pick="${idx}" role="button" tabindex="0">
     <span class="td-rk">#${i + 1}</span>
-    <div class="td-tp-h">${pickAvatar(p.league, p.playerId, p.player)}<div><div class="td-tp-n">${escapeHtml(p.player)}</div><div class="td-tp-s">${escapeHtml(team)} vs ${escapeHtml(opp)}</div></div></div>
-    <div class="td-call">${fb ? `<span class="td-big">≈ PROJ ${p.projection}</span>` : `<span class="td-big ${over ? 'pos' : 'neg'}">${p.direction} ${p.line}</span>`}<span class="td-pill">${PROP_LABEL[p.propType] || escapeHtml(String(p.propType).toUpperCase())}</span></div>
-    <div class="td-m"><div><span>Projection</span><b>${p.projection}</b></div>
+    <div class="td-tp-h">${pickAvatar(p.league, p.playerId, p.player)}<div><div class="td-tp-n">${escapeHtml(p.player)}${p.bestBet ? ' <span class="td-best">BEST BET</span>' : ''}</div><div class="td-tp-s">${escapeHtml(team)} vs ${escapeHtml(opp)}</div></div></div>
+    <div class="td-call">${fb ? `<span class="td-big">≈ PROJ ${escapeHtml(p.projection)}</span>` : `<span class="td-big ${over ? 'pos' : 'neg'}">${escapeHtml(p.direction)} ${escapeHtml(p.line)}</span>`}<span class="td-pill">${PROP_LABEL[p.propType] || escapeHtml(String(p.propType).toUpperCase())}</span></div>
+    <div class="td-m"><div><span>Projection</span><b>${escapeHtml(p.projection)}</b>${modelNote(p)}</div>
       <div><span>Confidence</span><b>${fmtConf(conf)}</b><div class="td-cbar"><i style="width:${Math.max(0, Math.min(100, conf))}%"></i></div></div>
       <div><span>EV</span><b${hot ? ' class="neg"' : ''} title="${hot ? 'Unusually large: more often the model being overconfident than free money, so no stake is suggested.' : 'Expected profit per $1 at the best posted price'}">${ev == null ? '—' : (ev * 100).toFixed(0) + '%'}${hot ? ' ⚠' : ''}</b></div></div></div>`;
 }
 
+// One row per pick in a game's top three: who, which side and number, our chance, and the expected value at the best price.
+function tdPickRow(p) {
+  const ev = p.realEdge?.expectedValue, over = p.direction === 'OVER', idx = tdOpenIdx(p), price = p.realEdge?.price;
+  const evTxt = ev == null ? '—' : `${ev >= 0 ? '+' : '−'}${Math.abs(ev * 100).toFixed(1)}%`;
+  return `<div class="td-gp" data-pick="${idx}" role="button" tabindex="0">
+    <span class="td-rk">#${p.gameRank}</span>
+    <div class="td-gp-n"><b>${escapeHtml(p.player)}</b><small>${escapeHtml(p.book || '')}${price != null ? ' ' + (price > 0 ? '+' : '') + escapeHtml(price) : ''}</small></div>
+    <span class="td-pill ${over ? 'pos' : 'neg'}">${escapeHtml(p.direction)} ${escapeHtml(p.line)} ${PROP_LABEL[p.propType] || escapeHtml(String(p.propType).toUpperCase())}</span>
+    <span class="td-gp-c">${p.realEdge?.finalProb != null ? Math.round(p.realEdge.finalProb) + '%' : ''}</span>
+    <span class="td-gp-ev ${ev >= 0 ? 'pos' : 'neg'}">${evTxt}</span>${p.value ? '<span class="td-val">VALUE</span>' : ''}${p.bestBet ? '<span class="td-best" title="Passes the best-bet rules: confidence 65+, positive expected value, one of the best 6 today. Tracked separately in the admin Grading tab.">BEST BET</span>' : ''}
+  </div>`;
+}
+// The schedule and the odds feed do not always spell a team the same way ("LA Clippers" and "Los Angeles Clippers"), so a game is matched by its
+// two team nicknames, the last word of each name, which is unique within a league.
+const tdLast = n => String(n || '').trim().toLowerCase().split(/\s+/).pop();
+const tdSameGame = (p, g) => p.league === g.league && tdLast(p.awayTeam) === tdLast(g.away) && tdLast(p.homeTeam) === tdLast(g.home);
 function tdGameCard(g) {
   const key = `${g.league}|${g.away}@${g.home}`;
-  const pk = TD.data.props.filter(p => p.awayTeam === g.away && p.homeTeam === g.home);
-  const real = pk.filter(p => Math.abs(p.edge) >= 1.0).sort((a, b) => b.confidence - a.confidence);
-  const best = real[0];
-  let bestTxt;
-  if (best) bestTxt = `best ${escapeHtml(best.player)} ${best.direction.toLowerCase()} ${best.line} ${(PROP_LABEL[best.propType] || '').toLowerCase()}`;
-  else if (TD.data.fallback[g.league]) bestTxt = 'no live lines yet, model projections only';
-  else bestTxt = 'no confident pick yet';
+  const pk = TD.data.props.filter(p => tdSameGame(p, g));
+  const picks = pk.filter(p => p.gameRank).sort((a, b) => a.gameRank - b.gameRank);
+  let pickSec;
+  if (TD.data.loadingBoard) pickSec = '<div class="td-gp-empty">working out the picks…</div>';
+  else if (picks.length) pickSec = `<div class="td-gps" aria-label="Top 3 picks in this game">${picks.map(tdPickRow).join('')}</div>`;
+  else if (!pk.length) pickSec = `<div class="td-gp-empty">${Date.parse(g.status) > Date.now() ? 'lines not posted yet' : 'no props'}</div>`;
+  else if (TD.data.fallback[g.league]) pickSec = '<div class="td-gp-empty">no live lines yet, model projections only</div>';
+  else pickSec = '<div class="td-gp-empty">no pick for this game yet</div>';
   const aL = teamLogoUrl(g.league, g.away), hL = teamLogoUrl(g.league, g.home);
   const logo = u => u ? `<img class="td-lg" src="${u}" alt="" onerror="this.style.display='none'">` : '';
   return `<div class="td-card td-gm">
     <div class="td-gm-t"><div class="td-teams">${logo(aL)}<span>${escapeHtml(g.away.split(' ').pop())}</span><em>@</em>${logo(hL)}<span>${escapeHtml(g.home.split(' ').pop())}</span></div><span class="td-hint">${escapeHtml(g.gameTime || g.status || 'TBD')}</span></div>
     <div class="td-lines" data-lines="${escapeHtml(key)}"></div>
-    <div class="td-gm-f"><span><b>${pk.length}</b> props · ${bestTxt}</span><button type="button" class="td-link" data-matchup="${escapeHtml(g.away)}|${escapeHtml(g.home)}|${g.league}">Matchup</button></div></div>`;
+    ${pickSec}
+    <div class="td-gm-f"><span>${TD.data.loadingBoard ? '' : `<b>${pk.length}</b> props priced`}</span><button type="button" class="td-link" data-matchup="${escapeHtml(g.away)}|${escapeHtml(g.home)}|${g.league}">Matchup</button></div></div>`;
 }
 
 function tdBoardRows() {
@@ -4430,11 +4701,11 @@ function tdBoardHtml() {
   const body = shown.length ? shown.map(p => {
     const over = p.direction === 'OVER', ev = p.realEdge?.expectedValue, hot = ev != null && ev * 100 >= EV_TRUST_LIMIT, conf = tdShown(p), idx = tdOpenIdx(p);
     return `<tr data-pick="${idx}" tabindex="0"><td><div class="td-who">${pickAvatar(p.league, p.playerId, p.player)}<div><b>${escapeHtml(p.player)}</b><small>${escapeHtml((p.awayTeam || '').split(' ').pop())} @ ${escapeHtml((p.homeTeam || '').split(' ').pop())}</small></div></div></td>
-      <td>${PROP_LABEL[p.propType] || escapeHtml(String(p.propType).toUpperCase())}</td><td><span class="td-pill ${over ? 'pos' : 'neg'}">${p.direction}</span></td>
-      <td class="r num">${p.line}</td><td class="r num">${p.projection}</td>
+      <td>${PROP_LABEL[p.propType] || escapeHtml(String(p.propType).toUpperCase())}</td><td><span class="td-pill ${over ? 'pos' : 'neg'}">${escapeHtml(p.direction)}</span></td>
+      <td class="r num">${escapeHtml(p.line)}</td><td class="r num">${escapeHtml(p.projection)}${modelNote(p)}</td>
       <td><span class="td-bar"><i style="width:${Math.max(0, Math.min(100, conf))}%"></i></span><span class="num">${fmtConf(conf)}</span></td>
       <td class="r num" ${hot ? 'title="Unusually large: more often the model being overconfident than free money."' : ''}>${ev == null ? '—' : (ev * 100).toFixed(0) + '%'}${hot ? ' <span class="neg">⚠</span>' : ''}</td></tr>`;
-  }).join('') : `<tr><td colspan="7"><div class="td-empty" style="padding:22px 8px">${TD.data.fallback.nba || TD.data.fallback.wnba ? 'No live sportsbook lines right now, so there is nothing to rank yet.' : `No props match${TD.q ? ' “' + escapeHtml(TD.q) + '”' : ' these filters'}.`}</div></td></tr>`;
+  }).join('') : `<tr><td colspan="7"><div class="td-empty" style="padding:22px 8px">${TD.data.loadingBoard ? '<b>Working out the prop board</b>The games are above. Props appear here game by game as they are ready, which can take a few minutes after a restart.' : TD.data.fallback.nba || TD.data.fallback.wnba ? 'No live sportsbook lines right now, so there is nothing to rank yet.' : `No props match${TD.q ? ' “' + escapeHtml(TD.q) + '”' : ' these filters'}.`}</div></td></tr>`;
   return { html: `<thead><tr>${th('player', 'Player')}<th>Prop</th><th>Side</th>${th('line', 'Line', 1)}${th('proj', 'Proj', 1)}${th('conf', 'Confidence')}${th('ev', 'EV', 1)}</tr></thead><tbody>${body}</tbody>`, total: rows.length, shown: shown.length };
 }
 
@@ -4444,8 +4715,10 @@ function paintToday() {
   _todayPicks = [];
   const L = TD.league, inL = x => L === 'both' || x.league === L;
   const games = D.games.filter(inL);
-  const real = D.props.filter(p => inL(p) && Math.abs(p.edge) >= 1.0).sort((a, b) => (b.confidence - a.confidence) || (Math.abs(b.edge) - Math.abs(a.edge)));
-  const seen = new Set(), tops = real.filter(p => !seen.has(p.player) && seen.add(p.player)).slice(0, 3);
+  // The day's three most confident picks, as locked by the server. Until they arrive (or if the server has none), fall back to ranking the board here.
+  const locked = (D.lockedTops || []).filter(inL).sort((a, b) => (b.confidence - a.confidence) || byValueDesc(a, b)).slice(0, 3);
+  const real = D.props.filter(p => inL(p) && p.direction && p.realEdge?.expectedValue != null).sort(byValueDesc);   // no minimum: always the best three
+  const seen = new Set(), tops = locked.length ? locked : real.filter(p => !seen.has(p.player) && seen.add(p.player)).slice(0, 3);
   const fbTops = D.fbPlays.filter(inL).slice(0, 3);
   const topList = tops.length ? tops : fbTops;
   const dateTxt = new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
@@ -4454,7 +4727,12 @@ function paintToday() {
 
   const empty = !nGames
     ? `<section><div class="td-card"><div class="td-empty"><b>No games today</b>${L === 'both' ? 'Nothing is on the NBA or WNBA schedule for today.' : 'Nothing is on the ' + L.toUpperCase() + ' schedule for today.'} Open Daily Matchups to look at a future game.</div></div></section>` : '';
-  const topSec = !topList.length && D.loadingPicks ? `<section><div class="td-card"><div class="td-empty" style="padding:22px 12px"><b>Working out today's picks</b>The games are below. Picks appear here as soon as they are ready, which can take a minute or two after a restart.</div></div></section>` : topList.length ? `<section><div class="td-sh"><h2>Top picks</h2><span class="td-hint">${tops.length ? 'one per player · ranked by confidence' : 'model projections only: no live lines'}</span></div><div class="td-tops">${topList.map(tdTopCard).join('')}</div></section>` : '';
+  const topSec = !topList.length && D.loadingPicks ? `<section><div class="td-card"><div class="td-empty" style="padding:22px 12px"><b>Working out today's picks</b>The games are below. Picks appear here as soon as they are ready, which can take a minute or two after a restart.</div></div></section>` : topList.length ? `<section><div class="td-sh"><h2>Top picks</h2><span class="td-hint">${locked.length ? 'the three most confident today · locked until tomorrow' : tops.length ? 'one per player · ranked by expected value' : 'model projections only: no live lines'}</span></div><div class="td-tops">${topList.map(tdTopCard).join('')}</div></section>` : '';
+  // Picks are always shown (the three best in each game). VALUE marks one that also beats the books' fair price by a real margin; when none do, say so.
+  const anyValue = D.props.some(p => inL(p) && p.value);
+  const noValue = D.props.some(p => inL(p) && p.gameRank) && !anyValue && !D.loadingBoard
+    ? `<p class="td-note td-valnote">Each game's top 3 are its best props by expected value at the best available price. None of them beat the books' fair price by 3% or more right now, so they are the best available, not strong bets. A <span class="td-val">VALUE</span> tag will mark any that do.</p>`
+    : '';
   const gameSec = nGames ? `<section><div class="td-sh"><h2>Tonight's games</h2><span class="td-hint">${nGames} game${nGames === 1 ? '' : 's'}</span></div><div class="td-games">${games.map(tdGameCard).join('')}</div></section>` : '';
   const board = tdBoardHtml();
   const boardSec = (scanned || nGames) ? `<section class="td-card td-board">
@@ -4480,7 +4758,7 @@ function paintToday() {
     <div class="td-title"><div><h1>Today</h1><div class="td-sub">${dateTxt} · ${nGames} game${nGames === 1 ? '' : 's'}${scanned ? ` · ${scanned} props scanned` : ''}</div></div>
       <div class="td-seg" id="td-seg">${[['nba', 'NBA'], ['wnba', 'WNBA'], ['both', 'Both']].map(([v, l]) => `<button type="button" data-lg="${v}" aria-pressed="${L === v}">${l}</button>`).join('')}</div></div>
     ${anyFb ? '<div class="td-banner">No live sportsbook lines right now. Picks below are model projections only, not line-based picks.</div>' : ''}
-    <div class="td-body">${empty}${topSec}${gameSec}
+    <div class="td-body">${empty}${topSec}${noValue}${gameSec}
       <div class="td-cols"><div class="td-main">${boardSec}</div><aside class="td-side">${injCard}${slipCard}${recentCard}</aside></div>
       <p class="td-note">Confidence measures how reliable the inputs are, not win probability. All numbers are model estimates, not advice.</p></div>`;
   tdBindBoard();
@@ -4520,11 +4798,21 @@ function tdBindBoard() {
 }
 
 // spread / total / moneyline for each game, from the free ESPN odds feed. Filled in after the page paints.
+// The Today page redraws several times as its parts arrive, and each redraw re-reads the same odds and rosters. Answers are kept for a minute.
+const _tdCache = new Map();
+function tdCached(url, ttl = 60000) {
+  const c = _tdCache.get(url);
+  if (c && Date.now() - c.t < ttl) return c.p;
+  const p = apiGet(url);
+  _tdCache.set(url, { t: Date.now(), p });
+  p.catch(() => _tdCache.delete(url));
+  return p;
+}
 async function tdLoadLines(games) {
   const token = window._tdToken;
   await Promise.all(games.map(async g => {
     try {
-      const o = await apiGet(`/api/game-odds?league=${g.league}&team1=${encodeURIComponent(g.away)}&team2=${encodeURIComponent(g.home)}`);
+      const o = await tdCached(`/api/game-odds?league=${g.league}&team1=${encodeURIComponent(g.away)}&team2=${encodeURIComponent(g.home)}`);
       if (window._tdToken !== token || !o?.available) return;
       const el = document.querySelector(`[data-lines="${CSS.escape(`${g.league}|${g.away}@${g.home}`)}"]`);
       if (!el) return;
@@ -4544,7 +4832,7 @@ async function tdLoadInjuries(games) {
   const teams = [];
   for (const g of games) for (const t of [g.away, g.home]) if (!teams.some(x => x.t === t)) teams.push({ t, lg: g.league });
   const out = await Promise.all(teams.slice(0, 12).map(async ({ t, lg }) => {
-    try { const r = await apiGet(`${lg === 'wnba' ? '/api/wnba/roster' : '/api/roster'}?team=${encodeURIComponent(t)}`); return { t, list: r?.injured || [] }; }
+    try { const r = await tdCached(`${lg === 'wnba' ? '/api/wnba/roster' : '/api/roster'}?team=${encodeURIComponent(t)}`); return { t, list: r?.injured || [] }; }
     catch (_) { return { t, list: [] }; }
   }));
   if (window._tdToken !== token) return;
@@ -4683,7 +4971,7 @@ function renderMarketValue(ctx, userLine) {
   if (!lm || !re) {
     return wrap({ body: `<div class="mv-note" style="margin-top:0;">No live sportsbook line was found for this prop right now, so expected value and stake can't be calculated. (The edge above is measured against the line you entered.)</div>` });
   }
-  const side = lm.edge > 0 ? 'OVER' : 'UNDER';
+  const side = lm.side || (lm.edge > 0 ? 'OVER' : 'UNDER');
   const ev = re.expectedValue * 100, tooBig = ev >= EV_TRUST_LIMIT, kelly = tooBig ? 0 : (re.kellyStake || 0) * 100;
   const price = re.price > 0 ? `+${re.price}` : `${re.price}`;
   const evColor = ev > 0 ? 'var(--green)' : 'var(--red)';
@@ -4693,17 +4981,19 @@ function renderMarketValue(ctx, userLine) {
   const notes = [];
   if (!isNaN(entered) && lm.line != null && Math.abs(entered - lm.line) >= 0.5)
     notes.push(`You entered ${escapeHtml(String(userLine))}; the best posted line is ${lm.line}. Value below is measured at the posted line.`);
-  if (blend)
-    notes.push(`Projection moved ${mp.preMarketProjection} → ${mp.projection} toward the ${blend.bookCount}-book consensus (${Math.round(blend.weight * 100)}% weight — shakier projections lean on the market more).`);
+  if (blend && mp.marketBlendProjection != null)
+    notes.push(`The projection above is the model's own (${mp.projection}). Blended with the ${blend.bookCount}-book consensus (${Math.round(blend.weight * 100)}% market) it is ${mp.marketBlendProjection}. On graded picks the posted line beat the model, so the win chance below leans on the market.`);
   notes.push('Model estimate, not a guarantee. Stake is quarter-Kelly, capped at 5% of bankroll.');
   return wrap({
     head: `<span class="mv-big" style="color:${evColor};">${ev >= 0 ? '+' : ''}${ev.toFixed(1)}%<small>EXPECTED VALUE PER $1 · ${side}</small></span>`,
     body:
-      row('Best line', `${side} ${lm.line}${pl?.softestBook ? ' · ' + escapeHtml(pl.softestBook) : ''} · ${price}`) +
+      row('Best line', `${side} ${lm.line}${(lm.book || pl?.softestBook) ? ' · ' + escapeHtml(lm.book || pl.softestBook) : ''} · ${price}`) +
       row('Consensus line', lm.consensusLine != null ? `${lm.consensusLine} <span style="color:var(--muted);">(${lm.bookCount} books)</span>` : '—') +
-      row('Model chance', `${re.modelProb}%`) +
-      row('Market chance', re.fairMarketProb != null ? `${re.fairMarketProb}% <span style="color:var(--muted);">(vig removed)</span>` : '—') +
-      row('Edge over market', re.probEdge != null ? `<span class="${re.probEdge > 0 ? 'pos' : 'neg'}">${re.probEdge > 0 ? '+' : ''}${re.probEdge} pts</span>` : '—') +
+      row('Model alone', `${re.modelProb}% <span style="color:var(--muted);">(raw, runs high)</span>`) +
+      row('Market chance', re.fairMarketProb != null ? `${re.fairMarketProb}% <span style="color:var(--muted);">(${re.bookCount || lm.bookCount} books, vig removed)</span>` : '—') +
+      row('Our chance', re.finalProb != null ? `<b>${re.finalProb}%</b> <span style="color:var(--muted);">(market first, model a small nudge)</span>` : '—') +
+      (re.pushProbability > 0.005 ? row('Push chance', `${(re.pushProbability * 100).toFixed(0)}% <span style="color:var(--muted);">(stake refunded)</span>`) : '') +
+      row('Edge over price', re.probEdge != null ? `<span class="${re.probEdge > 0 ? 'pos' : 'neg'}">${re.probEdge > 0 ? '+' : ''}${re.probEdge} pts</span> <span style="color:var(--muted);">(break-even ${re.breakEvenProb}%)</span>` : '—') +
       row('Suggested stake', tooBig ? 'Withheld — edge too large to trust' : kelly > 0 ? `${kelly.toFixed(1)}% of bankroll` : 'None — no edge at this price') +
       (tooBig ? `<div class="mv-warn">⚠ An edge this large is more often the model being overconfident or missing something (lineup or injury news, a role change) than free money, so no stake is suggested. Its win probabilities haven't been checked against graded results yet.</div>` : '') +
       `<div class="mv-note">${notes.join('<br>')}</div>`,
@@ -4726,20 +5016,20 @@ function pkTeamCode(league, team) {
 }
 function topPlayCard(p, i, league, conf, fallback) {
   const code = pkTeamCode(league, p.team), oppShort = (p.opponent || '').split(' ').pop();
-  const dir = (p.direction || '').toLowerCase();
+  const dir = /^(over|under)$/i.test(p.direction || '') ? p.direction.toLowerCase() : '';   // a class name: only the known values
   const sign = p.edge > 0 ? 'pos' : p.edge < 0 ? 'neg' : '';
   return `<div class="pk-card ${fallback ? '' : dir}">
     <span class="pk-rank">#${i + 1}</span>
     ${pickAvatar(league, p.playerId, p.player)}
     <div class="pk-body">
-      <div class="pk-name">${escapeHtml(p.player)}${code ? `<small>${code}</small>` : ''}</div>
+      <div class="pk-name">${escapeHtml(p.player)}${code ? `<small>${escapeHtml(code)}</small>` : ''}</div>
       <div class="pk-prop">${PROP_LABEL[p.propType] || escapeHtml(String(p.propType).toUpperCase())} · vs ${escapeHtml(oppShort)}${!fallback && p.book ? ` · ${escapeHtml(p.book)}` : ''}</div>
-      <div class="pk-row">${fallback ? `<span>Projection <b>${p.projection}</b></span>` : `<span>Line <b>${p.line}</b></span><span>Proj <b>${p.projection}</b></span>`}</div>
+      <div class="pk-row">${fallback ? `<span>Projection <b>${escapeHtml(p.projection)}</b></span>` : `<span>Line <b>${escapeHtml(p.line)}</b></span><span>Proj <b>${escapeHtml(p.projection)}</b></span>`}</div>
       <div class="pk-row"><span>Confidence</span><b>${fmtConf(conf)}%</b></div>
       <div class="pk-bar"><i style="width:${Math.max(0, Math.min(100, conf))}%"></i></div>
       <div class="pk-foot">
         ${fallback ? '<span class="pk-pill">≈ PROJ</span>' : `<span class="pk-pill ${dir}">${escapeHtml(p.direction)}</span>`}
-        ${!fallback && p.edge != null ? `<span class="pk-edge ${sign}">${p.edge > 0 ? '+' : ''}${p.edge}<small>EDGE</small></span>` : ''}
+        ${!fallback && p.edge != null ? `<span class="pk-edge ${sign}">${p.edge > 0 ? '+' : ''}${escapeHtml(p.edge)}<small>EDGE</small></span>` : ''}
       </div>
       ${fallback ? '' : evChip(p)}
     </div>
@@ -4763,7 +5053,7 @@ async function renderTopPlays(league='nba') {
     const shownTop = uniqueConfs(data.topPlays);
     box.innerHTML = data.topPlays.map((p, i) => topPlayCard(p, i, league, shownTop.get(p) ?? p.confidence, false)).join('');
   } catch (err) {
-    box.innerHTML = `<div class="top-plays-empty">Could not load — ${err.message}</div>`;
+    box.innerHTML = `<div class="top-plays-empty">Could not load — ${escapeHtml(err.message)}</div>`;
   }
 }
 

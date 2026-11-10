@@ -73,6 +73,7 @@
   .tile .v { font-family: var(--display); font-weight: 800; font-size: 30px; line-height: 1.1; letter-spacing: .02em; font-variant-numeric: tabular-nums; }
   .tile .s { font-size: 12px; color: var(--muted); }
   .pill { display: inline-block; font-family: var(--display); font-weight: 700; font-size: 12px; letter-spacing: .12em; padding: 1px 8px; border-radius: 5px; border: 1px solid var(--border2); color: var(--muted2); text-transform: uppercase; white-space: nowrap; }
+  pre.rep { margin: 0; white-space: pre-wrap; word-break: break-word; font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text); }
   .pill.ok { background: #12261b; border-color: #2a6b47; color: var(--green); }
   .pill.warn { background: #2a2414; border-color: #7a6a2f; color: #e6c35a; }
   .pill.critical, .pill.bad { background: #2a1414; border-color: #7a2f2f; color: var(--red); }
@@ -114,6 +115,42 @@
   .chk .tag { margin-left: auto; flex: none; align-self: flex-start; }
   .chk > div { min-width: 0; flex: 1; }
   .list3 { margin: 6px 0 0; padding-left: 18px; color: var(--muted2); font-size: 13.5px; }
+  /* grading report */
+  .gr-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+  .gr-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .gr-delivery { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; color: var(--muted2); }
+  .gr-how summary { cursor: pointer; color: var(--muted2); font-size: 13px; display: inline; text-decoration: underline; text-underline-offset: 3px; }
+  .gr-how p { margin: 8px 0 0; font-size: 13px; color: var(--muted); max-width: 70ch; }
+  .gr-how[open] { flex-basis: 100%; }
+  #gr-status:not(:empty) { margin: 0 0 14px; padding: 8px 12px; border: 1px solid var(--border2); border-radius: 8px; background: var(--surface2); color: var(--text); }
+  #p-grading .grid4 { margin-bottom: 8px; }
+  #p-grading .card { margin: 16px 0 0; }
+  #p-grading .tile .s { margin-top: 2px; }
+  .gr-of { font-size: 18px; color: var(--muted); }
+  .gr-prog { height: 6px; border-radius: 3px; background: var(--surface3); margin-top: 8px; overflow: hidden; }
+  .gr-prog i { display: block; height: 100%; background: var(--muted2); border-radius: 3px; }
+  .gr-t3list { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
+  .gr-t3row { display: flex; gap: 10px; flex-wrap: wrap; align-items: baseline; font-size: 13px; }
+  .gr-t3day { padding: 8px 0; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 5px; }
+  .gr-t3day:first-of-type { border-top: 0; }
+  .gr-t3h { font-size: 13px; margin-bottom: 2px; }
+  .gr-t3res { min-width: 58px; font-weight: 600; font-size: 12px; }
+  .gr-dim { color: var(--muted); }
+  .gr-best { color: var(--green); font-weight: 600; }
+  .gr-scan td, .gr-scan th { font-variant-numeric: tabular-nums; }
+  .gr-rate { display: inline-block; position: relative; vertical-align: middle; width: 84px; height: 6px; margin-right: 6px; border-radius: 3px; background: var(--surface3); }
+  .gr-rate i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: var(--muted); }
+  .gr-rate i.up { background: var(--green); }
+  .gr-rate b { position: absolute; top: -3px; bottom: -3px; left: 52.4%; width: 1px; background: var(--muted2); }
+  .gr-bb { margin-top: 16px; }
+  .gr-bb .tile .gr-prog { margin: 8px 0 4px; }
+  .gr-strength { margin-top: 0; }
+  .gr-strength .card { margin-top: 16px; }
+  .gr-foot { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 16px 0; font-size: 13px; }
+  .gr-raw { margin-top: 4px; border: 1px solid var(--border); border-radius: 10px; padding: 4px 14px; background: var(--surface); }
+  .gr-raw summary { cursor: pointer; padding: 10px 0; font-family: var(--display); font-weight: 700; font-size: 14px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted2); }
+  .gr-raw pre.rep { padding: 0 0 14px; }
+  .gr-actions .btn2:focus-visible, .gr-raw summary:focus-visible, .gr-how summary:focus-visible, .chipf:focus-visible { outline: 2px solid var(--muted2); outline-offset: 2px; }
   #app { display: none; }
 </style>
 </head>
@@ -122,8 +159,8 @@
   <div id="gate" class="gate">
     <h1>WIN AI — SCOUTING NOTES</h1>
     <div class="sub">Private admin panel. Enter the admin token to continue.</div>
-    <input type="password" id="token-input" placeholder="Admin token" onkeydown="if(event.key==='Enter')unlock()" />
-    <input type="text" id="code-input" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="6-digit code from your authenticator app" style="margin-top:10px" hidden onkeydown="if(event.key==='Enter')unlock()" />
+    <input type="password" id="token-input" aria-label="Admin token" autocomplete="off" placeholder="Admin token" onkeydown="if(event.key==='Enter')unlock()" />
+    <input type="text" id="code-input" aria-label="Six-digit code from your authenticator app" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="6-digit code from your authenticator app" style="margin-top:10px" hidden onkeydown="if(event.key==='Enter')unlock()" />
     <button onclick="unlock()" style="width:100%;" id="gate-btn">UNLOCK</button>
     <div class="err" id="gate-err"></div>
   </div>
@@ -137,6 +174,7 @@
       <button class="tab" role="tab" id="t-users" data-p="users" aria-selected="false" aria-controls="p-users" tabindex="-1">Users</button>
       <button class="tab" role="tab" id="t-backtest" data-p="backtest" aria-selected="false" aria-controls="p-backtest" tabindex="-1">Backtest</button>
       <button class="tab" role="tab" id="t-calibration" data-p="calibration" aria-selected="false" aria-controls="p-calibration" tabindex="-1">Calibration</button>
+      <button class="tab" role="tab" id="t-grading" data-p="grading" aria-selected="false" aria-controls="p-grading" tabindex="-1">Grading</button>
       <button class="tab" role="tab" id="t-notes" data-p="notes" aria-selected="false" aria-controls="p-notes" tabindex="-1">Scouting notes</button>
     </div>
     <div class="pane" id="p-health" role="tabpanel" aria-labelledby="t-health"><div class="empty">Loading...</div></div>
@@ -144,6 +182,7 @@
     <div class="pane" id="p-users" role="tabpanel" aria-labelledby="t-users" hidden><div class="empty">Loading...</div></div>
     <div class="pane" id="p-backtest" role="tabpanel" aria-labelledby="t-backtest" hidden><div class="empty">Loading...</div></div>
     <div class="pane" id="p-calibration" role="tabpanel" aria-labelledby="t-calibration" hidden><div class="empty">Loading...</div></div>
+    <div class="pane" id="p-grading" role="tabpanel" aria-labelledby="t-grading" hidden><div class="empty">Loading...</div></div>
     <div class="pane" id="p-notes" role="tabpanel" aria-labelledby="t-notes" hidden>
     <h2>Scouting notes</h2>
     <div class="sub">Your own offense/defense film reads per team — folded automatically into the AI breakdown for any analysis involving that team. Not visible to regular users of the app.</div>
@@ -314,7 +353,7 @@ async function deleteNote(id) {
 
 
 /* ───────── tabs ───────── */
-const LOADERS = { health: loadHealth, checks: loadChecks, users: loadUsers, backtest: loadBacktest, calibration: loadCalibration, notes: () => {} };
+const LOADERS = { health: loadHealth, checks: loadChecks, users: loadUsers, backtest: loadBacktest, calibration: loadCalibration, grading: loadGrading, notes: () => {} };
 function showTab(id) {
   document.querySelectorAll('.tab').forEach(t => { const on = t.dataset.p === id; t.setAttribute('aria-selected', on); t.tabIndex = on ? 0 : -1; });
   document.querySelectorAll('.pane').forEach(p => { p.hidden = p.id !== 'p-' + id; });
@@ -510,6 +549,160 @@ async function loadCalibration() {
         <div class="card"><h2>How much it trusts the curve</h2><p style="margin:0;color:var(--muted2)">${m && m.w != null ? `With ${m.n} picks the fitted curve counts for <b>${Math.round(m.w * 100)}%</b> and the raw chance for the rest. More graded picks raise that share (it is n / (n + ${t.shrinkK})).` : `The blend starts small and grows with data: 60 picks counts the curve about 29%, 600 picks about 80%.`}</p>${chart || '<div class="empty" style="padding:30px 0">The correction curve shows here once calibration is on.</div>'}</div>
       </div>`;
     document.getElementById('cal-refit').addEventListener('click', async e => { e.target.disabled = true; try { await apiCall('/api/admin/calibration/refit', { method: 'POST' }); } catch (err) { alert(err.message); } loadCalibration(); });
+  } catch (err) { if (TOKEN) el.innerHTML = `<div class="err">${escapeHtml(err.message)}</div>`; }
+}
+
+/* ───────── daily grading report ───────── */
+const GR_LABEL = { points: 'PTS', rebounds: 'REB', assists: 'AST', '3pm': '3PM', steals: 'STL', blocks: 'BLK', pra: 'PRA', pr: 'P+R', pa: 'P+A', ra: 'R+A' };
+const grPct = v => (v == null || !isFinite(v) ? '–' : (v * 100).toFixed(1) + '%');
+const grRec = r => (r ? `${r.wins}-${r.losses}${r.pushes ? '-' + r.pushes : ''}` : '–');
+const grNum = (v, d = 2) => (v == null || !isFinite(v) ? '–' : Number(v).toFixed(d));
+const grDay = d => { const t = new Date(d + 'T12:00:00Z'); return isNaN(t) ? String(d) : t.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }); };
+
+// One row of the scan table: the lowest figure in each group of three is marked.
+function grScanRow(label, x) {
+  if (!x) return `<tr><td>${escapeHtml(label)}</td><td colspan="8" class="gr-dim">Nothing graded yet</td></tr>`;
+  const c = x.scores, v = x.valuePicks;
+  const best = (a, keys, i) => { const vals = keys.map(k => a[k]); const m = Math.min(...vals.filter(n => n != null && isFinite(n))); return vals[i] === m ? ' class="r gr-best"' : ' class="r"'; };
+  const mae = ['model', 'blended', 'market'], br = ['model', 'market', 'final'];
+  return `<tr><td>${escapeHtml(label)}</td><td class="r">${x.graded}</td>
+    ${mae.map((k, i) => `<td${best(c.mae, mae, i)}>${grNum(c.mae[k])}</td>`).join('')}
+    ${br.map((k, i) => `<td${best(c.brier, br, i)}>${grNum(c.brier[k], 3)}</td>`).join('')}
+    <td class="r">${v && v.picks ? `${v.wins}-${v.losses}${v.pushes ? '-' + v.pushes : ''} <span class="gr-dim">(${grPct(v.winRate)} vs ${grPct(v.expectedWinRate)})</span>` : '<span class="gr-dim">none</span>'}</td></tr>`;
+}
+
+// How picks did by their strength when made. The small bar shows the win rate against the 52.4% break-even tick.
+function grStrengthCard(title, hint, g, label) {
+  if (!g || !g.tiers.some(t => t.toDate.n)) return '';
+  const rate = x => (x.winRate == null ? '<span class="gr-dim">–</span>' : `<span class="gr-rate" role="img" aria-label="${grPct(x.winRate)} won"><i class="${x.winRate >= 0.524 ? 'up' : ''}" style="width:${Math.min(100, x.winRate * 100)}%"></i><b></b></span> ${grPct(x.winRate)}`);
+  return `<div class="card"><h2>${escapeHtml(title)}</h2><p class="note2" style="margin:0 0 8px">${escapeHtml(hint)}</p><div class="scroll"><table class="t"><thead><tr><th>Strength</th><th class="r">${escapeHtml(label)}</th><th class="r">Since tracking began</th><th>Win rate</th></tr></thead><tbody>
+    ${g.tiers.map(t => `<tr><td><b>${escapeHtml(t.label)}</b> <span class="gr-dim">${escapeHtml(t.range)}</span></td><td class="r">${t.day.n ? grRec(t.day) : '<span class="gr-dim">–</span>'}</td><td class="r">${t.toDate.n ? `${grRec(t.toDate)} <span class="gr-dim">(${t.toDate.n})</span>` : '<span class="gr-dim">none</span>'}</td><td style="white-space:nowrap">${rate(t.toDate)}</td></tr>`).join('')}
+    </tbody></table></div>${g.unrated ? `<p class="note2">${g.unrated} older picks have no strength recorded and are left out.</p>` : ''}</div>`;
+}
+
+// The best-bets tracker: the real test is only the picks since the rules were fixed.
+function grBestCard(b, label) {
+  if (!b) return '';
+  const need = 150, n = b.sinceLock.n;
+  return `<div class="card gr-bb"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline"><h2>Best bets</h2><span class="hint">Rules fixed ${escapeHtml(grDay(b.rules.lockedOn))}</span></div>
+    <p class="note2" style="margin:0 0 10px">${escapeHtml(b.rules.text)}. Chosen only from what is known when the pick is made.</p>
+    <div class="grid4">
+      <div class="tile"><div class="k">The real test</div><div class="v">${n ? grRec(b.sinceLock) : '–'}</div><div class="s">${n ? `${grPct(b.sinceLock.winRate)} won · ${n} graded` : 'none graded yet'}${b.waiting ? ` · ${b.waiting} waiting` : ''}</div><div class="gr-prog" role="img" aria-label="${n} of ${need} picks graded"><i style="width:${Math.min(100, n / need * 100)}%"></i></div><div class="s">${n} of ${need} picks needed for a clear answer</div></div>
+      <div class="tile"><div class="k">${escapeHtml(label)}</div><div class="v">${b.day.n ? grRec(b.day) : '–'}</div><div class="s">${b.day.n ? grPct(b.day.winRate) + ' won' : 'none graded'}</div></div>
+      <div class="tile"><div class="k">Every other pick, same days</div><div class="v">${b.restOfPicks.n ? grRec(b.restOfPicks) : '–'}</div><div class="s">${b.restOfPicks.n ? grPct(b.restOfPicks.winRate) + ' won' : 'none yet'}</div></div>
+      <div class="tile"><div class="k">Before the rules (reference)</div><div class="v">${b.earlier.n ? grRec(b.earlier) : '–'}</div><div class="s">${b.earlier.n ? grPct(b.earlier.winRate) + ' won · ' : ''}picked with these results in view, so expect it to fall</div></div>
+    </div></div>`;
+}
+
+function grTop3Card(t, label) {
+  if (!t) return '';
+  const need = 100, n = t.toDate.n;
+  const rows = (t.list || []).map(p => `<div class="gr-t3row"><span class="gr-t3res ${p.result === 'WIN' ? 'pos' : p.result === 'LOSS' ? 'neg' : ''}">${p.result === 'WIN' ? 'Won' : p.result === 'LOSS' ? 'Lost' : p.result === 'PUSH' ? 'Push' : 'Waiting'}</span><b>${escapeHtml(p.player)}</b><span>${escapeHtml(p.direction.replace('LEAN_', ''))} ${escapeHtml(p.line)} ${escapeHtml(GR_LABEL[p.propType] || p.propType)}</span><span class="hint">${p.actual == null ? '' : 'actual ' + escapeHtml(p.actual)}${p.confidence == null ? '' : ' · conf ' + Math.round(p.confidence)}${p.ev == null ? '' : ' · EV ' + (p.ev * 100).toFixed(1) + '%'}</span></div>`).join('');
+  return `<div class="card gr-bb"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline"><h2>Top 3 of the day</h2><span class="hint">${t.startedOn ? 'Tracked since ' + escapeHtml(grDay(t.startedOn)) : 'Nothing locked yet'}</span></div>
+    <p class="note2" style="margin:0 0 10px">The three most confident picks across the whole slate, one per player, locked when first shown and kept until the next day. Graded against the line they were locked at.</p>
+    <div class="grid4">
+      <div class="tile"><div class="k">All days</div><div class="v">${n ? grRec(t.toDate) : '–'}</div><div class="s">${n ? `${grPct(t.toDate.winRate)} won · ${n} graded` : 'none graded yet'}${t.waiting ? ` · ${t.waiting} waiting` : ''}</div><div class="gr-prog" role="img" aria-label="${n} of ${need} picks graded"><i style="width:${Math.min(100, n / need * 100)}%"></i></div><div class="s">${n} of ${need} picks needed for a clear answer</div></div>
+      <div class="tile"><div class="k">${escapeHtml(label)}</div><div class="v">${t.day.n ? grRec(t.day) : '–'}</div><div class="s">${t.day.n ? grPct(t.day.winRate) + ' won' : 'none graded'}</div></div>
+      <div class="tile"><div class="k">Every pick, same period</div><div class="v">${t.restOfPicks.n ? grRec(t.restOfPicks) : '–'}</div><div class="s">${t.restOfPicks.n ? grPct(t.restOfPicks.winRate) + ' won' : 'none yet'}</div></div>
+      <div class="tile"><div class="k">By league</div><div class="v" style="font-size:15px">${Object.entries(t.byLeague || {}).map(([lg, x]) => `${lg.toUpperCase()} ${grRec(x)}`).join('<br>') || '–'}</div><div class="s">${t.days} league-day${t.days === 1 ? '' : 's'} locked</div></div>
+    </div>${rows ? `<div class="gr-t3list">${rows}</div>` : ''}</div>`;
+}
+
+function grTop3Log(days) {
+  const rec = (days || []).flatMap(d => d.plays).filter(p => p.result);
+  const w = rec.filter(p => p.result === 'WIN').length, l = rec.filter(p => p.result === 'LOSS').length;
+  const body = (days || []).length ? days.slice(0, 30).map(d => `<div class="gr-t3day"><div class="gr-t3h"><b>${escapeHtml(grDay(d.date))}</b> <span class="tag league">${escapeHtml(d.league)}</span></div>${d.plays.map(p => `<div class="gr-t3row"><span class="gr-t3res ${p.result === 'WIN' ? 'pos' : p.result === 'LOSS' ? 'neg' : ''}">${p.result === 'WIN' ? 'Won' : p.result === 'LOSS' ? 'Lost' : p.result === 'PUSH' ? 'Push' : 'Waiting'}</span><b>${escapeHtml(p.player)}</b><span>${escapeHtml(String(p.direction).replace('LEAN_', ''))} ${escapeHtml(p.line)} ${escapeHtml(GR_LABEL[p.propType] || p.propType)}</span><span class="hint">${p.actual == null ? '' : 'actual ' + escapeHtml(p.actual) + ' · '}conf ${p.confidence == null ? '–' : Math.round(p.confidence)}${p.ev == null ? '' : ' · EV ' + (p.ev * 100).toFixed(1) + '%'}</span></div>`).join('')}</div>`).join('')
+    : '<div class="empty">Nothing locked yet. Each day\'s Top 3 is logged here the first time it is shown.</div>';
+  return `<div class="card"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline"><h2>Top 3 log</h2><span class="hint">${rec.length ? `${w}-${l} graded · ` : ''}every locked pick, newest first</span></div>${body}</div>`;
+}
+
+function grForward(f) {
+  if (!f) return '';
+  const tm = f.teammateOut && f.teammateOut.all, pos = f.position && f.position.all, out = [];
+  const miss = v => (v == null ? '–' : (v >= 0 ? '+' : '') + (v * 100).toFixed(1) + '%');
+  if (tm) out.push(`<b>Teammate-out lift:</b> ${tm.boosted.n} props carried a lift of 2% or more and were missed by ${miss(tm.boosted.miss)}; ${tm.none.n} with no lift by ${miss(tm.none.miss)} (plus means the model was too low). <span class="pill ${tm.verdict === 'about right' ? 'ok' : tm.verdict === 'too early' ? '' : 'warn'}">${escapeHtml(tm.verdict)}</span>`);
+  if (pos) out.push(`<b>Position allowed:</b> ${pos.n} props moved by it, slope ${pos.slope == null ? '–' : escapeHtml(pos.slope)} (1 is the right size, 0 does nothing). <span class="pill ${pos.verdict === 'adds value' ? 'ok' : pos.verdict === 'too early' ? '' : 'warn'}">${escapeHtml(pos.verdict)}</span>`);
+  return out.length ? `<p class="note2"><b>Forward checks</b> (only props logged since these were added): </p>${out.map(x => `<p class="note2">${x}</p>`).join('')}` : '<p class="note2"><b>Forward checks</b> (teammate-out lift, position allowed): waiting for props logged with them to be graded.</p>';
+}
+
+function reportHtml(r) {
+  const d = r.data;
+  if (!d) return `<div class="card"><div class="hint" style="margin-bottom:8px">${escapeHtml(r.headline)} · built ${ago(r.sentAt)}</div><pre class="rep">${escapeHtml(r.text)}</pre></div>`;
+  const day = d.picks.day, all = d.picks.toDate, label = grDay(d.date);
+  const edge = all.winRate == null ? null : (all.winRate - 0.524) * 100;
+  const nba = d.scan.nba, tiles = `
+    <div class="grid4">
+      <div class="tile"><div class="k">Picks graded · ${escapeHtml(label)}</div><div class="v">${day.n ? grRec(day) : '–'}</div><div class="s">${day.n ? `${day.n} picks · ${grPct(day.winRate)} won` : 'none graded for this day'}</div></div>
+      <div class="tile"><div class="k">Since tracking began</div><div class="v">${grRec(all)}</div><div class="s">${grPct(all.winRate)} over ${all.n} picks${edge == null ? '' : ` · <span class="${edge >= 0 ? 'pos' : 'neg'}">${edge >= 0 ? '+' : ''}${edge.toFixed(1)} pts</span> vs break-even`}</div></div>
+      <div class="tile"><div class="k">Waiting to be graded</div><div class="v">${d.picks.waiting}</div><div class="s">${d.picks.setAside ? `${d.picks.setAside} set aside (no matching game)` : 'none set aside'}</div></div>
+      <div class="tile"><div class="k">Scan log graded</div><div class="v">${nba ? nba.counts.graded : 0}<span class="gr-of"> / ${nba ? nba.counts.total : 0}</span></div><div class="gr-prog" role="img" aria-label="${nba ? nba.counts.graded : 0} of ${nba ? nba.counts.total : 0} logged props graded"><i style="width:${nba && nba.counts.total ? Math.min(100, nba.counts.graded / nba.counts.total * 100) : 0}%"></i></div></div>
+    </div>
+    ${all.n < 400 ? `<p class="note2">Break-even at -110 is 52.4%. With ${all.n} graded picks a record this size cannot separate skill from luck yet.</p>` : ''}`;
+
+  const pickRows = d.picks.list && d.picks.list.length ? `
+    <div class="card"><h2>${escapeHtml(label)} picks</h2><div class="scroll"><table class="t"><thead><tr><th>Result</th><th>Player</th><th>Pick</th><th>Strength</th><th class="r">Actual</th></tr></thead><tbody>
+      ${d.picks.list.map((p, i) => `<tr${i >= 10 ? ' class="gr-extra" hidden' : ''}><td><span class="pill ${p.result === 'WIN' ? 'ok' : p.result === 'LOSS' ? 'bad' : ''}">${escapeHtml(p.result)}</span></td><td>${escapeHtml(p.player)}${p.bestBet ? ' <span class="pill" title="Passes the best-bet rules">★ Best bet</span>' : ''}${Object.keys(d.picks.byLeague).length > 1 ? ` <span class="gr-dim">${escapeHtml(String(p.league).toUpperCase())}</span>` : ''}</td><td>${escapeHtml(p.verdict)} ${escapeHtml(String(p.line))} ${escapeHtml(GR_LABEL[p.propType] || p.propType)}</td><td>${p.strength ? `<span class="pill">${escapeHtml(p.strength)}</span> <span class="gr-dim">${escapeHtml(String(Math.round(p.confidence)))}${p.ev != null ? ` · EV ${escapeHtml((p.ev * 100).toFixed(1))}%` : ''}</span>` : '<span class="gr-dim">–</span>'}</td><td class="r">${p.actual == null ? '–' : escapeHtml(String(p.actual))}</td></tr>`).join('')}
+    </tbody></table></div>${d.picks.list.length > 10 ? `<button class="btn2 gr-showall" type="button" style="margin-top:10px" aria-expanded="false">Show all ${d.picks.list.length}</button>` : ''}${day.n > d.picks.list.length ? `<p class="note2">The first ${d.picks.list.length} of ${day.n} are listed; the rest are in the plain-text version below.</p>` : ''}</div>`
+    : `<div class="card"><h2>${escapeHtml(label)} picks</h2><div class="empty">No picks were graded for this day. Either no games were played, no picks were logged, or the results are not in the stats feed yet.</div></div>`;
+
+  const scan = Object.entries(d.scan).map(([lg, s]) => {
+    const note = s.day && s.day.scores.mae.model != null && s.day.scores.mae.market != null
+      ? (s.day.scores.mae.model < s.day.scores.mae.market ? 'The model beat the posted line that day.' : 'The posted line was closer than the model that day.') : '';
+    return `<div class="card"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline"><h2>Every ${escapeHtml(lg.toUpperCase())} prop the scan logged</h2><span class="hint">${s.counts.total} logged · ${s.counts.graded} graded · ${s.counts.waiting} waiting${s.counts.setAside ? ` · ${s.counts.setAside} set aside` : ''}</span></div>
+      <div class="scroll"><table class="t gr-scan"><thead><tr><th></th><th class="r">Props</th><th class="r" title="Average miss in the stat, lower is better">Model miss</th><th class="r" title="Average miss of the market-blend projection">Blend miss</th><th class="r" title="Average miss of the posted line">Line miss</th><th class="r" title="Win-chance score, lower is better">Brier model</th><th class="r">Brier market</th><th class="r">Brier blend</th><th class="r">Value picks</th></tr></thead><tbody>
+      ${grScanRow(label, s.day)}${grScanRow('Since logging began', s.toDate)}</tbody></table></div>
+      <p class="note2">Lower is better in every column; the best of each group is lit. ${escapeHtml(note)}</p>
+      ${grForward(s.forward)}
+      ${s.real && Object.keys(s.real).length ? `<p class="note2">How much of the model's disagreement with the line was real (1 = all of it, 0 = none): ${Object.entries(s.real).map(([t, x]) => `<b>${escapeHtml(GR_LABEL[t] || t)}</b> ${grNum(x.slope)} <span class="gr-dim">(${x.n} props)</span>`).join(' · ')}</p>` : ''}</div>`;
+  }).join('');
+
+  const biasPills = (d.bias || []).map(b => `<span class="pill" title="The model's raw ratio was ${escapeHtml(String(b.ratio))} over ${escapeHtml(String(b.n))} graded props">Bias fix ${escapeHtml(b.league.toUpperCase())} ${escapeHtml(GR_LABEL[b.propType] || b.propType)} ×${escapeHtml(String(b.mult))}</span>`).join(' ');
+  const cal = d.calibration ? `<span class="pill ${d.calibration.active ? 'ok' : ''}">Calibration ${d.calibration.active ? 'on' : 'off'}</span> <span class="gr-dim">${escapeHtml(d.calibration.reason || '')}</span>` : '<span class="pill">Calibration not fitted</span>';
+  return `<div class="hint" style="margin-bottom:12px">${escapeHtml(r.headline)} · built ${ago(r.sentAt)}</div>${tiles}${grBestCard(d.bestBets, label)}${grTop3Card(d.top3, label)}<div class="grid2 gr-strength">${grStrengthCard('By strength', 'The confidence score when the pick was made.', d.strength && d.strength.confidence, label)}${grStrengthCard('By expected value', 'Value at the price taken. Value is 3% or more.', d.strength && d.strength.ev, label)}</div>${scan}${pickRows}
+    <div class="gr-foot">${cal} ${biasPills}${d.credits != null ? ` <span class="pill ${d.credits < 60 ? 'warn' : ''}">${escapeHtml(String(d.credits))} odds credits left</span>` : ''}</div>
+    <details class="gr-raw"><summary>Plain-text version (what gets sent)</summary><pre class="rep">${escapeHtml(r.text)}</pre></details>`;
+}
+
+async function loadGrading() {
+  const el = document.getElementById('p-grading');
+  try {
+    const [d, t3] = await Promise.all([apiCall('/api/admin/grading-report'), apiCall('/api/admin/top3').catch(() => ({ days: [] }))]), dl = d.delivery;
+    const where = [dl.webhook ? 'your Discord or Slack webhook' : null, dl.email ? 'your email' : null].filter(Boolean);
+    const delivery = where.length
+      ? `<span class="pill ok">Sent to ${escapeHtml(where.join(' and '))}</span>`
+      : `<span class="pill warn">Saved here only</span> <details class="gr-how"><summary>How to get it as a message</summary><p>Set <code>ADMIN_ALERT_WEBHOOK</code> (a Discord or Slack webhook) to get it as a message, or set up email (<code>RESEND_API_KEY</code>, <code>MAIL_FROM</code>) and <code>ADMIN_EMAIL</code> to get it in your inbox.${dl.adminEmailSet && !dl.emailConfigured ? ' ADMIN_EMAIL is set, but email sending is not configured.' : ''}</p></details>`;
+    el.innerHTML = `
+      <div class="gr-head"><div><h2 style="margin:0 0 6px">Daily grading report</h2><div class="gr-delivery">${delivery}</div></div>
+        <div class="gr-actions"><button class="btn2" id="gr-grade">Grade finished games</button><button class="btn2" id="gr-send">Build and send now</button></div></div>
+      <div id="gr-status" class="note2" role="status" aria-live="polite"></div>
+      <div id="gr-body">${d.last ? reportHtml(d.last) : '<div class="card"><div class="empty">No report yet. The first one is built after the next nightly grading, or press the button.</div></div>'}</div>
+      ${grTop3Log(t3.days)}
+      ${d.history.length > 1 ? `<div class="card"><h2>Earlier reports</h2><div class="chips">${d.history.slice(1, 15).map(h => `<button class="chipf gr-open" data-d="${escapeHtml(h.date)}" title="${escapeHtml(h.headline)}">${escapeHtml(grDay(h.date))}${h.day && h.day.n ? ` · ${escapeHtml(grRec(h.day))}` : ''}</button>`).join('')}</div></div>` : ''}
+      <div class="hint">Only the system's own picks are in it. ${escapeHtml(d.nextRun)}.</div>`;
+    const status = document.getElementById('gr-status');
+    el.addEventListener('click', e => {
+      const b = e.target.closest('.gr-showall'); if (!b) return;
+      const open = b.getAttribute('aria-expanded') !== 'true';
+      el.querySelectorAll('.gr-extra').forEach(r => { r.hidden = !open; });
+      b.setAttribute('aria-expanded', String(open)); b.textContent = open ? 'Show fewer' : 'Show all ' + (el.querySelectorAll('.gr-extra').length + 10);
+    });
+    const work = (btn, text, fn) => async () => {
+      el.querySelectorAll('.gr-actions button').forEach(b => { b.disabled = true; });
+      btn.textContent = 'Working...'; status.textContent = text;
+      try { status.textContent = await fn() || 'Done.'; } catch (err) { status.textContent = err.message; }
+      await loadGrading();
+    };
+    const grade = document.getElementById('gr-grade'), send = document.getElementById('gr-send');
+    grade.addEventListener('click', work(grade, 'Grading every finished game, then rebuilding the report. This can take a few minutes.', async () => {
+      await apiCall('/api/admin/jobs/pipeline/run', { method: 'POST' });
+      await apiCall('/api/admin/grading-report/send', { method: 'POST' });
+      return 'Graded and rebuilt the report.';
+    }));
+    send.addEventListener('click', work(send, 'Building the report.', async () => { const r = await apiCall('/api/admin/grading-report/send', { method: 'POST' }); return r && r.result; }));
+    el.querySelectorAll('.gr-open').forEach(b => b.addEventListener('click', async () => {
+      try { const h = await apiCall('/api/admin/grading-report/' + encodeURIComponent(b.dataset.d)); document.getElementById('gr-body').innerHTML = reportHtml(h); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+      catch (err) { status.textContent = err.message; }
+    }));
   } catch (err) { if (TOKEN) el.innerHTML = `<div class="err">${escapeHtml(err.message)}</div>`; }
 }
 

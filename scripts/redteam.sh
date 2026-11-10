@@ -11,4 +11,4 @@ cd "$ROOT" && PORT=$PORT WINAI_DB="$TMP/redteam.db" ADMIN_TOKEN=audit-token-123 
   GOOGLE_CLIENT_ID= GOOGLE_CLIENT_SECRET= BACKUP_S3_ENDPOINT= HEARTBEAT_URL= ADMIN_ALERT_WEBHOOK= \
   node --disable-warning=ExperimentalWarning server.js >"$TMP/server.log" 2>&1 & SRV=$!
 for i in $(seq 1 30); do sleep 1; curl -s -o /dev/null -m 2 http://localhost:$PORT/api/ping && break; done
-RT_PORT=$PORT node "$ROOT/test/redteam/attack.js"
+RT_PORT=$PORT RT_SERVER_LOG="$TMP/server.log" node "$ROOT/test/redteam/attack.js"
