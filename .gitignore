@@ -12,6 +12,7 @@ __pycache__/
 !package.json
 !package-lock.json
 !railway.json
+!model_params.json
 
 # Last season's final NBA stat files. They never change, and fetch_stats.py blends the current season with them, so they ship
 # with the code (a fresh deploy has no stat files of its own). Each October: copy season_raw/*.json into prior_season/ and commit.
@@ -24,3 +25,6 @@ __pycache__/
 *.db-shm
 backups/
 *.pre-sqlite.bak
+
+# the replay lab's downloaded game logs
+lab_data/

@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "note": "Written by the lab (npm run lab) from graded results. Missing entries fall back to the defaults in lib/params.js.",
+  "market": {
+    "weightModelProb": {
+      "default": 0.05,
+      "points": 0.03,
+      "assists": 0.05
+    },
+    "weightModelMean": {
+      "default": 0.15,
+      "points": 0.1,
+      "assists": 0.05
+    },
+    "modelOnlyKeep": 0.5,
+    "minEv": 0.03
+  },
+  "spread": {
+    "points": {
+      "a": 4.5,
+      "b": 0.13
+    },
+    "assists": {
+      "a": 1.6,
+      "b": 0.25
+    },
+    "rebounds": {
+      "a": 1.2,
+      "b": 0.35
+    },
+    "3pm": {
+      "phi": 1.24
+    },
+    "steals": {
+      "phi": 1.12
+    },
+    "blocks": {
+      "phi": 1.18
+    }
+  },
+  "rest": {
+    "minutes": 1.0,
+    "stats": 1.0
+  },
+  "usage": {
+    "sens": {
+      "points": 0.29,
+      "rebounds": 0.23,
+      "assists": 0.3,
+      "3pm": 0.22,
+      "steals": 0.08,
+      "blocks": 0
+    },
+    "minutesSlope": 0.18
+  },
+  "fittedAt": "2026-11-04T00:00:00.000Z"
+}

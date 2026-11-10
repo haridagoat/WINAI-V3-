@@ -10,7 +10,6 @@ import season_blend
 from nba_api.stats.endpoints import (
     leaguedashteamstats,
     leaguedashplayerstats,
-    leaguedashteamptshot,
     leaguedashteamshotlocations,
     leaguedashplayershotlocations,
     leaguedashptdefend,
@@ -351,11 +350,31 @@ def fetch_synergy(label, ptype, pot, grp):
             return None
     return None
 
+# ── BLEND FIRST ───────────────────────────────────────────────────
+# Everything above is saved. Blend and publish it now, before the play-type calls below: those are the slow and unreliable part (nba.com often
+# answers them with malformed responses, and each is retried), and a run that is cut short there used to leave every stat file days old.
+print("\n[BLEND] This season is the base; last season is a slight prior...")
+season_blend.blend_dir(RAW_DIR, PRIOR_DIR, '.')
+with open('season_meta.json', 'w') as f:
+    json.dump({'season': SEASON, 'blended_with': _meta(PRIOR_DIR), 'blended_at': time.strftime('%Y-%m-%dT%H:%M:%S')}, f)
+
+# Play types. After three failures in a row, or six minutes, the rest are skipped and the last good files stay as they are.
+SYNERGY_BUDGET_S, SYNERGY_MAX_FAILS = 6 * 60, 3
+synergy_started, synergy_fails, synergy_stopped = time.time(), 0, False
 for label, ptype in PLAYTYPES:
     for pot, grp, gname in [('P','offensive','player_off'),('T','defensive','team_def')]:
+        if synergy_stopped:
+            break
+        if synergy_fails >= SYNERGY_MAX_FAILS or time.time() - synergy_started > SYNERGY_BUDGET_S:
+            print(f"  Skipping the remaining play types ({synergy_fails} failures in a row, {int(time.time() - synergy_started)}s used); keeping the last good files.")
+            synergy_stopped = True
+            break
         df = fetch_synergy(label, ptype, pot, grp)
         if df is not None:
+            synergy_fails = 0
             save(f'playtype_{ptype}_{gname}.json', df.to_dict('records'))
+        else:
+            synergy_fails += 1
         time.sleep(SLEEP)
 
 # ── BLEND WITH LAST SEASON ────────────────────────────────────────

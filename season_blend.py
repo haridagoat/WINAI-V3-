@@ -16,7 +16,6 @@ Pure functions, tested in tests_py/test_season_blend.py.
 """
 import json
 import os
-import shutil
 
 PRIOR_FLOOR = 0.15          # prior weight once there are 10+ games
 PRIOR_END = 0.05            # prior weight from 60 games on
