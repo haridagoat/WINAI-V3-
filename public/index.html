@@ -1437,6 +1437,10 @@
   .td-body{display:flex;flex-direction:column;gap:22px;}
   .td-sh{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px;}
   .td-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;min-width:0;}
+  .td-ctl{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:flex-end;}
+  .td-nv{font-size:12px;color:var(--muted);margin:0 0 6px;} .td-nv.bad{color:var(--neg,#ff5d5d);}
+  .td-dim{opacity:.55;}
+  .td-fresh{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:-4px 0 12px;} .td-fresh b{font-weight:600;color:var(--muted2);} .td-fresh .warn{color:#e0a43a;}
   .td-seg{display:inline-flex;border:1px solid var(--border2);border-radius:9px;overflow:hidden;}
   .td-seg button{background:var(--surface2);border:0;padding:7px 16px;font-family:var(--label);font-weight:700;font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted2);cursor:pointer;border-radius:0;}
   .td-seg button+button{border-left:1px solid var(--border2);}
@@ -4521,7 +4525,15 @@ let _todayPicks = []; // flat list so onclick can reference by index (player nam
 // ── TODAY PAGE: top picks, tonight's games with their lines, a searchable prop board, and a
 // side column (closing-line check, injuries, Prop List, recently viewed). Every number is real:
 // the same day-locked slate scan the NBA / WNBA pages use, so opening this costs no extra credits.
-const TD = { league: 'both', prop: 'all', q: '', key: 'conf', dir: -1, all: false, data: null };
+const TD = { league: 'both', prop: 'all', q: '', key: 'conf', dir: -1, all: false, data: null, projMode: (() => { try { return localStorage.getItem('winai_projmode') === 'blend' ? 'blend' : 'model'; } catch (_) { return 'model'; } })(), fresh: null, freshAt: 0 };
+// Expected value as a signed percent. One decimal under 10% (so -0.3% does not read as "-0%"), none above; a value that rounds to zero is just 0.0%.
+function fmtEv(ev) {
+  if (ev == null || !isFinite(ev)) return '—';
+  const v = ev * 100, a = Math.abs(v), t = a < 10 ? a.toFixed(1) : a.toFixed(0);
+  return parseFloat(t) === 0 ? '0.0%' : (v < 0 ? '−' : '+') + t + '%';
+}
+// Which projection the page shows: the model's own number, or the one blended with the books' line (the win chance and EV are worked out from the blend).
+const tdProj = p => (TD.projMode === 'blend' && p?.blendedProjection != null ? p.blendedProjection : p?.projection);
 const tdHay = p => `${p.player} ${p.team} ${p.opponent} ${p.propType} ${PROP_LABEL[p.propType] || ''} ${p.direction}`.toLowerCase();
 const tdAm = n => n == null ? '—' : (n > 0 ? '+' : '−') + Math.abs(n);
 
@@ -4633,8 +4645,13 @@ function tdOpenIdx(p) { return _todayPicks.push(p) - 1; }
 // which the market-anchored projection can no longer reach: the projection is mostly the line now.)
 // The projection shown is the model's own number. The books' line has been closer to the real stat than the model on graded picks, so a market-blended
 // estimate is kept alongside it (the win chance and EV lean on that), and shown under the projection whenever it differs.
-const modelNote = p => (p?.blendedProjection != null && Math.abs(p.blendedProjection - p.projection) >= 0.3
-  ? `<small class="td-model" title="The model's number blended with the books' line. The posted line has been closer than the model on graded picks, so the win chance and EV lean on this.">market-blend ${escapeHtml(p.blendedProjection)}</small>` : '');
+const modelNote = p => {
+  if (p?.blendedProjection == null || Math.abs(p.blendedProjection - p.projection) < 0.3) return '';
+  const blend = TD.projMode === 'blend';
+  return `<small class="td-model" title="${blend ? 'The model\'s own number, before it is blended with the books\' line.' : 'The model\'s number blended with the books\' line. The posted line has been closer than the model on graded picks, so the win chance and EV lean on this.'}">${blend ? 'model' : 'market-blend'} ${escapeHtml(blend ? p.projection : p.blendedProjection)}</small>`;
+};
+// How far the shown projection sits from the line, so an OVER whose model number is under the line is not a puzzle: the call follows the blend.
+const lineGap = p => { const v = tdProj(p); return p?.line != null && v != null && isFinite(v - p.line) ? `<small class="td-model" title="The shown projection minus the posted line">${v - p.line >= 0 ? '+' : '−'}${Math.abs(v - p.line).toFixed(1)} vs line</small>` : ''; };
 const EV_PICK_MIN = 0.03;
 const isValuePick = p => (p?.realEdge?.expectedValue ?? -1) >= EV_PICK_MIN;
 const byValueDesc = (a, b) => ((b.realEdge?.expectedValue ?? -9) - (a.realEdge?.expectedValue ?? -9)) || (b.confidence - a.confidence);
@@ -4647,15 +4664,15 @@ function tdTopCard(p, i) {
     <span class="td-rk">#${i + 1}</span>
     <div class="td-tp-h">${pickAvatar(p.league, p.playerId, p.player)}<div><div class="td-tp-n">${escapeHtml(p.player)}${p.bestBet ? ' <span class="td-best">BEST BET</span>' : ''}</div><div class="td-tp-s">${escapeHtml(team)} vs ${escapeHtml(opp)}</div></div></div>
     <div class="td-call">${fb ? `<span class="td-big">≈ PROJ ${escapeHtml(p.projection)}</span>` : `<span class="td-big ${over ? 'pos' : 'neg'}">${escapeHtml(p.direction)} ${escapeHtml(p.line)}</span>`}<span class="td-pill">${PROP_LABEL[p.propType] || escapeHtml(String(p.propType).toUpperCase())}</span></div>
-    <div class="td-m"><div><span>Projection</span><b>${escapeHtml(p.projection)}</b>${modelNote(p)}</div>
+    <div class="td-m"><div><span>${TD.projMode === 'blend' ? 'Market blend' : 'Projection'}</span><b>${escapeHtml(tdProj(p))}</b>${lineGap(p)}${modelNote(p)}</div>
       <div><span>Confidence</span><b>${fmtConf(conf)}</b><div class="td-cbar"><i style="width:${Math.max(0, Math.min(100, conf))}%"></i></div></div>
-      <div><span>EV</span><b${hot ? ' class="neg"' : ''} title="${hot ? 'Unusually large: more often the model being overconfident than free money, so no stake is suggested.' : 'Expected profit per $1 at the best posted price'}">${ev == null ? '—' : (ev * 100).toFixed(0) + '%'}${hot ? ' ⚠' : ''}</b></div></div></div>`;
+      <div><span>EV</span><b${hot || (ev != null && ev < 0) ? ' class="neg"' : ''} title="${hot ? 'Unusually large: more often the model being overconfident than free money, so no stake is suggested.' : ev != null && ev < 0 ? 'Below break-even at the best posted price' : 'Expected profit per $1 at the best posted price'}">${fmtEv(ev)}${hot ? ' ⚠' : ''}</b>${ev != null && ev < 0 ? '<small class="td-model">below break-even</small>' : ''}</div></div></div>`;
 }
 
 // One row per pick in a game's top three: who, which side and number, our chance, and the expected value at the best price.
 function tdPickRow(p) {
   const ev = p.realEdge?.expectedValue, over = p.direction === 'OVER', idx = tdOpenIdx(p), price = p.realEdge?.price;
-  const evTxt = ev == null ? '—' : `${ev >= 0 ? '+' : '−'}${Math.abs(ev * 100).toFixed(1)}%`;
+  const evTxt = fmtEv(ev);
   return `<div class="td-gp" data-pick="${idx}" role="button" tabindex="0">
     <span class="td-rk">#${p.gameRank}</span>
     <div class="td-gp-n"><b>${escapeHtml(p.player)}</b><small>${escapeHtml(p.book || '')}${price != null ? ' ' + (price > 0 ? '+' : '') + escapeHtml(price) : ''}</small></div>
@@ -4674,7 +4691,13 @@ function tdGameCard(g) {
   const picks = pk.filter(p => p.gameRank).sort((a, b) => a.gameRank - b.gameRank);
   let pickSec;
   if (TD.data.loadingBoard) pickSec = '<div class="td-gp-empty">working out the picks…</div>';
-  else if (picks.length) pickSec = `<div class="td-gps" aria-label="Top 3 picks in this game">${picks.map(tdPickRow).join('')}</div>`;
+  else if (picks.length) {
+    const evs = picks.map(x => x.realEdge?.expectedValue ?? -1), anyVal = picks.some(x => x.value), allBelow = evs.every(v => v < 0);
+    const note = anyVal ? '' : allBelow
+      ? '<div class="td-nv bad" role="note"><b>No value here.</b> Every pick is below break-even at the best price.</div>'
+      : '<div class="td-nv" role="note"><b>Best available.</b> None of these clear the 3% value bar.</div>';
+    pickSec = `${note}<div class="td-gps${!anyVal && allBelow ? ' td-dim' : ''}" aria-label="Top 3 picks in this game">${picks.map(tdPickRow).join('')}</div>`;
+  }
   else if (!pk.length) pickSec = `<div class="td-gp-empty">${Date.parse(g.status) > Date.now() ? 'lines not posted yet' : 'no props'}</div>`;
   else if (TD.data.fallback[g.league]) pickSec = '<div class="td-gp-empty">no live lines yet, model projections only</div>';
   else pickSec = '<div class="td-gp-empty">no pick for this game yet</div>';
@@ -4690,7 +4713,7 @@ function tdGameCard(g) {
 function tdBoardRows() {
   const D = TD.data, words = TD.q.trim().toLowerCase().split(/\s+/).filter(Boolean);
   let rows = D.props.filter(p => (TD.league === 'both' || p.league === TD.league) && (TD.prop === 'all' || p.propType === TD.prop) && words.every(w => tdHay(p).includes(w)));
-  const val = p => ({ player: p.player, line: p.line, proj: p.projection, conf: tdShown(p), ev: p.realEdge?.expectedValue ?? -1 }[TD.key]);
+  const val = p => ({ player: p.player, line: p.line, proj: tdProj(p), conf: tdShown(p), ev: p.realEdge?.expectedValue ?? -1 }[TD.key]);
   rows.sort((a, b) => { const x = val(a), y = val(b); return (typeof x === 'string' ? x.localeCompare(y) : x - y) * TD.dir; });
   return rows;
 }
@@ -4702,9 +4725,9 @@ function tdBoardHtml() {
     const over = p.direction === 'OVER', ev = p.realEdge?.expectedValue, hot = ev != null && ev * 100 >= EV_TRUST_LIMIT, conf = tdShown(p), idx = tdOpenIdx(p);
     return `<tr data-pick="${idx}" tabindex="0"><td><div class="td-who">${pickAvatar(p.league, p.playerId, p.player)}<div><b>${escapeHtml(p.player)}</b><small>${escapeHtml((p.awayTeam || '').split(' ').pop())} @ ${escapeHtml((p.homeTeam || '').split(' ').pop())}</small></div></div></td>
       <td>${PROP_LABEL[p.propType] || escapeHtml(String(p.propType).toUpperCase())}</td><td><span class="td-pill ${over ? 'pos' : 'neg'}">${escapeHtml(p.direction)}</span></td>
-      <td class="r num">${escapeHtml(p.line)}</td><td class="r num">${escapeHtml(p.projection)}${modelNote(p)}</td>
+      <td class="r num">${escapeHtml(p.line)}</td><td class="r num">${escapeHtml(tdProj(p))}${modelNote(p)}</td>
       <td><span class="td-bar"><i style="width:${Math.max(0, Math.min(100, conf))}%"></i></span><span class="num">${fmtConf(conf)}</span></td>
-      <td class="r num" ${hot ? 'title="Unusually large: more often the model being overconfident than free money."' : ''}>${ev == null ? '—' : (ev * 100).toFixed(0) + '%'}${hot ? ' <span class="neg">⚠</span>' : ''}</td></tr>`;
+      <td class="r num${ev != null && ev < 0 ? ' neg' : ''}" ${hot ? 'title="Unusually large: more often the model being overconfident than free money."' : ''}>${fmtEv(ev)}${hot ? ' <span class="neg">⚠</span>' : ''}</td></tr>`;
   }).join('') : `<tr><td colspan="7"><div class="td-empty" style="padding:22px 8px">${TD.data.loadingBoard ? '<b>Working out the prop board</b>The games are above. Props appear here game by game as they are ready, which can take a few minutes after a restart.' : TD.data.fallback.nba || TD.data.fallback.wnba ? 'No live sportsbook lines right now, so there is nothing to rank yet.' : `No props match${TD.q ? ' “' + escapeHtml(TD.q) + '”' : ' these filters'}.`}</div></td></tr>`;
   return { html: `<thead><tr>${th('player', 'Player')}<th>Prop</th><th>Side</th>${th('line', 'Line', 1)}${th('proj', 'Proj', 1)}${th('conf', 'Confidence')}${th('ev', 'EV', 1)}</tr></thead><tbody>${body}</tbody>`, total: rows.length, shown: shown.length };
 }
@@ -4727,7 +4750,8 @@ function paintToday() {
 
   const empty = !nGames
     ? `<section><div class="td-card"><div class="td-empty"><b>No games today</b>${L === 'both' ? 'Nothing is on the NBA or WNBA schedule for today.' : 'Nothing is on the ' + L.toUpperCase() + ' schedule for today.'} Open Daily Matchups to look at a future game.</div></div></section>` : '';
-  const topSec = !topList.length && D.loadingPicks ? `<section><div class="td-card"><div class="td-empty" style="padding:22px 12px"><b>Working out today's picks</b>The games are below. Picks appear here as soon as they are ready, which can take a minute or two after a restart.</div></div></section>` : topList.length ? `<section><div class="td-sh"><h2>Top picks</h2><span class="td-hint">${locked.length ? 'the three most confident today · locked until tomorrow' : tops.length ? 'one per player · ranked by expected value' : 'model projections only: no live lines'}</span></div><div class="td-tops">${topList.map(tdTopCard).join('')}</div></section>` : '';
+  const topBelow = locked.length && locked.every(x => (x.realEdge?.expectedValue ?? -1) < 0) ? '<p class="td-note td-valnote">None of today\'s most confident picks clear break-even at the best price. They are the most confident, not the best value.</p>' : '';
+  const topSec = !topList.length && D.loadingPicks ? `<section><div class="td-card"><div class="td-empty" style="padding:22px 12px"><b>Working out today's picks</b>The games are below. Picks appear here as soon as they are ready, which can take a minute or two after a restart.</div></div></section>` : topList.length ? `<section><div class="td-sh"><h2>Top picks</h2><span class="td-hint">${locked.length ? 'the three most confident today · locked until tomorrow' : tops.length ? 'one per player · ranked by expected value' : 'model projections only: no live lines'}</span></div>${topBelow}<div class="td-tops">${topList.map(tdTopCard).join('')}</div></section>` : '';
   // Picks are always shown (the three best in each game). VALUE marks one that also beats the books' fair price by a real margin; when none do, say so.
   const anyValue = D.props.some(p => inL(p) && p.value);
   const noValue = D.props.some(p => inL(p) && p.gameRank) && !anyValue && !D.loadingBoard
@@ -4756,12 +4780,34 @@ function paintToday() {
 
   root.innerHTML = `
     <div class="td-title"><div><h1>Today</h1><div class="td-sub">${dateTxt} · ${nGames} game${nGames === 1 ? '' : 's'}${scanned ? ` · ${scanned} props scanned` : ''}</div></div>
-      <div class="td-seg" id="td-seg">${[['nba', 'NBA'], ['wnba', 'WNBA'], ['both', 'Both']].map(([v, l]) => `<button type="button" data-lg="${v}" aria-pressed="${L === v}">${l}</button>`).join('')}</div></div>
+      <div class="td-ctl"><div class="td-seg" id="td-seg" role="group" aria-label="League">${[['nba', 'NBA'], ['wnba', 'WNBA'], ['both', 'Both']].map(([v, l]) => `<button type="button" data-lg="${v}" aria-pressed="${L === v}">${l}</button>`).join('')}</div>
+        <div class="td-seg" id="td-proj" role="group" aria-label="Projection shown" title="Which projection to show. The win chance and EV always come from the market blend.">${[['model', 'Model'], ['blend', 'Blend']].map(([v, l]) => `<button type="button" data-pm="${v}" aria-pressed="${TD.projMode === v}">${l}</button>`).join('')}</div></div></div>
+    <div class="td-fresh" id="td-fresh" role="status"></div>
     ${anyFb ? '<div class="td-banner">No live sportsbook lines right now. Picks below are model projections only, not line-based picks.</div>' : ''}
     <div class="td-body">${empty}${topSec}${noValue}${gameSec}
       <div class="td-cols"><div class="td-main">${boardSec}</div><aside class="td-side">${injCard}${slipCard}${recentCard}</aside></div>
       <p class="td-note">Confidence measures how reliable the inputs are, not win probability. All numbers are model estimates, not advice.</p></div>`;
   tdBindBoard();
+  tdPaintFresh();
+}
+
+// How old the data behind the page is: player stats, the lines scan and the injury check. Amber when the stats are over a day old in season.
+function tdAgo(iso) {
+  const t = Date.parse(iso || ''); if (!isFinite(t)) return null;
+  const m = Math.max(0, Math.round((Date.now() - t) / 60000));
+  return m < 2 ? 'just now' : m < 90 ? m + ' min ago' : m < 48 * 60 ? Math.round(m / 60) + ' h ago' : Math.round(m / 1440) + ' days ago';
+}
+function tdPaintFresh() {
+  const el = document.getElementById('td-fresh'); if (!el) return;
+  const draw = f => {
+    if (!f || !document.getElementById('td-fresh')) return;
+    const lg = TD.league === 'wnba' ? 'wnba' : 'nba', other = lg === 'nba' ? 'wnba' : 'nba';
+    const stats = f.stats[lg], statsAge = (Date.now() - Date.parse(stats || '')) / 3600e3, stale = f.inSeason[lg] && isFinite(statsAge) && statsAge > 24;
+    const parts = [['Stats', tdAgo(stats), stale], ['Lines', tdAgo(f.lines[lg] || f.lines[other]), false], ['Injuries', tdAgo(f.injuries), false]].filter(x => x[1]);
+    el.innerHTML = parts.length ? parts.map(([k, v, warn]) => `<span class="${warn ? 'warn' : ''}"><b>${k}</b> ${escapeHtml(v)}${warn ? ' · older than a day' : ''}</span>`).join('') : '';
+  };
+  if (TD.fresh && Date.now() - TD.freshAt < 60000) return draw(TD.fresh);
+  fetch('/api/freshness').then(r => (r.ok ? r.json() : null)).then(f => { if (f) { TD.fresh = f; TD.freshAt = Date.now(); } draw(f); }).catch(() => {});
 }
 
 // the board re-renders on its own so typing in the search box never loses focus
@@ -4785,6 +4831,7 @@ function tdBindBoard() {
     const th = e.target.closest('#td-brd th.s');
     if (th) { const k = th.dataset.k; TD.dir = TD.key === k ? -TD.dir : (k === 'player' ? 1 : -1); TD.key = k; return tdRepaintBoard(); }
     const lg = e.target.closest('[data-lg]'); if (lg) { TD.league = lg.dataset.lg; return paintToday(); }
+    const pm = e.target.closest('[data-pm]'); if (pm) { TD.projMode = pm.dataset.pm; try { localStorage.setItem('winai_projmode', TD.projMode); } catch (_) {} return paintToday(); }
     const chip = e.target.closest('[data-prop]'); if (chip) { TD.prop = chip.dataset.prop; return tdRepaintBoard(); }
     if (e.target.closest('#td-more')) { if (TD.data?.limited) return openUpgrade('prop_board'); TD.all = !TD.all; return tdRepaintBoard(); }
     const mu = e.target.closest('[data-matchup]'); if (mu) { const [a, h, l] = mu.dataset.matchup.split('|'); return prefillMatchup(a, h, l); }

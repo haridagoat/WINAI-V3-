@@ -5553,6 +5553,15 @@ function isCacheStillFresh(cached, today) {
   return (Date.now() - (cached.ts || 0)) < EMPTY_SCAN_RETRY_MS;
 }
 
+// How old the data behind the Today page is: player stat files, the day's lines scan and the last injury check. File times and scan times only.
+app.get('/api/freshness', (req, res) => {
+  const mtime = f => { try { return fs.statSync(path.join(__dirname, f)).mtime.toISOString(); } catch (_) { return null; } };
+  const scanAt = lg => { const c = slateScanCache[lg]; return c && c.dateKey === getToday() && c.ts ? new Date(c.ts).toISOString() : null; };
+  const rosters = Object.values(lastRosterFetch).filter(Number.isFinite);
+  res.set('Cache-Control', 'public, max-age=60');
+  res.json({ now: new Date().toISOString(), stats: { nba: mtime('player_stats.json'), wnba: mtime('wnba_player_stats.json') }, lines: { nba: scanAt('nba'), wnba: scanAt('wnba') },
+    injuries: rosters.length ? new Date(Math.max(...rosters)).toISOString() : null, inSeason: { nba: datachecks.inSeason('nba', new Date()), wnba: datachecks.inSeason('wnba', new Date()) } });
+});
 app.get('/api/top-plays', async (req, res) => {
   const league  = (req.query.league || 'nba').toLowerCase() === 'wnba' ? 'wnba' : 'nba';
   const today   = getToday();
@@ -6810,7 +6819,7 @@ function applyCLV(e) {
 // makes ONE odds call per game for just the markets that have pending picks
 // (~1 request per market). Never captured after tip-off: live lines are a
 // different thing, and those picks are marked 'missed' instead of faked.
-const CLOSING_WINDOW_MIN = 12;
+const CLOSING_WINDOW_MIN = 15;
 const PROP_MARKET_BY_TYPE = {
   points: 'player_points', rebounds: 'player_rebounds', assists: 'player_assists', '3pm': 'player_threes',
   pra: 'player_points_rebounds_assists', steals: 'player_steals', blocks: 'player_blocks',
@@ -6832,6 +6841,31 @@ function entryEvent(entry, events) {
   }).filter(ev => new Date(ev.commence_time).getTime() > saved - 3 * 3600 * 1000)
     .sort((x, y) => new Date(x.commence_time) - new Date(y.commence_time));
   return hits[0] || null; // earliest game involving that opponent after the pick was logged
+}
+
+// When the odds feed cannot give a closing price (out of credits, the server was off at tip-off, a skipped tick), a pick used to be marked 'missed' for
+// good: half of all logged picks. The slate scan keeps looking again at each game as tip-off nears, so its last look is a fair stand-in, with three
+// safeguards: it must be a real re-look at least 30 minutes after the pick was logged (not the opening scan again, which would make every CLV zero),
+// within 150 minutes before tip-off, and never after it. It is stored as closingCapture 'scan' so it can be told apart from a direct capture.
+function scanClosingFor(e) {
+  const tip = Date.parse(e.gameStart || ''), saved = Date.parse(e.savedAt || '');
+  if (!isFinite(tip) || !isFinite(saved) || !e.date) return null;
+  const d = store.scanPropData(e.date, e.league, e.player, e.propType);
+  const at = d ? Date.parse(d.at || '') : NaN, line = d ? d.evalLine : null;
+  if (!isFinite(at) || typeof line !== 'number') return null;
+  if (at > tip || at < tip - 150 * 60000 || at < saved + 30 * 60000) return null;
+  return { closingLine: line, closingBookCount: Array.isArray(d.books) ? d.books.length : null, closingCapturedAt: d.at, closingCapture: 'scan' };
+}
+// Fills picks already marked 'missed' from the scan's last look (see scanClosingFor). Runs in the daily pipeline.
+function backfillClosingFromScan() {
+  const entries = loadCLV(); let n = 0;
+  for (const e of entries) {
+    if (e.source !== 'auto' || e.closingLine != null || e.closingCapture !== 'missed') continue;
+    const c = scanClosingFor(e); if (!c) continue;
+    Object.assign(e, c); applyCLV(e); n++;
+  }
+  if (n) saveCLV(entries);
+  return n;
 }
 
 async function captureClosingLines() {
@@ -6865,7 +6899,7 @@ async function captureClosingLines() {
       for (const { ev, list } of byEvent.values()) {
         const mins = (new Date(ev.commence_time).getTime() - now) / 60000;
         if (mins > CLOSING_WINDOW_MIN) { earliestTip = Math.min(earliestTip, mins); continue; }
-        if (mins <= 0) { list.forEach(e => addPatch(e.id, { closingCapture: 'missed' })); continue; }
+        if (mins <= 0) { list.forEach(e => addPatch(e.id, scanClosingFor(e) || { closingCapture: 'missed' })); continue; }
 
         const markets = [...new Set(list.map(e => PROP_MARKET_BY_TYPE[e.propType]).filter(Boolean))];
         if (!markets.length) { list.forEach(e => addPatch(e.id, { closingCapture: 'unsupported' })); continue; }
@@ -7355,7 +7389,11 @@ function refitBias() {
   return parts.length ? parts.join('; ') : `not enough graded props yet (needs ${biasLib.MIN_N} per stat)`;
 }
 async function refitCalibration() {
-  const model = calibration.fit(loadCLV().filter(e => e.source === 'auto'));
+  // The logged picks, plus every graded scan prop that is not already one of them (see calibration.fromScanRows): several times the data.
+  const picks = loadCLV().filter(e => e.source === 'auto');
+  const have = new Set(picks.map(e => [e.date, e.league || 'nba', e.player, e.propType].join('|')));
+  const scanRows = []; for (const lg of ['nba', 'wnba']) scanRows.push(...store.gradedScanProps(lg));
+  const model = calibration.fit([...picks, ...calibration.fromScanRows(scanRows, have)]);
   const was = !!(calibrationModel && calibrationModel.active);
   store.saveCalibration(model);
   calibrationModel = model;
@@ -7373,9 +7411,10 @@ function collectReportInputs(date) {
   const allPicks = all.map(e => ({ id: e.id, league: e.league || 'nba', player: e.player, propType: e.propType, day: gradeDateOf(e), result: e.result, confidence: e.confidence, ev: e.ev, setAside: !!e.gradeNote }));
   const pickCounts = { waiting: all.filter(e => e.result == null && !e.gradeNote).length, setAside: all.filter(e => e.result == null && e.gradeNote).length };
   const scan = {}; for (const lg of ['nba', 'wnba']) scan[lg] = { counts: store.scanCounts(lg), graded: store.gradedScanProps(lg) };
+  const closing = { total: all.length, auto: all.filter(e => e.closingLine != null && e.closingCapture === 'auto').length, scan: all.filter(e => e.closingLine != null && e.closingCapture === 'scan').length, missed: all.filter(e => e.closingLine == null && e.closingCapture === 'missed').length };
   const top3 = []; for (const h of parseMeta('top3:history', [])) for (const p of h.plays || []) top3.push({ date: h.date, league: h.league, player: p.player, propType: p.propType, line: p.line, direction: p.direction, confidence: p.confidence, ev: p.ev, actual: store.scanPropActual(h.date, h.league, p.player, p.propType) });
   const b = currentCreditBudget();
-  return { date, picks, allPicks, pickCounts, scan, top3, bias: biasTable, calibration: calibrationModel ? { active: calibrationModel.active, reason: calibrationModel.reason } : null, credits: b.known ? b.remaining : null };
+  return { date, picks, allPicks, pickCounts, scan, top3, closing, bias: biasTable, calibration: calibrationModel ? { active: calibrationModel.active, reason: calibrationModel.reason } : null, credits: b.known ? b.remaining : null };
 }
 function parseMeta(k, d) { try { return JSON.parse(store.getMeta(k) || ''); } catch (_) { return d; } }
 async function sendGradingReport({ force = false } = {}) {
@@ -7425,6 +7464,7 @@ async function runDailyPipeline() {
   await trackJob('grade', () => inBackground(autoGradePendingPicks))();
   await trackJob('grade-scan', () => inBackground(gradeScanProps))();
   await trackJob('bias', async () => refitBias())();
+  await trackJob('closing-backfill', async () => `filled ${backfillClosingFromScan()} missed closing lines from the scan's last look`)();
   await trackJob('backfill', async () => `filled ${backfillModelChances()} picks with their stored model chance`)();
   await trackJob('calibration', async () => (await refitCalibration()).reason)();
   await trackJob('backtest', async () => { const r = await runBacktest(); return `${r.totals.graded} graded picks scored`; })();

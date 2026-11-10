@@ -65,3 +65,26 @@ test('apply passes values through when there is no model', () => {
   assert.equal(cal.apply({ active: false }, 0.61), 0.61);
   assert.equal(cal.apply({ active: true, knots: [{ x: 0.6, y: 0.5, n: 10 }], w: 1 }, null), null);
 });
+
+const scanRow = (over = {}, data = {}) => ({ date: '2026-11-09', league: 'nba', player: 'A', propType: 'points', actual: 22, data: { evalLine: 20.5, modelOver: 0.62, direction: 'OVER', ...data }, ...over });
+
+test('graded scan props become calibration samples for the side the model chose', () => {
+  const e = cal.fromScanRows([
+    scanRow(),                                                                  // OVER at 62%, finished 22 over 20.5: a win
+    scanRow({ player: 'B', actual: 18 }),                                       // OVER, finished under: a loss
+    scanRow({ player: 'C', actual: 18 }, { direction: 'UNDER', modelOver: 0.3 }),   // UNDER at 70%, finished under: a win
+    scanRow({ player: 'D', actual: 20.5 }),                                     // a push: not a sample
+    scanRow({ player: 'E', actual: null }),                                     // not graded
+    scanRow({ player: 'F' }, { modelOver: undefined }),                         // no stored chance
+    scanRow({ player: 'G' }, { direction: null }),                              // no side
+  ]);
+  assert.deepEqual(e.map(x => [Math.round(x.modelProb), x.result]), [[62, 'WIN'], [62, 'LOSS'], [70, 'WIN']]);
+});
+
+test('a scan prop that is already a logged pick is skipped, so nothing is counted twice, and the result feeds fit() unchanged', () => {
+  const skip = new Set(['2026-11-09|nba|A|points']);
+  assert.equal(cal.fromScanRows([scanRow(), scanRow({ player: 'B' })], skip).length, 1);
+  assert.deepEqual(cal.fromScanRows(undefined), []);
+  const many = []; for (let i = 0; i < 100; i++) many.push(scanRow({ player: 'P' + i, actual: i % 2 ? 22 : 18 }, { modelOver: 0.5 + (i % 10) / 100 }));
+  const m = cal.fit(cal.fromScanRows(many)); assert.equal(m.n, 100);
+});
