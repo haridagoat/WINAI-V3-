@@ -6,38 +6,15 @@ const { extract } = require('./helpers/extract');
 const near = (a, b, eps = 1e-3) => assert.ok(Math.abs(a - b) <= eps, `${a} is not within ${eps} of ${b}`);
 
 const odds = extract({
-  functions: ['americanToImplied', 'americanToDecimal', 'devigTwoWay', 'calcExpectedValue', 'calcKellyStake', 'consensusFromLines', 'calcOverUnderProbability', 'usesCountModel', 'countPmf', 'countOverUnder'],
+  functions: ['americanToDecimal', 'calcKellyStake', 'consensusFromLines', 'calcOverUnderProbability', 'usesCountModel', 'countPmf', 'countOverUnder'],
   globals: { normalCdf: z => { const t = 1 / (1 + 0.2316419 * Math.abs(z)), d = 0.3989423 * Math.exp(-z * z / 2); const p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274)))); return z > 0 ? 1 - p : p; } },
 });
 
-test('american odds convert to implied chance and decimal odds', () => {
-  near(odds.americanToImplied(-110), 0.5238);
-  near(odds.americanToImplied(150), 0.4);
+test('american odds convert to decimal odds (implied chances are tested with the market module)', () => {
   near(odds.americanToDecimal(-110), 1.9091, 1e-3);
   near(odds.americanToDecimal(200), 3);
-  assert.equal(odds.americanToImplied(0), null);
-  assert.equal(odds.americanToImplied(null), null);
-});
-
-test('devig removes the margin: the two sides sum to 1', () => {
-  const d = odds.devigTwoWay(-110, -110);
-  near(d.over, 0.5); near(d.under, 0.5);
-  const lop = odds.devigTwoWay(-150, 120);
-  near(lop.over + lop.under, 1);
-  assert.ok(lop.over > lop.under);
-});
-
-test('devig falls back to the one side it has', () => {
-  const d = odds.devigTwoWay(-150, null);
-  near(d.over, 0.6);
-  assert.equal(d.under, null);
-});
-
-test('expected value per $1: positive when the model beats the price', () => {
-  near(odds.calcExpectedValue(0.55, -110), 0.0500, 1e-3);   // 0.55 * 0.909 - 0.45
-  near(odds.calcExpectedValue(0.5238, -110), 0, 2e-3);       // exactly the implied chance: break-even
-  assert.ok(odds.calcExpectedValue(0.45, -110) < 0);
-  assert.equal(odds.calcExpectedValue(null, -110), null);
+  assert.equal(odds.americanToDecimal(0), null);
+  assert.equal(odds.americanToDecimal(null), null);
 });
 
 test('Kelly stake is a quarter of full Kelly and never above 5% of bankroll', () => {
@@ -157,10 +134,11 @@ test('no posted line means no probability, not an error', () => {
   assert.equal(odds.calcOverUnderProbability(20, 6, undefined), null);
   assert.equal(odds.calcOverUnderProbability(20, 6, 0), null);
 });
-test('the pick evaluators never read the probability without checking it exists', () => {
+test('nothing reads a probability without checking it exists, and both evaluators go through the shared builder', () => {
   const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'server.js'), 'utf8');
   assert.ok(!/[^?]\bprob\.(over|under)Probability/.test(src), 'prob.overProbability / prob.underProbability must be read as prob?.');
-  assert.ok((src.match(/prob\?\.overProbability/g) || []).length >= 2);
+  assert.ok(!/[^?]\bprobs\.(over|under)Probability/.test(src.replace(/const probs = calcOverUnderProbability[^\n]*\n\s*if \(!probs\) return null;[\s\S]*?const modelProb[^\n]*\n/, '')), 'probs may only be read after the null check');
+  assert.equal((src.match(/return buildCandidateResult\(/g) || []).length, 2, 'NBA and WNBA evaluators both end in buildCandidateResult');
 });
 
 // ── small-count props use a count distribution instead of a bell curve ──

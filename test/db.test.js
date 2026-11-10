@@ -89,3 +89,26 @@ test('info describes the storage honestly', () => {
   s.savePicks([pick(1)]);
   assert.deepEqual([s.info().backend, s.info().picks], ['sqlite', 1]);
 });
+
+// ── scan log ──
+const test2 = require('node:test'), assert2 = require('node:assert/strict');
+test2('the scan log keeps one row per prop per day, grades once, and counts what is waiting', () => {
+  const { createStore } = require('../lib/db');
+  const st = createStore({ dbPath: ':memory:', log: () => {} });
+  const row = (player, extra = {}) => ({ date: '2026-11-02', league: 'nba', player, propType: 'points', data: { projection: 20, evalLine: 19.5, ...extra } });
+  assert.equal(st.addScanProps([row('A'), row('B'), row('A')]), 2, 'the same prop twice in a day is stored once');
+  assert.equal(st.addScanProps([row('A')]), 0);
+  assert.deepEqual(st.scanCounts('nba'), { total: 2, graded: 0, waiting: 2, setAside: 0, first: '2026-11-02', last: '2026-11-02' });
+  assert.equal(st.scanPropsPending('2026-11-02').length, 0, 'today is not gradable yet');
+  const pending = st.scanPropsPending('2026-11-03'); assert.equal(pending.length, 2);
+  assert.equal(st.saveScanGrade(pending[0].id, 24), true); assert.equal(st.saveScanGrade(pending[0].id, 30), false, 'a grade is never overwritten');
+  assert.equal(st.setScanNote(pending[1].id, 'no matching game'), true);
+  const c = st.scanCounts('nba'); assert.equal(c.graded, 1); assert.equal(c.waiting, 0); assert.equal(c.setAside, 1);
+  assert.equal(st.gradedScanProps('nba')[0].actual, 24);
+  assert.equal(st.updateScanProp(row('A', { projection: 22 })), false, 'a graded row is no longer changed');
+  assert.equal(st.addScanProps([row('C')]), 1);
+  assert.equal(st.updateScanProp(row('C', { projection: 25 })), true);
+  const upd = st.scanPropsPending('2026-11-03').find(r => r.player === 'C'); assert.equal(upd.data.projection, 25); assert.equal(upd.data.first.projection, 20, 'the first look is kept');
+  assert.equal(st.pruneScanProps('2026-12-01') >= 3, true);
+  st.close();
+});
