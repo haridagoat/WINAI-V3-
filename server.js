@@ -6056,33 +6056,12 @@ cron.schedule('0 9 * * *', fetchTodaysGames);
 
 // Auto-refresh nba.com stat files every morning at 7am
 // This keeps playtypes, tracking, shot dashboard etc current
-cron.schedule('0 7 * * *', () => {
-  console.log('[CRON] Auto-running fetch_stats.py to refresh nba.com data...');
-  const py = spawn('python3', ['fetch_stats.py'], { cwd: __dirname });
-  py.stdout.on('data', d => console.log('[fetch_stats]', d.toString().trim()));
-  py.stderr.on('data', d => console.error('[fetch_stats ERR]', d.toString().trim()));
-  py.on('close', code => {
-    jobRuns['stats-nba'] = { lastRun: new Date().toISOString(), ok: code === 0, error: code === 0 ? undefined : `exit code ${code}` };
-    console.log(`[CRON] fetch_stats.py finished (exit ${code})`);
-    // Clear stats cache so new files are loaded
-    nbaStatsCache = null;
-    lastStatsDiskRead = 0;
-  });
-});                                          // refresh games 9am daily
-// Same as above but for wnba_*.json (stats.nba.com, LeagueID=10) — offset
-// 15 min later so the two python processes never hit nba.com at once.
-cron.schedule('15 7 * * *', () => {
-  console.log('[CRON] Auto-running fetch_wnba_stats.py to refresh WNBA data...');
-  const py = spawn('python3', ['fetch_wnba_stats.py'], { cwd: __dirname });
-  py.stdout.on('data', d => console.log('[fetch_wnba_stats]', d.toString().trim()));
-  py.stderr.on('data', d => console.error('[fetch_wnba_stats ERR]', d.toString().trim()));
-  py.on('close', code => {
-    jobRuns['stats-wnba'] = { lastRun: new Date().toISOString(), ok: code === 0, error: code === 0 ? undefined : `exit code ${code}` };
-    console.log(`[CRON] fetch_wnba_stats.py finished (exit ${code})`);
-    wnbaStatsCache = null;
-    lastWnbaStatsDiskRead = 0;
-  });
-});
+// The stat files are refreshed at 7 AM, 7:15 AM and then checked every hour (see ensureStatsFresh): a laptop that was asleep at 7 used to leave them
+// two days old, with nothing to catch up. The refresh itself is runStatsScript (the Python scripts, one attempt, twenty minute limit).
+cron.schedule('0 7 * * *', () => trackJob('stats-nba', () => ensureStatsFresh('nba', { force: true }))().catch(err => console.error('[Stats] nba refresh failed:', err.message)));
+cron.schedule('15 7 * * *', () => trackJob('stats-wnba', () => ensureStatsFresh('wnba', { force: true }))().catch(err => console.error('[Stats] wnba refresh failed:', err.message)));
+cron.schedule('41 * * * *', async () => { for (const lg of ['nba', 'wnba']) await trackJob('stats-' + lg, () => ensureStatsFresh(lg))().catch(err => console.error(`[Stats] ${lg} catch-up failed:`, err.message)); });
+setTimeout(async () => { for (const lg of ['nba', 'wnba']) await trackJob('stats-' + lg, () => ensureStatsFresh(lg))().catch(err => console.error(`[Stats] ${lg} catch-up failed:`, err.message)); }, 100 * 1000);
 cron.schedule('0 0 * * *', () => {                                                      // midnight reset
   clearAllCaches();
   console.log('[CRON] All caches cleared');
@@ -7536,6 +7515,7 @@ const ADMIN_JOBS = {
   credits: () => trackJob('credits', refreshOddsCredits)(),
   'grading-report': () => trackJob('grading-report', () => sendGradingReport({ force: true }))(),
   datachecks: () => runDataChecks(),
+  stats: () => trackJob('stats', async () => { const out = []; for (const lg of ['nba', 'wnba']) out.push(`${lg}: ${await ensureStatsFresh(lg, { force: true })}`); return out.join(', '); })(),
 };
 app.post('/api/admin/jobs/:name/run', requireAdmin, async (req, res) => {
   const job = ADMIN_JOBS[req.params.name];
@@ -7598,6 +7578,17 @@ function runStatsScript(league) {
       code === 0 ? resolve() : reject(new Error(`exit code ${code}`));
     });
   });
+}
+// Runs the stats refresh for a league when its player file is over STATS_MAX_AGE_HOURS old and the league is in season (or when forced). One at a time per league.
+const STATS_MAX_AGE_HOURS = 20;
+const statsRefreshing = {};
+async function ensureStatsFresh(league, { force = false } = {}) {
+  if (statsRefreshing[league]) return 'already running';
+  if (!force && !datachecks.inSeason(league, new Date())) return 'out of season';
+  const m = mtimeOf(STAT_FILE[league]);
+  if (!force && m && Date.now() - m < STATS_MAX_AGE_HOURS * 3600e3) return 'fresh';
+  statsRefreshing[league] = true;
+  try { await runStatsScript(league); return 'refreshed'; } finally { statsRefreshing[league] = false; }
 }
 // Offsite backups: an encrypted copy in an S3-compatible bucket. The address must be https (or this computer, for tests).
 const offsite = (() => {
