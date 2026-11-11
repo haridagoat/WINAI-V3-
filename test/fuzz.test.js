@@ -4,12 +4,15 @@ const assert = require('node:assert/strict');
 const { extract } = require('./helpers/extract');
 const M = require('../lib/market');
 const params = require('../lib/params');
+const { makeProjection } = require('./helpers/projection');
+const P = makeProjection();
 
 params.load();
-const S = extract({
-  functions: ['calcOverUnderProbability', 'usesCountModel', 'countPmf', 'countOverUnder', 'americanToDecimal', 'calcKellyStake', 'assessProp'],
-  globals: { normalCdf: M.normalCdf, market: M, modelParams: params, calibrationModel: null, calibrate: p => p },
+const S0 = extract({
+  functions: ['americanToDecimal', 'calcKellyStake', 'assessProp'],
+  globals: { normalCdf: P.normalCdf, market: M, modelParams: params, calibrationModel: null, calibrate: p => p, calcOverUnderProbability: P.calcOverUnderProbability, usesCountModel: P.usesCountModel, countPmf: P.countPmf, countOverUnder: P.countOverUnder, blendWithMarket: P.blendWithMarket, calcEdgeScore: P.calcEdgeScore, missingProductionShare: P.missingProductionShare, baselineAbsenceWeight: () => 1 },
 });
+const S = { ...S0, calcOverUnderProbability: P.calcOverUnderProbability, usesCountModel: P.usesCountModel, countPmf: P.countPmf, countOverUnder: P.countOverUnder };
 const rng = seed => () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
 const TYPES = ['points', 'rebounds', 'assists', '3pm', 'steals', 'blocks', 'pra'];
 const price = r => { const dec = 1.3 + r() * 1.5; return Math.round(dec >= 2 ? (dec - 1) * 100 : -100 / (dec - 1)); };

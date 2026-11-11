@@ -181,3 +181,36 @@ test('admin 2FA: off is a fault only once people have accounts', async () => {
   const r = await w.run('admin-2fa'); assert.equal(r.status, 'bad'); assert.match(r.detail, /make-admin-2fa/);
   assert.equal((await ctx({ adminTotpOn: true }).run('admin-2fa')).status, 'ok');
 });
+
+const goodRows = (n, cols) => Array.from({ length: n }, (_, i) => Object.fromEntries(cols.map(c => [c, c === 'PLAYER_NAME' || c === 'TEAM_NAME' || c === 'TEAM_ABBREVIATION' ? 'X' + i : 1])));
+const schemaWorld = (over = {}) => name => {
+  const S = require('../lib/statschema').REQUIRED, spec = { ...S.nba, ...S.wnba }[name];
+  return spec ? (over[name] !== undefined ? over[name] : goodRows(spec.minRows, spec.cols)) : null;
+};
+
+test('stat file columns: every column the projection reads is there, so the check passes', async () => {
+  const t = ctx({ readStat: schemaWorld() });
+  const r = await t.run('stat-schema'); assert.equal(r.status, 'ok'); assert.match(r.detail, /every column the projection reads is there/);
+});
+
+test('stat file columns: a renamed column, a thin file and a missing file are reported, and nothing is changed', async () => {
+  const S = require('../lib/statschema').REQUIRED.nba;
+  const renamed = goodRows(S.player_advanced.minRows, S.player_advanced.cols.map(c => (c === 'USG_PCT' ? 'USAGE_PCT' : c)));
+  const thin = goodRows(5, S.team_advanced.cols);
+  const t = ctx({ now: () => Date.parse('2026-11-10T12:00:00Z'), readStat: schemaWorld({ player_advanced: renamed, team_advanced: thin, team_defense: null }) });
+  const r = await t.run('stat-schema');
+  assert.equal(r.status, 'bad'); assert.match(r.detail, /3 stat files changed shape/); assert.match(r.detail, /USG_PCT/); assert.match(r.detail, /only 5 rows/); assert.match(r.detail, /not found/);
+  assert.deepEqual(t.calls, [], 'it only reports');
+});
+
+test('stat file columns: a mostly-empty column counts as missing, a few blanks do not, and out of season is skipped', async () => {
+  const S = require('../lib/statschema').REQUIRED.nba;
+  const rows = goodRows(S.player_stats.minRows, S.player_stats.cols);
+  const fewBlank = rows.map((r, i) => (i < 5 ? { ...r, FG3M: null } : r)), mostlyBlank = rows.map((r, i) => (i < 100 ? { ...r, FG3M: null } : r));
+  const nov = Date.parse('2026-11-10T12:00:00Z');
+  assert.equal((await ctx({ now: () => nov, readStat: schemaWorld({ player_stats: fewBlank }) }).run('stat-schema')).status, 'ok');
+  assert.match((await ctx({ now: () => nov, readStat: schemaWorld({ player_stats: mostlyBlank }) }).run('stat-schema')).detail, /FG3M/);
+  const noWnba = n => (n.startsWith('wnba_') ? null : schemaWorld()(n));          // November: the WNBA is out of season, so its missing files are expected
+  assert.equal((await ctx({ now: () => nov, readStat: noWnba }).run('stat-schema')).status, 'ok');
+  assert.equal((await ctx().run('stat-schema')).status, 'ok', 'a context with no reader has nothing to check');
+});

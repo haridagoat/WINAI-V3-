@@ -1,14 +1,17 @@
-// The projection, odds and grading math in server.js, run exactly as written there.
+// The odds and grading math in server.js and the probability math in lib/projection.js, run exactly as written.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { extract } = require('./helpers/extract');
+const { makeProjection } = require('./helpers/projection');
+const P = makeProjection();
 
 const near = (a, b, eps = 1e-3) => assert.ok(Math.abs(a - b) <= eps, `${a} is not within ${eps} of ${b}`);
 
-const odds = extract({
-  functions: ['americanToDecimal', 'calcKellyStake', 'consensusFromLines', 'calcOverUnderProbability', 'usesCountModel', 'countPmf', 'countOverUnder'],
-  globals: { normalCdf: z => { const t = 1 / (1 + 0.2316419 * Math.abs(z)), d = 0.3989423 * Math.exp(-z * z / 2); const p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274)))); return z > 0 ? 1 - p : p; } },
+const odds0 = extract({
+  functions: ['americanToDecimal', 'calcKellyStake', 'consensusFromLines'],
+  globals: {},
 });
+const odds = { ...odds0, calcOverUnderProbability: P.calcOverUnderProbability, usesCountModel: P.usesCountModel, countPmf: P.countPmf, countOverUnder: P.countOverUnder };
 
 test('american odds convert to decimal odds (implied chances are tested with the market module)', () => {
   near(odds.americanToDecimal(-110), 1.9091, 1e-3);

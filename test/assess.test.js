@@ -1,18 +1,20 @@
-// The server's per-prop assessment (assessProp, buildRealEdge, blendWithMarket, missingProductionShare), run exactly as written in server.js.
+// The per-prop assessment (assessProp, buildRealEdge from server.js; blendWithMarket, missingProductionShare and the probability math from lib/projection.js), run exactly as written.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { extract } = require('./helpers/extract');
 const market = require('../lib/market');
 const params = require('../lib/params');
+const { makeProjection } = require('./helpers/projection');
+const P = makeProjection();
 
 params.load();
 let calibrationModel = null;
-const normalCdf = market.normalCdf;
-const S = extract({
-  functions: ['calcOverUnderProbability', 'usesCountModel', 'countPmf', 'countOverUnder', 'americanToDecimal', 'calcKellyStake', 'assessProp', 'buildRealEdge', 'blendWithMarket', 'calcEdgeScore', 'missingProductionShare'],
+const S0 = extract({
+  functions: ['americanToDecimal', 'calcKellyStake', 'assessProp', 'buildRealEdge'],
   consts: ['pct1', 'round3'],
-  globals: { normalCdf, market, modelParams: params, get calibrationModel() { return calibrationModel; }, calibrate: p => p, baselineAbsenceWeight: () => 1 },
+  globals: { normalCdf: P.normalCdf, market, modelParams: params, get calibrationModel() { return calibrationModel; }, calibrate: p => p, calcOverUnderProbability: P.calcOverUnderProbability, usesCountModel: P.usesCountModel, countPmf: P.countPmf, countOverUnder: P.countOverUnder, blendWithMarket: P.blendWithMarket, calcEdgeScore: P.calcEdgeScore, missingProductionShare: P.missingProductionShare, baselineAbsenceWeight: () => 1 },
 });
+const S = { ...S0, calcOverUnderProbability: P.calcOverUnderProbability, usesCountModel: P.usesCountModel, countPmf: P.countPmf, countOverUnder: P.countOverUnder, blendWithMarket: P.blendWithMarket, calcEdgeScore: P.calcEdgeScore, missingProductionShare: P.missingProductionShare };
 const book = (point, over, under) => ({ Over: { point, price: over }, Under: { point, price: under } });
 const near = (a, b, eps = 1e-3) => assert.ok(Math.abs(a - b) <= eps, `${a} is not within ${eps} of ${b}`);
 
