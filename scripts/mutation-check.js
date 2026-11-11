@@ -8,6 +8,12 @@ const fs = require('fs'), os = require('os'), path = require('path'), { spawnSyn
 const ROOT = path.join(__dirname, '..');
 // [file, what was changed, exact text to find, replacement]
 const ALL_MUTATIONS = [
+  ['lib/projection.js', 'minutes: the recent-trend cap removed', 'Math.max(-0.12, Math.min(0.12, (l3Min - projMin) / projMin * 0.5))', '(l3Min - projMin) / projMin * 0.5'],
+  ['lib/projection.js', 'minutes: the teammate-out role bump uncapped', 'Math.min(0.20, (usageMult - 1.0)', 'Math.min(9, (usageMult - 1.0)'],
+  ['lib/projection.js', 'minutes: shrink toward the season dropped (recent only)', 'let projMin = shrink(recentMin, seasonMin, last10.length || seasonGames, K_MIN);', 'let projMin = recentMin;'],
+  ['lib/projection.js', 'usage: the hot-streak cap removed', 'mult += Math.max(-0.05, Math.min(0.05, trend * 0.5));', 'mult += trend * 0.5;'],
+  ['lib/projection.js', 'usage: the total lift cap removed', 'mult = Math.min(1.30, mult);\n      teammatePart', 'teammatePart'],
+  ['lib/projection.js', 'usage: an absence already in recent games counts in full', 'return Math.max(0, Math.min(1, 1 - (wRecent * missedRecent + (1 - wRecent) * missedSeason)));', 'return 1;'],
   ['lib/projection.js', 'market weight flipped (model gets the market\'s share)', 'const marketWeight = 1 - wModel;', 'const marketWeight = wModel;'],
   ['server.js', 'call picks the worse-value side', '.sort((x, y) => (y.ev ?? -9) - (x.ev ?? -9))', '.sort((x, y) => (x.ev ?? -9) - (y.ev ?? -9))'],
   ['server.js', 'model and market swapped in the blend', 'market.blendLogit(modelUsed, marketProb, wProb)', 'market.blendLogit(marketProb, modelUsed, wProb)'],
