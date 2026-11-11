@@ -74,3 +74,32 @@ test('invalid numbers in the file are replaced by defaults, and listed, instead 
   P.load(path.join(os.tmpdir(), 'no-such-params.json')); assert.deepEqual(P.info().ignored, []);
 });
 test('the shipped model_params.json has nothing that gets ignored', () => { P.load(); assert.deepEqual(P.info().ignored, []); });
+
+function loadQuiet(content, name) {
+  const f = path.join(os.tmpdir(), 'pq_' + name + '.json'); if (content !== null) fs.writeFileSync(f, content); else { try { fs.unlinkSync(f); } catch (_) {} }
+  const warns = [], w = console.warn; console.warn = (...a) => warns.push(a.join(' '));
+  try { P.load(f); } finally { console.warn = w; }
+  return warns;
+}
+
+test('a file that cannot be read says so: logged and shown in info(), while a missing file stays quiet', () => {
+  const broken = loadQuiet('{"market":{"minEv":0.05,}}', 'comma');
+  assert.equal(broken.length, 1); assert.match(broken[0], /could not read model_params\.json/);
+  assert.ok(P.info().error); assert.equal(P.info().loadedFrom, null); assert.equal(P.get().market.minEv, 0.03, 'defaults are used');
+  const missing = loadQuiet(null, 'absent');
+  assert.deepEqual(missing, []); assert.equal(P.info().error, null);
+  const ok = loadQuiet(JSON.stringify({ market: { minEv: 0.05 } }), 'fine');
+  assert.deepEqual(ok, []); assert.equal(P.info().error, null); assert.equal(P.get().market.minEv, 0.05);
+});
+
+test('a whole section replaced by a number, a string or a list gets its defaults back and is reported', () => {
+  for (const [name, bad] of [['num', 5], ['str', 'x'], ['arr', [1, 2]], ['nul', null]]) {
+    const warns = loadQuiet(JSON.stringify({ market: bad, usage: bad, spread: bad, positionAllowed: bad }), 'sect_' + name);
+    const g = P.get();
+    assert.equal(g.market.minEv, 0.03, name); assert.equal(g.market.modelOnlyKeep, 0.5, name); assert.equal(g.usage.minutesSlope, 0.18, name);
+    assert.equal(P.spreadSd('points', 20), 7.1, name + ': the fitted spread is back'); assert.equal(g.positionAllowed.cap, 0.06, name);
+    assert.equal(P.info().ignored.length, 4, name); assert.equal(warns.length, 1);
+  }
+  const fine = loadQuiet(JSON.stringify({ market: { minEv: 0.05 } }), 'sect_ok');
+  assert.deepEqual(fine, []); assert.deepEqual(P.info().ignored, []);
+});
