@@ -1555,9 +1555,8 @@
   .err-btn{min-height:36px;padding:0 14px;border-radius:8px;border:1px solid var(--border2);background:var(--surface2);color:var(--text);font-family:var(--display);font-weight:700;font-size:13px;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;}
   .err-btn:hover{border-color:var(--viz);} .err-btn:focus-visible{outline:2px solid var(--viz);outline-offset:2px;}
 
-  /* Confidence bars: one chart green, with two hairlines at 55 and 75 (the lean and strong marks the gauge uses) */
-  .pk-bar,.td-cbar{position:relative;height:6px;}
-  .pk-bar::after,.td-cbar::after{content:'';position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,transparent calc(55% - .5px),var(--bg,#0b0b0d) calc(55% - .5px) calc(55% + .5px),transparent calc(55% + .5px) calc(75% - .5px),var(--bg,#0b0b0d) calc(75% - .5px) calc(75% + .5px),transparent calc(75% + .5px));opacity:.85;}
+  /* Confidence bars: one chart green */
+  .pk-bar,.td-cbar{height:6px;}
 
   /* Projection range: the 80% band, the model's number and the posted line on one axis */
   .rb{margin:2px 0 6px;} .rb-ax{position:relative;height:30px;} .rb-tr{position:absolute;left:0;right:0;top:13px;height:4px;border-radius:2px;background:var(--surface3);}
