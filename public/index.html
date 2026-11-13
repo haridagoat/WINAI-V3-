@@ -1438,8 +1438,6 @@
   .td-sh{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px;}
   .td-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;min-width:0;}
   .td-ctl{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:flex-end;}
-  .td-nv{font-size:12px;color:var(--muted);margin:0 0 6px;} .td-nv.bad{color:var(--neg,#ff5d5d);}
-  .td-dim{opacity:.55;}
   .td-fresh{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:-4px 0 12px;} .td-fresh b{font-weight:600;color:var(--muted2);} .td-fresh .warn{color:#e0a43a;}
   .td-seg{display:inline-flex;border:1px solid var(--border2);border-radius:9px;overflow:hidden;}
   .td-seg button{background:var(--surface2);border:0;padding:7px 16px;font-family:var(--label);font-weight:700;font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted2);cursor:pointer;border-radius:0;}
@@ -4692,11 +4690,7 @@ function tdGameCard(g) {
   let pickSec;
   if (TD.data.loadingBoard) pickSec = '<div class="td-gp-empty">working out the picks…</div>';
   else if (picks.length) {
-    const evs = picks.map(x => x.realEdge?.expectedValue ?? -1), anyVal = picks.some(x => x.value), allBelow = evs.every(v => v < 0);
-    const note = anyVal ? '' : allBelow
-      ? '<div class="td-nv bad" role="note"><b>No value here.</b> Every pick is below break-even at the best price.</div>'
-      : '<div class="td-nv" role="note"><b>Best available.</b> None of these clear the 3% value bar.</div>';
-    pickSec = `${note}<div class="td-gps${!anyVal && allBelow ? ' td-dim' : ''}" aria-label="Top 3 picks in this game">${picks.map(tdPickRow).join('')}</div>`;
+    pickSec = `<div class="td-gps" aria-label="Top 3 picks in this game">${picks.map(tdPickRow).join('')}</div>`;
   }
   else if (!pk.length) pickSec = `<div class="td-gp-empty">${Date.parse(g.status) > Date.now() ? 'lines not posted yet' : 'no props'}</div>`;
   else if (TD.data.fallback[g.league]) pickSec = '<div class="td-gp-empty">no live lines yet, model projections only</div>';
@@ -4752,11 +4746,6 @@ function paintToday() {
     ? `<section><div class="td-card"><div class="td-empty"><b>No games today</b>${L === 'both' ? 'Nothing is on the NBA or WNBA schedule for today.' : 'Nothing is on the ' + L.toUpperCase() + ' schedule for today.'} Open Daily Matchups to look at a future game.</div></div></section>` : '';
   const topBelow = locked.length && locked.every(x => (x.realEdge?.expectedValue ?? -1) < 0) ? '<p class="td-note td-valnote">None of today\'s most confident picks clear break-even at the best price. They are the most confident, not the best value.</p>' : '';
   const topSec = !topList.length && D.loadingPicks ? `<section><div class="td-card"><div class="td-empty" style="padding:22px 12px"><b>Working out today's picks</b>The games are below. Picks appear here as soon as they are ready, which can take a minute or two after a restart.</div></div></section>` : topList.length ? `<section><div class="td-sh"><h2>Top picks</h2><span class="td-hint">${locked.length ? 'the three most confident today · locked until tomorrow' : tops.length ? 'one per player · ranked by expected value' : 'model projections only: no live lines'}</span></div>${topBelow}<div class="td-tops">${topList.map(tdTopCard).join('')}</div></section>` : '';
-  // Picks are always shown (the three best in each game). VALUE marks one that also beats the books' fair price by a real margin; when none do, say so.
-  const anyValue = D.props.some(p => inL(p) && p.value);
-  const noValue = D.props.some(p => inL(p) && p.gameRank) && !anyValue && !D.loadingBoard
-    ? `<p class="td-note td-valnote">Each game's top 3 are its best props by expected value at the best available price. None of them beat the books' fair price by 3% or more right now, so they are the best available, not strong bets. A <span class="td-val">VALUE</span> tag will mark any that do.</p>`
-    : '';
   const gameSec = nGames ? `<section><div class="td-sh"><h2>Tonight's games</h2><span class="td-hint">${nGames} game${nGames === 1 ? '' : 's'}</span></div><div class="td-games">${games.map(tdGameCard).join('')}</div></section>` : '';
   const board = tdBoardHtml();
   const boardSec = (scanned || nGames) ? `<section class="td-card td-board">
@@ -4784,7 +4773,7 @@ function paintToday() {
         <div class="td-seg" id="td-proj" role="group" aria-label="Projection shown" title="Which projection to show. The win chance and EV always come from the market blend.">${[['model', 'Model'], ['blend', 'Blend']].map(([v, l]) => `<button type="button" data-pm="${v}" aria-pressed="${TD.projMode === v}">${l}</button>`).join('')}</div></div></div>
     <div class="td-fresh" id="td-fresh" role="status"></div>
     ${anyFb ? '<div class="td-banner">No live sportsbook lines right now. Picks below are model projections only, not line-based picks.</div>' : ''}
-    <div class="td-body">${empty}${topSec}${noValue}${gameSec}
+    <div class="td-body">${empty}${topSec}${gameSec}
       <div class="td-cols"><div class="td-main">${boardSec}</div><aside class="td-side">${injCard}${slipCard}${recentCard}</aside></div>
       <p class="td-note">Confidence measures how reliable the inputs are, not win probability. All numbers are model estimates, not advice.</p></div>`;
   tdBindBoard();
