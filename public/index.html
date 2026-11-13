@@ -794,13 +794,19 @@
   .v2-chip .v small{font-size:12px;color:var(--muted);margin-left:3px;letter-spacing:.04em;}
 
   /* sidebar: confidence */
-  .v2-gauge{width:100%;max-width:250px;display:block;margin:0 auto;}
-  .v2-gauge .trk{fill:none;stroke:var(--surface3);stroke-width:14;stroke-linecap:round;}
-  .v2-gauge .fil{fill:none;stroke:var(--viz);stroke-width:14;stroke-linecap:round;}
-  .v2-gauge .tick{stroke:var(--surface);stroke-width:2;} .v2-gauge .tk{fill:var(--muted);font-size:11px;}
-  .v2-gauge .big{fill:var(--text);font-family:var(--display);font-weight:800;font-size:38px;}
-  .v2-gauge .sm{fill:var(--muted);font-family:var(--display);font-weight:700;font-size:11px;letter-spacing:.16em;}
+  /* Confidence dial: an open ring in three zones (thin, lean, strong). The zones show faintly even where the fill has not reached. */
+  .v2-gauge{width:100%;max-width:236px;display:block;margin:4px auto 0;overflow:visible;}
+  .v2-gauge .z{fill:none;stroke-width:9;stroke-linecap:butt;}
+  .v2-gauge .z.t0{stroke:var(--surface3);} .v2-gauge .z.t1{stroke:color-mix(in srgb,var(--viz) 13%,var(--surface3));} .v2-gauge .z.t2{stroke:color-mix(in srgb,var(--viz) 26%,var(--surface3));}
+  .v2-gauge .fil{fill:none;stroke:var(--viz);stroke-width:9;stroke-linecap:round;filter:drop-shadow(0 0 4px color-mix(in srgb,var(--viz) 32%,transparent));}
+  .v2-gauge .nt{stroke:var(--surface);stroke-width:3;}
+  .v2-gauge .knob{fill:var(--text);stroke:var(--surface);stroke-width:3;}
+  .v2-gauge .tk{fill:var(--dim);font-family:var(--body);font-size:10px;font-weight:600;letter-spacing:.04em;}
+  .v2-gauge .big{fill:var(--text);font-family:var(--display);font-weight:800;font-size:46px;font-variant-numeric:tabular-nums;letter-spacing:.01em;}
+  .v2-gauge .big .pc{font-size:22px;fill:var(--muted2);font-weight:700;}
+  .v2-gauge .sm{fill:var(--muted2);font-family:var(--display);font-weight:800;font-size:14px;letter-spacing:.28em;}
   .v2-gauge .sm.strong{fill:var(--pos);} .v2-gauge .sm.thin{fill:var(--neg);}
+  @media (prefers-reduced-motion:no-preference){.v2-gauge .fil{transition:stroke-dasharray .7s cubic-bezier(.4,0,.2,1);}}
   .v2-edge{text-align:center;margin-top:2px;}
   .v2-edge .e{font-family:var(--display);font-weight:800;font-size:44px;line-height:1;}
   .v2-edge .k{font-family:var(--display);font-weight:700;letter-spacing:.14em;font-size:11px;color:var(--muted);text-transform:uppercase;}
@@ -3320,16 +3326,23 @@ function v2FactorList(items, ok, emptyText) {
 }
 
 function v2Gauge(confidence) {
-  const arc = Math.PI * 80, pt = (p, r) => { const th = Math.PI * (1 - p / 100); return [100 + r * Math.cos(th), 100 - r * Math.sin(th)]; };
-  const tier = confidence >= 75 ? 'STRONG' : confidence >= 55 ? 'LEAN' : 'THIN';
-  const ticks = [55, 75].map(p => { const [x1, y1] = pt(p, 70), [x2, y2] = pt(p, 90), [tx, ty] = pt(p, 104);
-    return `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" class="tick"/><text x="${tx.toFixed(1)}" y="${(ty + 3).toFixed(1)}" text-anchor="middle" class="tk">${p}</text>`; }).join('');
-  return `<svg class="v2-gauge" viewBox="0 0 200 128" role="img" aria-label="Confidence ${fmtConf(confidence)} percent, ${tier}">
-    <path class="trk" d="M20 100 A80 80 0 0 1 180 100"/>
-    <path class="fil" d="M20 100 A80 80 0 0 1 180 100" stroke-dasharray="${(Math.max(0, Math.min(100, confidence)) / 100 * arc).toFixed(1)} ${arc.toFixed(1)}"/>
-    ${ticks}
-    <text class="big" x="100" y="98" text-anchor="middle">${fmtConf(confidence)}%</text>
-    <text class="sm ${tier.toLowerCase()}" x="100" y="118" text-anchor="middle">${tier}</text>
+  // 240 degrees, open at the bottom. p is 0..100; the dial runs clockwise from lower left, over the top, to lower right.
+  const cx = 100, cy = 98, R = 76, SPAN = 240, START = 210, rad = d => d * Math.PI / 180;
+  const pt = (p, r = R) => { const a = rad(START - SPAN * p / 100); return [cx + r * Math.cos(a), cy - r * Math.sin(a)]; };
+  const arc = (p0, p1) => { const [x0, y0] = pt(p0), [x1, y1] = pt(p1); return `M${x0.toFixed(2)} ${y0.toFixed(2)} A${R} ${R} 0 ${SPAN * (p1 - p0) / 100 > 180 ? 1 : 0} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`; };
+  const c = Math.max(0, Math.min(100, Number(confidence) || 0));
+  const tier = c >= 75 ? 'STRONG' : c >= 55 ? 'LEAN' : 'THIN';
+  const notch = p => { const [x1, y1] = pt(p, R - 7), [x2, y2] = pt(p, R + 7); return `<line class="nt" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"/>`; };
+  const lab = p => { const [x, y] = pt(p, R + 17); return `<text class="tk" x="${x.toFixed(1)}" y="${(y + 3).toFixed(1)}" text-anchor="middle">${p}</text>`; };
+  const [kx, ky] = pt(c);
+  return `<svg class="v2-gauge" viewBox="0 0 200 160" role="img" aria-label="Confidence ${fmtConf(confidence)} percent, ${tier}">
+    <path class="z t0" d="${arc(0, 55)}"/><path class="z t1" d="${arc(55, 75)}"/><path class="z t2" d="${arc(75, 100)}"/>
+    ${c > 0.5 ? `<path class="fil" d="${arc(0, c)}"/>` : ''}
+    ${notch(55)}${notch(75)}
+    ${c > 0.5 ? `<circle class="knob" cx="${kx.toFixed(2)}" cy="${ky.toFixed(2)}" r="5.5"/>` : ''}
+    ${lab(55)}${lab(75)}
+    <text class="big" x="100" y="106" text-anchor="middle">${fmtConf(confidence)}<tspan class="pc">%</tspan></text>
+    <text class="sm ${tier.toLowerCase()}" x="100" y="132" text-anchor="middle">${tier}</text>
   </svg>`;
 }
 
