@@ -20,7 +20,7 @@ const calibration = require('./lib/calibration');
 const { buildReport } = require('./lib/backtest');
 const { createAlerts } = require('./lib/alerts');
 const { evaluateHealth, creditBudget, envNum } = require('./lib/health');
-const { eventsDueForFill, eventInfoFrom } = require('./lib/slatefill');
+const { eventsDueForFill, eventInfoFrom, balanceCandidates } = require('./lib/slatefill');
 const { createLaneQueue } = require('./lib/lanequeue');
 const market = require('./lib/market');
 const evaluateLib = require('./lib/evaluate');
@@ -3873,7 +3873,17 @@ async function fetchSlateCandidates(sportKey, { onlyIds = null, report = null } 
         });
       }
     } catch (_) { /* skip this event, keep scanning the rest */ }
-    const kept = candidates.slice(0, MAX_CANDIDATES_PER_EVENT);
+    // Keep a balanced share of stats and teams, not whatever the feed listed first (that was almost all points and assists, one team).
+    let teamOf = null;
+    if (candidates.length > MAX_CANDIDATES_PER_EVENT) {
+      try {
+        const roster = sportKey === 'basketball_wnba' ? fetchWNBARoster : fetchESPNRoster, byName = new Map();
+        const norm = n => String(n || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z ]/g, '').replace(/\b(jr|sr|ii|iii|iv)\b/g, '').replace(/\s+/g, ' ').trim();
+        for (const t of [event.home_team, event.away_team]) for (const pl of (await roster(t)).players || []) byName.set(norm(pl.name), t);
+        if (byName.size) teamOf = name => byName.get(norm(name));
+      } catch (_) { /* no roster: stats are still balanced */ }
+    }
+    const kept = balanceCandidates(candidates, MAX_CANDIDATES_PER_EVENT, teamOf);
     if (report) report.push({ id: event.id, home: event.home_team, away: event.away_team, commence: event.commence_time, count: kept.length, ok });
     return kept;
   }));
@@ -4014,7 +4024,7 @@ for (const entry of Object.values(slateScanCache)) {
 // disk for the whole day (to protect the Odds API quota), so without a
 // version stamp a logic change would keep serving numbers from the OLD
 // formula until midnight.
-const SLATE_LOGIC_VERSION = 3; // 2 = continuous confidence score (calcConfidence); 3 = market-anchored chances, per-side best prices, EV-based calls
+const SLATE_LOGIC_VERSION = 4; // 2 = continuous confidence score (calcConfidence); 3 = market-anchored chances, per-side best prices, EV-based calls; 4 = per-game props kept balanced across stats and teams
 // An empty scan (0 candidates) is ambiguous — could mean a real quota/key
 // failure, or just no props posted yet — so it's NOT trusted for the rest
 // of the day like a real successful scan is. Real bug this fixed: a key
@@ -4282,13 +4292,13 @@ async function computeTopPlays(league) {
 
   const gamePicks = picksLib.flattenPicks(picksLib.topPicksPerGame(results));       // the three best props in each game, by expected value
   bestBets.markLive(gamePicks);                                                     // so a Top 3 card can carry the same best-bet tag as its game row
-  // The three most confident of those game picks, one per player: a prop has to be among its game's best by value to qualify, and confidence orders
-  // them. (Ranking every prop on the slate by confidence alone was never tested: the graded record of 68% comes from this pool.) Once the first complete scan of the day has produced three, they are frozen
-  // for the rest of the day (see freezeTopPlays): lines move and games get topped up, but the list on the page does not.
+  // The three most confident props on the whole slate, one per player, whatever their expected value (ordering is by confidence, ties to the higher EV).
+  // A Top 3 pick that is not one of its game's three best by value is not a best bet candidate (bestBet stays false), since the best-bet rules pick from the game picks.
+  // Once the first complete scan of the day has produced three, they are frozen for the rest of the day (see freezeTopPlays): lines move and games get topped up, but the list on the page does not.
   return {
     league, generatedAt: new Date().toISOString(),
     scanned: candidates.length, evaluated: results.length,
-    topPlays: picksLib.mostConfident(gamePicks, 3).map(r => ({
+    topPlays: picksLib.mostConfident(results, 3).map(r => ({
       player: r.player, playerId: lookupPlayerId(league, r.player), team: r.team, opponent: r.opponent,
       homeTeam: r.homeTeam ?? null, awayTeam: r.awayTeam ?? null,
       propType: r.propType, line: r.line, book: r.book,

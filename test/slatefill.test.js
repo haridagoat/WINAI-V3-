@@ -38,3 +38,47 @@ test('eventInfoFrom adds up attempts and props across top-ups', () => {
   assert.strictEqual(second.a.attempts, 2);
   assert.strictEqual(second.a.lastTry, 200);
 });
+
+const { balanceCandidates } = require('../lib/slatefill');
+const cand = (player, propType, line, extra = {}) => ({ player, propType, line, bookCount: 3, ...extra });
+const feedOrder = () => {            // the feed lists every points prop, then assists, then rebounds
+  const rows = [];
+  for (const t of ['points', 'assists', 'rebounds']) for (let i = 0; i < 12; i++) rows.push(cand(`${i < 6 ? 'H' : 'A'}${i}`, t, 30 - i));
+  return rows;
+};
+const teamOf = name => name[0] === 'H' ? 'Home' : 'Away';
+const countBy = (rows, f) => rows.reduce((m, r) => (m[f(r)] = (m[f(r)] || 0) + 1, m), {});
+
+test('balancing: every stat gets a share even when the feed lists one stat first', () => {
+  const kept = balanceCandidates(feedOrder(), 20, teamOf);
+  assert.strictEqual(kept.length, 20);
+  assert.deepStrictEqual(countBy(kept, r => r.propType), { points: 7, rebounds: 7, assists: 6 });
+});
+test('balancing: both teams are kept inside each stat', () => {
+  const kept = balanceCandidates(feedOrder(), 20, teamOf);
+  for (const t of ['points', 'rebounds', 'assists']) {
+    const c = countBy(kept.filter(r => r.propType === t), r => teamOf(r.player));
+    assert.ok(Math.abs(c.Home - c.Away) <= 1, `${t} is split between the teams: ${JSON.stringify(c)}`);
+  }
+});
+test('balancing: bigger lines are kept first inside a stat and team', () => {
+  const kept = balanceCandidates([cand('H1', 'points', 10), cand('H2', 'points', 30), cand('H3', 'points', 20)], 2);
+  assert.deepStrictEqual(kept.map(r => r.player), ['H2', 'H3']);
+});
+test('balancing: a stat with few props hands its spare slots to the others', () => {
+  const rows = [...Array.from({ length: 10 }, (_, i) => cand('P' + i, 'points', 20 - i)), cand('R1', 'rebounds', 8), ...Array.from({ length: 10 }, (_, i) => cand('A' + i, 'assists', 9 - i))];
+  const kept = balanceCandidates(rows, 12);
+  assert.strictEqual(kept.length, 12);
+  assert.strictEqual(countBy(kept, r => r.propType).rebounds, 1);
+  assert.deepStrictEqual(countBy(kept, r => r.propType), { points: 6, rebounds: 1, assists: 5 });
+});
+test('balancing: without a team lookup only the stats are balanced, and a short list is returned whole', () => {
+  assert.deepStrictEqual(countBy(balanceCandidates(feedOrder(), 9), r => r.propType), { points: 3, rebounds: 3, assists: 3 });
+  const few = [cand('X', 'points', 5)];
+  assert.deepStrictEqual(balanceCandidates(few, 20), few);
+  assert.deepStrictEqual(balanceCandidates(undefined, 20), []);
+});
+test('balancing: an unknown team does not drop a player', () => {
+  const kept = balanceCandidates(feedOrder(), 20, name => name === 'H0' ? undefined : teamOf(name));
+  assert.strictEqual(kept.length, 20);
+});
