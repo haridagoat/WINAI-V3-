@@ -1475,6 +1475,7 @@
   .td-teams em{font-style:normal;color:var(--dim);font-size:16px;}
   .td-lg{width:30px;height:30px;object-fit:contain;flex:none;}
   .td-gm-t .td-hint{white-space:nowrap;}
+  @media (max-width:480px){.td-gm-t{flex-wrap:wrap;} .td-teams{font-size:19px;gap:8px;min-width:0;} .td-gm-t .td-hint{white-space:normal;}}
   .td-lines{display:flex;gap:10px;flex-wrap:wrap;min-height:0;}
   .td-mchip{display:flex;flex-direction:column;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:5px 12px;min-width:92px;}
   .td-mchip span{font-family:var(--label);font-weight:700;font-size:11.5px;letter-spacing:.14em;color:var(--muted);text-transform:uppercase;}
@@ -1535,9 +1536,54 @@
   .td-clk{cursor:pointer;border-radius:6px;} .td-clk:hover{background:var(--surface2);}
   @media (max-width:980px){ .td-cols{grid-template-columns:minmax(0,1fr);} .td-tops{grid-template-columns:minmax(0,1fr);} .td-games{grid-template-columns:minmax(0,1fr);} }
   @media (max-width:760px){ #today-root h1{font-size:32px;} .td-teams{font-size:20px;} }
+
+  /* ── Loading skeletons, error boxes, edge-strength scale, range bar, small-screen Prop List ── */
+  .sk-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;grid-column:1/-1;}
+  .sk-card{height:176px;border-radius:12px;} .sk-row{height:64px;border-radius:10px;margin-bottom:8px;}
+  .sk-chip{height:34px;width:150px;border-radius:8px;flex:none;} .sk-line{height:14px;margin-bottom:10px;} .sk-block{height:150px;border-radius:12px;margin-top:14px;}
+  .sk-result{width:100%;max-width:560px;margin-top:22px;}
+  .sk-cards:has(.sk-card:only-child){grid-template-columns:minmax(0,1fr);}
+  @media (max-width:900px){.sk-cards{grid-template-columns:minmax(0,1fr);}.sk-card{height:132px;}}
+  .err-box{display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:16px 18px;background:var(--surface);border:1px solid var(--border2);border-left:3px solid var(--neg);border-radius:10px;font-family:var(--body);font-size:13px;color:var(--muted);line-height:1.45;grid-column:1/-1;}
+  .err-box b{color:var(--text);font-size:14px;} .err-box .err-acts{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;}
+  .err-btn{min-height:36px;padding:0 14px;border-radius:8px;border:1px solid var(--border2);background:var(--surface2);color:var(--text);font-family:var(--display);font-weight:700;font-size:13px;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;}
+  .err-btn:hover{border-color:var(--viz);} .err-btn:focus-visible{outline:2px solid var(--viz);outline-offset:2px;}
+
+  /* Edge strength: one scale (thin, lean, strong) used by every confidence number and bar. Strong is the full chart green; thin is the same hue pulled back. */
+  :root{--es-thin:color-mix(in srgb,var(--viz) 32%,var(--muted));--es-lean:color-mix(in srgb,var(--viz) 66%,var(--muted));--es-strong:var(--viz);}
+  .conf-num.thin{color:var(--es-thin);} .conf-num.lean{color:var(--es-lean);} .conf-num.strong{color:var(--es-strong);}
+  .mini-conf-fill.thin,.es-thin{background:var(--es-thin);} .mini-conf-fill.lean,.es-lean{background:var(--es-lean);} .mini-conf-fill.strong,.es-strong{background:var(--es-strong);}
+  .pk-bar i.es-thin,.td-cbar i.es-thin{background:var(--es-thin);} .pk-bar i.es-lean,.td-cbar i.es-lean{background:var(--es-lean);} .pk-bar i.es-strong,.td-cbar i.es-strong{background:var(--es-strong);}
+  .v2-gauge .fil.es-thin{stroke:var(--es-thin);} .v2-gauge .fil.es-lean{stroke:var(--es-lean);} .v2-gauge .fil.es-strong{stroke:var(--es-strong);}
+  .v2-gauge .sm.thin{fill:var(--es-thin);} .v2-gauge .sm.lean{fill:var(--es-lean);} .v2-gauge .sm.strong{fill:var(--es-strong);}
+  .es-tag{display:inline-block;margin-left:6px;padding:0 6px;border-radius:4px;border:1px solid currentColor;font-family:var(--display);font-weight:700;font-size:11px;letter-spacing:.12em;text-transform:uppercase;vertical-align:middle;}
+  .td-m .es-tag{align-self:flex-start;margin:3px 0 0;padding:0 6px;font-size:11px;letter-spacing:.12em;color:inherit;}
+  .td-m .es-tag.thin{color:var(--es-thin);} .td-m .es-tag.lean{color:var(--es-lean);} .td-m .es-tag.strong{color:var(--es-strong);}
+  .es-tag.thin{color:var(--es-thin);} .es-tag.lean{color:var(--es-lean);} .es-tag.strong{color:var(--es-strong);}
+
+  /* Projection range: the 80% band, the model's number and the posted line on one axis */
+  .rb{margin:2px 0 6px;} .rb-ax{position:relative;height:30px;} .rb-tr{position:absolute;left:0;right:0;top:13px;height:4px;border-radius:2px;background:var(--surface3);}
+  .rb-bd{position:absolute;top:10px;height:10px;border-radius:5px;background:color-mix(in srgb,var(--viz) 34%,transparent);border:1px solid color-mix(in srgb,var(--viz) 70%,transparent);}
+  .rb-pj{position:absolute;top:5px;width:3px;height:20px;margin-left:-1.5px;border-radius:2px;background:var(--viz);}
+  .rb-ln{position:absolute;top:2px;width:0;height:26px;margin-left:-1px;border-left:2px dashed var(--text);}
+  .rb-lab{position:relative;height:36px;font-family:var(--display);font-weight:700;font-size:12px;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;}
+  .rb-lab span{position:absolute;top:0;white-space:nowrap;transform:translateX(-50%);} .rb-lab .p,.rb-lab .l{top:18px;} .rb-lab .lft{transform:translateX(calc(-100% - 5px));} .rb-lab .rgt{transform:translateX(5px);} .rb-lab .l{color:var(--text);} .rb-lab .p{color:var(--viz);}
+
+  /* Prop List on a phone: result buttons share a row, the stat box gets its own, thumbs have room */
+  .pl-x{min-width:36px;min-height:36px;} .result-btn,.pl-input{min-height:32px;}
+  @media (pointer:coarse){.pl-x{min-width:44px;min-height:44px;font-size:18px;}.result-btn{min-height:44px;padding:0 14px;font-size:13px;}.pl-input{min-height:44px;font-size:16px;}.day-chip,.game-chip{min-height:44px;}.day-nav{width:44px;height:44px;}}
+  @media (max-width:560px){
+    .pl-actions{display:grid;grid-template-columns:auto repeat(3,minmax(0,1fr));gap:8px;align-items:center;}
+    .pl-actions .pl-auto,.pl-actions .pl-clv{justify-self:start;}
+    .pl-actions .pl-act-row{grid-column:1/-1;display:flex;align-items:center;gap:8px;}
+    .pl-actions .pl-input{flex:1;width:auto;} .pl-actions .pl-conf{margin-left:0;grid-column:1/-1;}
+    .result-btn{min-height:44px;}
+    .day-chip{min-width:48px;padding:7px 10px;} .schedule-strip{scroll-snap-type:x proximity;} .game-chip{scroll-snap-align:start;}
+  }
 </style>
 </head>
 <body>
+<div id="sr-live" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
 <a class="skip-link" href="#main">Skip to content</a>
 <header>
   <div class="logo">WIN AI <span>NBA + WNBA PROPS ENGINE</span></div>
@@ -2697,6 +2743,7 @@ async function analyzeProp(league='nba') {
     const provisional = parseVerdict('', { ...ctx, _postedLine: line });
     const area = elFor(league,'result-area');
     area.innerHTML = renderResult('', player, opp, propType, line, ctx, provisional, league, true);
+    announce(`Numbers ready for ${player}. The written analysis is still loading.`);
     _currentAnalysis = { player, opp, propType, line, ctx, league, ...provisional };
     const entry = { player, opp, propType, line, league, ...provisional, raw: '', ctx, playerShotChart: null, oppShotChart: null, time: new Date(), result: null, closingLine: null, actualStat: null, clv: null };
     analysisHistory.unshift(entry);
@@ -2741,32 +2788,18 @@ async function analyzeProp(league='nba') {
     if (ch) { entry.playerShotChart = ch.playerData; entry.oppShotChart = ch.defData; renderShotChartsInto(league, player, opp, ch.playerData, ch.defData); }
     saveHistoryToStorage();
     renderHistory();
+    announce(`Analysis ready: ${player}, ${parsedVerdict.verdict || ''} ${line} ${propType}, confidence ${fmtConf(parsedVerdict.confidence)} percent`);
   } catch (err) {
     if (!isCurrent()) return;
-    const errMsg = err.message || 'Unknown error';
-    elFor(league,'result-area').innerHTML = `
-      <div class="result-placeholder">
-        <div class="placeholder-icon" style="color:var(--red)">✕</div>
-        <div class="placeholder-text" style="color:var(--red)">
-          ERROR: ${escapeHtml(errMsg)}
-        </div>
-        <div style="margin-top:16px;background:var(--surface2);border-radius:8px;padding:14px;text-align:left;max-width:400px;">
-          <div style="font-family:var(--label);font-size:11px;color:var(--gold);letter-spacing:1px;margin-bottom:8px;">TROUBLESHOOTING</div>
-          <div style="font-family:var(--body);font-size:11px;color:var(--muted);line-height:1.8;">
-            1. Is node server.js running in Command Prompt?<br>
-            2. Open <a href="http://localhost:3001/api/debug" target="_blank" style="color:var(--gold)">localhost:3001/api/debug</a> to check all connections<br>
-            3. Check Command Prompt for error messages<br>
-            4. Make sure .env file has all API keys
-          </div>
-        </div>
-      </div>`;
+    if (gateError(err, 'analyzer')) { elFor(league,'result-area').innerHTML = '<div class="result-placeholder"><div class="placeholder-text">' + escapeHtml(err.message || 'Sign in to run an analysis.') + '</div></div>'; }
+    else { elFor(league,'result-area').innerHTML = `<div class="result-placeholder">${errorBox(err, 'analyzeProp', league, 'The analysis')}</div>`; announce('The analysis could not be completed. ' + describeError(err).title + '.'); }
   }
   if (isCurrent()) { btn.disabled = false; btn.textContent = 'ANALYZE PROP'; }
 }
 
 const STEPS = ['PULLING LIVE STATS...','LOADING DEFENSIVE DATA...','RUNNING AI ANALYSIS...','RENDERING...'];
 function showLoading(league='nba') {
-  elFor(league,'result-area').innerHTML = `<div class="loading-state"><div class="spinner"></div><div class="loading-steps">${STEPS.map((s,i)=>`<div class="ls" id="ls${i}-${league}">${s}</div>`).join('')}</div></div>`;
+  elFor(league,'result-area').innerHTML = `<div class="loading-state"><div class="spinner"></div><div class="loading-steps" role="status">${STEPS.map((s,i)=>`<div class="ls" id="ls${i}-${league}">${s}</div>`).join('')}</div><div class="sk-result" aria-hidden="true"><div class="sk sk-line" style="width:55%"></div><div class="sk sk-line" style="width:80%"></div><div class="sk sk-block"></div></div></div>`;
 }
 function updateStep(idx, league='nba') {
   STEPS.forEach((_,i) => {
@@ -3245,7 +3278,24 @@ function v2Header(ctx, player, opp, propType, line, projection, edge, league, pl
       <div><div class="k">Edge</div><div class="v ${sign}">${edge > 0 ? '+' : ''}${edge}${edge > 0 ? ' ↑' : edge < 0 ? ' ↓' : ''}</div></div>
     </div>
     ${ctx?.mathProjection?.marketBlendProjection != null && Math.abs(ctx.mathProjection.marketBlendProjection - ctx.mathProjection.projection) >= 0.3 ? `<div class="v2-range">Market-blended estimate <b>${escapeHtml(String(ctx.mathProjection.marketBlendProjection))}</b> (the model's number pulled toward the books' ${escapeHtml(String(ctx.mathProjection.marketBlend?.bookCount ?? ''))}-book line). The posted line has been closer than the model on graded picks, so the win chance and EV lean on the blend.</div>` : ''}
+    ${v2RangeBar(ctx?.mathProjection, line)}
     ${ctx?.mathProjection?.lowerBound != null ? `<div class="v2-range">80% range ${ctx.mathProjection.lowerBound} to ${ctx.mathProjection.upperBound} ${escapeHtml((V2_PROP[propType] || '').toLowerCase())}.${ctx?.propLines?.softestLine != null ? ` Best line ${v2F(ctx.propLines.softestLine)}${ctx.propLines.softestBook ? ' at ' + escapeHtml(ctx.propLines.softestBook) : ''}${ctx.propLines.consensusLine != null ? `, consensus ${v2F(ctx.propLines.consensusLine)}` : ''}.` : ''}</div>` : ''}`;
+}
+
+// The model's 80% range as a band on one axis, with the projection and the posted line marked, so the edge and the uncertainty read at a glance.
+function v2RangeBar(mp, line) {
+  const lo = Number(mp && mp.lowerBound), hi = Number(mp && mp.upperBound), pj = Number(mp && mp.projection), ln = parseFloat(line);
+  if (![lo, hi, pj].every(Number.isFinite) || !(hi > lo)) return '';
+  const pts = [lo, hi, pj].concat(Number.isFinite(ln) ? [ln] : []);
+  const pad = (Math.max(...pts) - Math.min(...pts)) * 0.3 || 1, min = Math.min(...pts) - pad, max = Math.max(...pts) + pad;
+  const at = v => (((v - min) / (max - min)) * 100).toFixed(2), f = v => (Math.round(v * 10) / 10).toString();
+  const lnTxt = Number.isFinite(ln) ? `, posted line ${f(ln)} (${ln > hi ? 'above the whole range' : ln < lo ? 'below the whole range' : 'inside the range'})` : '';
+  // The lower of the two marks gets its label ending at the tick and the higher one starting at it, so the two labels can never sit on top of each other.
+  const lineLow = Number.isFinite(ln) && ln < pj;
+  return `<div class="rb" role="img" aria-label="Projection ${f(pj)}, 80 percent range ${f(lo)} to ${f(hi)}${lnTxt}">
+    <div class="rb-ax"><div class="rb-tr"></div><div class="rb-bd" style="left:${at(lo)}%;width:${(at(hi) - at(lo)).toFixed(2)}%"></div>${Number.isFinite(ln) ? `<div class="rb-ln" style="left:${at(ln)}%"></div>` : ''}<div class="rb-pj" style="left:${at(pj)}%"></div></div>
+    <div class="rb-lab" aria-hidden="true"><span style="left:${at(lo)}%">${f(lo)}</span><span style="left:${at(hi)}%">${f(hi)}</span><span class="p ${lineLow ? 'rgt' : 'lft'}" style="left:${at(pj)}%">proj ${f(pj)}</span>${Number.isFinite(ln) ? `<span class="l ${lineLow ? 'lft' : 'rgt'}" style="left:${at(ln)}%">line ${f(ln)}</span>` : ''}</div>
+  </div>`;
 }
 
 function v2KeyStats(ctx, propType, opp) {
@@ -3284,7 +3334,7 @@ function v2Gauge(confidence) {
     return `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" class="tick"/><text x="${tx.toFixed(1)}" y="${(ty + 3).toFixed(1)}" text-anchor="middle" class="tk">${p}</text>`; }).join('');
   return `<svg class="v2-gauge" viewBox="0 0 200 128" role="img" aria-label="Confidence ${fmtConf(confidence)} percent, ${tier}">
     <path class="trk" d="M20 100 A80 80 0 0 1 180 100"/>
-    <path class="fil" d="M20 100 A80 80 0 0 1 180 100" stroke-dasharray="${(Math.max(0, Math.min(100, confidence)) / 100 * arc).toFixed(1)} ${arc.toFixed(1)}"/>
+    <path class="fil es-${tier.toLowerCase()}" d="M20 100 A80 80 0 0 1 180 100" stroke-dasharray="${(Math.max(0, Math.min(100, confidence)) / 100 * arc).toFixed(1)} ${arc.toFixed(1)}"/>
     ${ticks}
     <text class="big" x="100" y="98" text-anchor="middle">${fmtConf(confidence)}%</text>
     <text class="sm ${tier.toLowerCase()}" x="100" y="118" text-anchor="middle">${tier}</text>
@@ -3664,7 +3714,7 @@ function renderResult(raw, player, opp, propType, line, ctx, precomputedVerdict,
     ${outlierStrip}`;
 
   const shotChartTab = `
-    <div id="shotchart-container-${league}"><div class="top-plays-empty">Loading shot charts...</div></div>
+    <div id="shotchart-container-${league}">${skelCards(1, 'Loading shot charts')}</div>
     ${shotChart?`<div class="section-divider">Shot Chart vs Defense</div><div class="analysis-box">${aiHtml(shotChart)}</div>`:''}
     ${renderPlaytypeBreakdown(ctx, player, opp, league)}`;
 
@@ -3748,7 +3798,7 @@ function selectMatchupDay(dateStr) {
 
 async function loadScheduleForDate(dateStr) {
   const strip = document.getElementById('schedule-strip');
-  strip.innerHTML = '<div class="game-chip">Loading...</div>';
+  strip.innerHTML = skelChips(4, 'Loading the schedule');
   try {
     const data = await apiGet(`/api/schedule?date=${dateStr}`);
     const games = data.games || [];
@@ -3756,7 +3806,7 @@ async function loadScheduleForDate(dateStr) {
       ? games.map(g => `<div class="game-chip" role="button" tabindex="0" data-away="${escapeHtml(g.away)}" data-home="${escapeHtml(g.home)}" data-league="${escapeHtml(g.league)}"><div><span class="chip-league">${escapeHtml(String(g.league).toUpperCase())}</span>${escapeHtml(String(g.away).split(' ').slice(-1)[0])} @ ${escapeHtml(String(g.home).split(' ').slice(-1)[0])}</div><div style="font-size:11px;color:var(--muted);margin-top:2px;">${escapeHtml(g.gameTime||g.status||'TBD')}</div></div>`).join('')
       : '<div class="game-chip">No games this day</div>';
   } catch (err) {
-    strip.innerHTML = '<div class="game-chip">Could not load schedule</div>';
+    strip.innerHTML = `<div class="game-chip" role="alert">Could not load the schedule · <button type="button" class="td-link" data-retry="loadScheduleForDate" data-arg="${escapeHtml(dateStr)}">Try again</button></div>`;
   }
 }
 // Game chips carry their teams in data attributes; one listener handles click and Enter/Space (no inline handler built from feed text).
@@ -4402,6 +4452,45 @@ async function apiPost(url, body, headers) {
   if (!res.ok) { const e = await res.json().catch(()=>({error:'Unknown'})); const err = new Error(e.error || `Error ${res.status}`); err.code = e.code; err.status = res.status; throw err; }
   return res.json();
 }
+
+// ── Errors people can act on, skeletons, and screen-reader announcements ──
+// What went wrong, in words a person can act on, and whether trying again can help.
+function describeError(err) {
+  const s = err && err.status, code = err && err.code, m = String((err && err.message) || '');
+  if (code === 'auth_required' || s === 401) return { title: 'You are signed out', detail: 'Sign in again to continue.', retry: false, signin: true };
+  if (code === 'pro_required' || s === 402) return { title: 'This is a Pro feature', detail: m || '', retry: false };
+  if (s === 429) return { title: 'Too many requests', detail: /Daily|limit/i.test(m) ? m : 'Wait a minute, then try again.', retry: !/Daily/i.test(m) };
+  if (s === 404) return { title: 'Not found', detail: m && !/^Server error/.test(m) ? m : 'That data is not available.', retry: false };
+  if (s === 502 || s === 503 || s === 504) return { title: 'A data source is not answering', detail: 'The stats or odds provider may be down. Try again in a few minutes.', retry: true };
+  if (s >= 500) return { title: 'The server hit a problem', detail: 'It has been logged. Try again in a moment.', retry: true };
+  if (typeof navigator !== 'undefined' && navigator.onLine === false || /Failed to fetch|NetworkError|Load failed|network/i.test(m) || (err && err.name === 'TypeError')) return { title: 'Cannot reach the server', detail: 'Check your connection, then try again.', retry: true };
+  return { title: 'Could not load this', detail: m && !/^(Unknown|Server error)/.test(m) ? m : 'Something went wrong on our side.', retry: true };
+}
+// An error box with a Try again button. `retryFn` is the name of a global function and `arg` its one argument.
+function errorBox(err, retryFn, arg, what) {
+  const d = describeError(err);
+  return `<div class="err-box" role="alert"><b>${escapeHtml(what ? `${what}: ${d.title.toLowerCase()}` : d.title)}</b><span>${escapeHtml(d.detail)}</span>${(d.retry && retryFn) || d.signin ? `<div class="err-acts">${d.retry && retryFn ? `<button type="button" class="err-btn" data-retry="${escapeHtml(retryFn)}"${arg != null ? ` data-arg="${escapeHtml(String(arg))}"` : ''}>Try again</button>` : ''}${d.signin ? '<button type="button" class="err-btn" onclick="openSignin(\'signin\')">Sign in</button>' : ''}</div>` : ''}</div>`;
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-retry]');
+  if (!b) return;
+  const fn = window[b.dataset.retry];
+  if (typeof fn === 'function') { b.disabled = true; b.textContent = 'Trying…'; fn(b.dataset.arg); }
+});
+// Placeholders shaped like what is about to arrive. Each carries its own screen-reader text.
+const skelWrap = (inner, label) => `<div aria-busy="true"><span class="sr-only">${escapeHtml(label)}</span>${inner}</div>`;
+const skelCards = (n, label) => skelWrap(`<div class="sk-cards" aria-hidden="true">${'<div class="sk sk-card"></div>'.repeat(n)}</div>`, label);
+const skelRows = (n, label) => skelWrap('<div aria-hidden="true">' + '<div class="sk sk-row"></div>'.repeat(n) + '</div>', label);
+const skelChips = (n, label) => skelWrap('<span aria-hidden="true" style="display:flex;gap:8px">' + '<span class="sk sk-chip"></span>'.repeat(n) + '</span>', label);
+// Says something to screen readers without moving focus or changing the screen.
+let _announceT;
+function announce(msg) {
+  const el = document.getElementById('sr-live');
+  if (!el) return;
+  el.textContent = '';
+  clearTimeout(_announceT);
+  _announceT = setTimeout(() => { el.textContent = msg; }, 60);
+}
 function parseVerdict(text, ctx) {
   const rawVerdict = (text.match(/VERDICT:\s*(OVER|UNDER|PASS)/i)||[])[1]?.toUpperCase()||'PASS';
   const rawConf    = parseInt((text.match(/CONFIDENCE:\s*(\d+)/i)||[])[1]||'50');
@@ -4539,7 +4628,7 @@ async function renderTodayPage() {
   const root = document.getElementById('today-root');
   if (!root) return;
   const token = window._tdToken = Date.now() + Math.random();
-  if (!TD.data) root.innerHTML = '<div class="td-empty">Loading today\'s slate...</div>';
+  if (!TD.data) root.innerHTML = skelCards(3, "Loading today's slate");
   try {
     let scheduleFailures = 0;
     const get = (u, d) => apiGet(u).catch(() => { if (/^\/api\/(wnba\/)?today$/.test(u)) scheduleFailures++; return d; });
@@ -4604,7 +4693,7 @@ async function renderTodayPage() {
     tdLoadLines(games);
     tdLoadInjuries(games);
   } catch (err) {
-    root.innerHTML = `<div class="td-empty">Could not load today's slate — ${escapeHtml(err.message)}</div>`;
+    root.innerHTML = errorBox(err, 'renderTodayPage', null, "Today's slate");
   }
 }
 
@@ -4663,7 +4752,7 @@ function tdTopCard(p, i) {
     <div class="td-tp-h">${pickAvatar(p.league, p.playerId, p.player)}<div><div class="td-tp-n">${escapeHtml(p.player)}${p.bestBet ? ' <span class="td-best">BEST BET</span>' : ''}</div><div class="td-tp-s">${escapeHtml(team)} vs ${escapeHtml(opp)}</div></div></div>
     <div class="td-call">${fb ? `<span class="td-big">≈ PROJ ${escapeHtml(p.projection)}</span>` : `<span class="td-big ${over ? 'pos' : 'neg'}">${escapeHtml(p.direction)} ${escapeHtml(p.line)}</span>`}<span class="td-pill">${PROP_LABEL[p.propType] || escapeHtml(String(p.propType).toUpperCase())}</span></div>
     <div class="td-m"><div><span>${TD.projMode === 'blend' ? 'Market blend' : 'Projection'}</span><b>${escapeHtml(tdProj(p))}</b>${lineGap(p)}${modelNote(p)}</div>
-      <div><span>Confidence</span><b>${fmtConf(conf)}</b><div class="td-cbar"><i style="width:${Math.max(0, Math.min(100, conf))}%"></i></div></div>
+      <div><span>Confidence</span><b>${fmtConf(conf)}</b><span class="es-tag ${confTier(conf)}">${confTier(conf)}</span><div class="td-cbar"><i class="es-${confTier(conf)}" style="width:${Math.max(0, Math.min(100, conf))}%"></i></div></div>
       <div><span>EV</span><b${hot || (ev != null && ev < 0) ? ' class="neg"' : ''} title="${hot ? 'Unusually large: more often the model being overconfident than free money, so no stake is suggested.' : ev != null && ev < 0 ? 'Below break-even at the best posted price' : 'Expected profit per $1 at the best posted price'}">${fmtEv(ev)}${hot ? ' ⚠' : ''}</b>${ev != null && ev < 0 ? '<small class="td-model">below break-even</small>' : ''}</div></div></div>`;
 }
 
@@ -5061,8 +5150,8 @@ function topPlayCard(p, i, league, conf, fallback) {
       <div class="pk-name">${escapeHtml(p.player)}${code ? `<small>${escapeHtml(code)}</small>` : ''}</div>
       <div class="pk-prop">${PROP_LABEL[p.propType] || escapeHtml(String(p.propType).toUpperCase())} · vs ${escapeHtml(oppShort)}${!fallback && p.book ? ` · ${escapeHtml(p.book)}` : ''}</div>
       <div class="pk-row">${fallback ? `<span>Projection <b>${escapeHtml(p.projection)}</b></span>` : `<span>Line <b>${escapeHtml(p.line)}</b></span><span>Proj <b>${escapeHtml(p.projection)}</b></span>`}</div>
-      <div class="pk-row"><span>Confidence</span><b>${fmtConf(conf)}%</b></div>
-      <div class="pk-bar"><i style="width:${Math.max(0, Math.min(100, conf))}%"></i></div>
+      <div class="pk-row"><span>Confidence</span><b>${fmtConf(conf)}%<span class="es-tag ${confTier(conf)}">${confTier(conf)}</span></b></div>
+      <div class="pk-bar"><i class="es-${confTier(conf)}" style="width:${Math.max(0, Math.min(100, conf))}%"></i></div>
       <div class="pk-foot">
         ${fallback ? '<span class="pk-pill">≈ PROJ</span>' : `<span class="pk-pill ${dir}">${escapeHtml(p.direction)}</span>`}
         ${!fallback && p.edge != null ? `<span class="pk-edge ${sign}">${p.edge > 0 ? '+' : ''}${escapeHtml(p.edge)}<small>EDGE</small></span>` : ''}
@@ -5074,7 +5163,7 @@ function topPlayCard(p, i, league, conf, fallback) {
 async function renderTopPlays(league='nba') {
   const box = document.getElementById(league==='wnba' ? 'top-plays-wnba' : 'top-plays-nba');
   if (!box) return;
-  box.innerHTML = '<div class="top-plays-empty">Scanning tonight\'s live sportsbook lines...</div>';
+  box.innerHTML = skelCards(3, "Scanning tonight's live sportsbook lines");
   try {
     const data = await apiGet(`/api/top-plays?league=${league}`);
     if (data.fallback && data.fallbackPlays?.length) {
@@ -5088,8 +5177,9 @@ async function renderTopPlays(league='nba') {
     }
     const shownTop = uniqueConfs(data.topPlays);
     box.innerHTML = data.topPlays.map((p, i) => topPlayCard(p, i, league, shownTop.get(p) ?? p.confidence, false)).join('');
+    announce(`${data.topPlays.length} top ${league.toUpperCase()} plays loaded`);
   } catch (err) {
-    box.innerHTML = `<div class="top-plays-empty">Could not load — ${escapeHtml(err.message)}</div>`;
+    box.innerHTML = errorBox(err, 'renderTopPlays', league, "Tonight's top plays");
   }
 }
 
@@ -5427,7 +5517,7 @@ function updateBetslipCount() {
 
 async function loadBetslip() {
   const el = document.getElementById('betslip-list');
-  if (el) el.innerHTML = '<div style="color:var(--muted);font-family:var(--body);font-size:11px;padding:20px 0;text-align:center;">Loading saved props...</div>';
+  if (el) el.innerHTML = skelRows(3, 'Loading saved props');
   try {
     await authReady;
     const data = await apiGet('/api/clv');
@@ -5443,7 +5533,7 @@ async function loadBetslip() {
     renderBetslip();
     refreshBetslip(); // best-effort grading/line-check in the background — list is already visible
   } catch (err) {
-    if (el) el.innerHTML = `<div style="color:var(--red);font-family:var(--body);font-size:11px;padding:20px 0;text-align:center;">Could not load saved props — ${escapeHtml(err.message)}</div>`;
+    if (el) el.innerHTML = errorBox(err, 'loadBetslip', null, 'Saved props');
   }
 }
 
@@ -5533,7 +5623,7 @@ async function markPropResult(id, result) {
   if (!b) return;
   const before = b.result, newResult = before === result ? null : result;
   b.result = newResult; renderBetslip();
-  try { const { entry } = await apiPost('/api/clv/update', { id, result: newResult }); Object.assign(b, entry); renderBetslip(); }
+  try { const { entry } = await apiPost('/api/clv/update', { id, result: newResult }); Object.assign(b, entry); renderBetslip(); announce(newResult ? `${b.player} marked ${newResult}` : `${b.player} result cleared`); }
   catch (e) { b.result = before; renderBetslip(); propFailed(e.status || 0, 'save that result'); }
 }
 async function savePropActual(id, val) {
@@ -5600,17 +5690,17 @@ function renderBetslip() {
         </div>
         <div class="pl-side">
           <div class="h-verdict ${vc}">${vt}</div>
-          <button class="pl-x" onclick="removeProp(${b.id})" title="Remove">✕</button>
+          <button type="button" class="pl-x" onclick="removeProp(${b.id})" title="Remove" aria-label="Remove ${escapeHtml(b.player)} from the list">✕</button>
         </div>
       </div>
-      <div class="pl-actions">
+      <div class="pl-actions" role="group" aria-label="Result for ${escapeHtml(b.player)}">
         <span class="pl-lbl">RESULT</span>
-        <button class="result-btn ${b.result==='WIN'?'active-win':''}" onclick="markPropResult(${b.id},'WIN')">WIN</button>
-        <button class="result-btn ${b.result==='LOSS'?'active-loss':''}" onclick="markPropResult(${b.id},'LOSS')">LOSS</button>
-        <button class="result-btn ${b.result==='PUSH'?'active-push':''}" onclick="markPropResult(${b.id},'PUSH')">PUSH</button>
+        <button type="button" class="result-btn ${b.result==='WIN'?'active-win':''}" aria-pressed="${b.result==='WIN'}" onclick="markPropResult(${b.id},'WIN')">WIN</button>
+        <button type="button" class="result-btn ${b.result==='LOSS'?'active-loss':''}" aria-pressed="${b.result==='LOSS'}" onclick="markPropResult(${b.id},'LOSS')">LOSS</button>
+        <button type="button" class="result-btn ${b.result==='PUSH'?'active-push':''}" aria-pressed="${b.result==='PUSH'}" onclick="markPropResult(${b.id},'PUSH')">PUSH</button>
         ${autoBadge}${clvBadge}
-        <span class="pl-lbl" style="margin-left:8px;">ACTUAL</span>
-        <input class="pl-input" type="number" step="0.5" value="${b.actualStat??''}" placeholder="stat" onchange="savePropActual(${b.id},this.value)" />
+        <span class="pl-act-row"><label class="pl-lbl" for="pl-act-${b.id}" style="margin-left:8px;">ACTUAL</label>
+        <input id="pl-act-${b.id}" class="pl-input" type="number" inputmode="decimal" step="0.5" value="${b.actualStat??''}" placeholder="stat" aria-label="Actual stat for ${escapeHtml(b.player)}" onchange="savePropActual(${b.id},this.value)" /></span>
         <span class="pl-conf conf-num ${confTier(b.confidence)}">${b.confidence?fmtConf(b.confidence)+'%':'—%'} CONF</span>
       </div>
     </div>`;
