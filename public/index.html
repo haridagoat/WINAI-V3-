@@ -1549,17 +1549,9 @@
   .err-btn{min-height:36px;padding:0 14px;border-radius:8px;border:1px solid var(--border2);background:var(--surface2);color:var(--text);font-family:var(--display);font-weight:700;font-size:13px;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;}
   .err-btn:hover{border-color:var(--viz);} .err-btn:focus-visible{outline:2px solid var(--viz);outline-offset:2px;}
 
-  /* Edge strength: one scale (thin, lean, strong) used by every confidence number and bar. Strong is the full chart green; thin is the same hue pulled back. */
-  :root{--es-thin:color-mix(in srgb,var(--viz) 32%,var(--muted));--es-lean:color-mix(in srgb,var(--viz) 66%,var(--muted));--es-strong:var(--viz);}
-  .conf-num.thin{color:var(--es-thin);} .conf-num.lean{color:var(--es-lean);} .conf-num.strong{color:var(--es-strong);}
-  .mini-conf-fill.thin,.es-thin{background:var(--es-thin);} .mini-conf-fill.lean,.es-lean{background:var(--es-lean);} .mini-conf-fill.strong,.es-strong{background:var(--es-strong);}
-  .pk-bar i.es-thin,.td-cbar i.es-thin{background:var(--es-thin);} .pk-bar i.es-lean,.td-cbar i.es-lean{background:var(--es-lean);} .pk-bar i.es-strong,.td-cbar i.es-strong{background:var(--es-strong);}
-  .v2-gauge .fil.es-thin{stroke:var(--es-thin);} .v2-gauge .fil.es-lean{stroke:var(--es-lean);} .v2-gauge .fil.es-strong{stroke:var(--es-strong);}
-  .v2-gauge .sm.thin{fill:var(--es-thin);} .v2-gauge .sm.lean{fill:var(--es-lean);} .v2-gauge .sm.strong{fill:var(--es-strong);}
-  .es-tag{display:inline-block;margin-left:6px;padding:0 6px;border-radius:4px;border:1px solid currentColor;font-family:var(--display);font-weight:700;font-size:11px;letter-spacing:.12em;text-transform:uppercase;vertical-align:middle;}
-  .td-m .es-tag{align-self:flex-start;margin:3px 0 0;padding:0 6px;font-size:11px;letter-spacing:.12em;color:inherit;}
-  .td-m .es-tag.thin{color:var(--es-thin);} .td-m .es-tag.lean{color:var(--es-lean);} .td-m .es-tag.strong{color:var(--es-strong);}
-  .es-tag.thin{color:var(--es-thin);} .es-tag.lean{color:var(--es-lean);} .es-tag.strong{color:var(--es-strong);}
+  /* Confidence bars: one chart green, with two hairlines at 55 and 75 (the lean and strong marks the gauge uses) */
+  .pk-bar,.td-cbar{position:relative;height:6px;}
+  .pk-bar::after,.td-cbar::after{content:'';position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,transparent calc(55% - .5px),var(--bg,#0b0b0d) calc(55% - .5px) calc(55% + .5px),transparent calc(55% + .5px) calc(75% - .5px),var(--bg,#0b0b0d) calc(75% - .5px) calc(75% + .5px),transparent calc(75% + .5px));opacity:.85;}
 
   /* Projection range: the 80% band, the model's number and the posted line on one axis */
   .rb{margin:2px 0 6px;} .rb-ax{position:relative;height:30px;} .rb-tr{position:absolute;left:0;right:0;top:13px;height:4px;border-radius:2px;background:var(--surface3);}
@@ -3334,7 +3326,7 @@ function v2Gauge(confidence) {
     return `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" class="tick"/><text x="${tx.toFixed(1)}" y="${(ty + 3).toFixed(1)}" text-anchor="middle" class="tk">${p}</text>`; }).join('');
   return `<svg class="v2-gauge" viewBox="0 0 200 128" role="img" aria-label="Confidence ${fmtConf(confidence)} percent, ${tier}">
     <path class="trk" d="M20 100 A80 80 0 0 1 180 100"/>
-    <path class="fil es-${tier.toLowerCase()}" d="M20 100 A80 80 0 0 1 180 100" stroke-dasharray="${(Math.max(0, Math.min(100, confidence)) / 100 * arc).toFixed(1)} ${arc.toFixed(1)}"/>
+    <path class="fil" d="M20 100 A80 80 0 0 1 180 100" stroke-dasharray="${(Math.max(0, Math.min(100, confidence)) / 100 * arc).toFixed(1)} ${arc.toFixed(1)}"/>
     ${ticks}
     <text class="big" x="100" y="98" text-anchor="middle">${fmtConf(confidence)}%</text>
     <text class="sm ${tier.toLowerCase()}" x="100" y="118" text-anchor="middle">${tier}</text>
@@ -4752,7 +4744,7 @@ function tdTopCard(p, i) {
     <div class="td-tp-h">${pickAvatar(p.league, p.playerId, p.player)}<div><div class="td-tp-n">${escapeHtml(p.player)}${p.bestBet ? ' <span class="td-best">BEST BET</span>' : ''}</div><div class="td-tp-s">${escapeHtml(team)} vs ${escapeHtml(opp)}</div></div></div>
     <div class="td-call">${fb ? `<span class="td-big">≈ PROJ ${escapeHtml(p.projection)}</span>` : `<span class="td-big ${over ? 'pos' : 'neg'}">${escapeHtml(p.direction)} ${escapeHtml(p.line)}</span>`}<span class="td-pill">${PROP_LABEL[p.propType] || escapeHtml(String(p.propType).toUpperCase())}</span></div>
     <div class="td-m"><div><span>${TD.projMode === 'blend' ? 'Market blend' : 'Projection'}</span><b>${escapeHtml(tdProj(p))}</b>${lineGap(p)}${modelNote(p)}</div>
-      <div><span>Confidence</span><b>${fmtConf(conf)}</b><span class="es-tag ${confTier(conf)}">${confTier(conf)}</span><div class="td-cbar"><i class="es-${confTier(conf)}" style="width:${Math.max(0, Math.min(100, conf))}%"></i></div></div>
+      <div><span>Confidence</span><b>${fmtConf(conf)}</b><div class="td-cbar"><i style="width:${Math.max(0, Math.min(100, conf))}%"></i></div></div>
       <div><span>EV</span><b${hot || (ev != null && ev < 0) ? ' class="neg"' : ''} title="${hot ? 'Unusually large: more often the model being overconfident than free money, so no stake is suggested.' : ev != null && ev < 0 ? 'Below break-even at the best posted price' : 'Expected profit per $1 at the best posted price'}">${fmtEv(ev)}${hot ? ' ⚠' : ''}</b>${ev != null && ev < 0 ? '<small class="td-model">below break-even</small>' : ''}</div></div></div>`;
 }
 
@@ -5150,8 +5142,8 @@ function topPlayCard(p, i, league, conf, fallback) {
       <div class="pk-name">${escapeHtml(p.player)}${code ? `<small>${escapeHtml(code)}</small>` : ''}</div>
       <div class="pk-prop">${PROP_LABEL[p.propType] || escapeHtml(String(p.propType).toUpperCase())} · vs ${escapeHtml(oppShort)}${!fallback && p.book ? ` · ${escapeHtml(p.book)}` : ''}</div>
       <div class="pk-row">${fallback ? `<span>Projection <b>${escapeHtml(p.projection)}</b></span>` : `<span>Line <b>${escapeHtml(p.line)}</b></span><span>Proj <b>${escapeHtml(p.projection)}</b></span>`}</div>
-      <div class="pk-row"><span>Confidence</span><b>${fmtConf(conf)}%<span class="es-tag ${confTier(conf)}">${confTier(conf)}</span></b></div>
-      <div class="pk-bar"><i class="es-${confTier(conf)}" style="width:${Math.max(0, Math.min(100, conf))}%"></i></div>
+      <div class="pk-row"><span>Confidence</span><b>${fmtConf(conf)}%</b></div>
+      <div class="pk-bar"><i style="width:${Math.max(0, Math.min(100, conf))}%"></i></div>
       <div class="pk-foot">
         ${fallback ? '<span class="pk-pill">≈ PROJ</span>' : `<span class="pk-pill ${dir}">${escapeHtml(p.direction)}</span>`}
         ${!fallback && p.edge != null ? `<span class="pk-edge ${sign}">${p.edge > 0 ? '+' : ''}${escapeHtml(p.edge)}<small>EDGE</small></span>` : ''}
