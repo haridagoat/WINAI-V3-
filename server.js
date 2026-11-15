@@ -1012,6 +1012,11 @@ app.get('/api/position-category-defense', async (req, res) => {
   const team = req.query.team;
   if (!team) return res.status(400).json({ error: 'team required' });
   try {
+    // NBA: the FantasyPros table the model already uses (one sample, true game-day positions, ranks from the same numbers). The box-score method below is the fallback and the WNBA path.
+    if (league === 'nba') {
+      const view = dvpLib.defenseView({ data: loadDvp(), team, windowKey: req.query.window === 'last15' ? 'last15' : 'season' });
+      if (view) return res.json(view);
+    }
     const [own, leagueRanks] = await Promise.all([
       computeTeamPositionCategoryDefense(league, team, 10),
       computeLeaguePositionCategoryRanks(league),

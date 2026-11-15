@@ -140,3 +140,31 @@ test('position table: nothing is shown for old data, no data, or an unknown team
   const old = new Date(Date.now() - 6 * 86400000).toISOString();
   for (const o of [{ data: table({ fetchedAt: old }), team: 'Atlanta Hawks' }, { data: null, team: 'Atlanta Hawks' }, { data: table(), team: 'Nobody' }, { data: table(), team: undefined }, { data: { fetchedAt: new Date().toISOString(), windows: {} }, team: 'Atlanta Hawks' }]) assert.equal(dvp.positionTable({ ...o, position: 'C' }), null);
 });
+
+test('the Matchup tab view: one sample, three groups, each rank belongs to the value beside it', () => {
+  const data = table({ team: 'Indiana Pacers', change: { C: { pts: 1.5 } } });          // the Pacers give up half as many again to centers
+  const v = dvp.defenseView({ data, team: 'Indiana Pacers' });
+  assert.equal(v.available, true);
+  assert.equal(v.gamesAnalyzed, 20);
+  assert.deepEqual(Object.keys(v.byPosition), ['Guards', 'Forwards', 'Centers']);
+  assert.equal(v.byPosition.Centers.pts, 36);
+  assert.equal(v.ranks.Centers.pts.value, 36, 'the rank is attached to the value that is shown');
+  assert.equal(v.ranks.Centers.pts.rank, 30, 'the most points allowed is ranked last (1 = allows the fewest)');
+  assert.equal(v.ranks.Centers.pts.of, 30);
+  assert.equal(v.ranks.Centers.pts.leagueAvg, 24.4, 'the league average includes this team: (29 x 24 + 36) / 30');
+  assert.equal(v.source, 'FantasyPros');
+});
+test('the Matchup tab view: "LA Clippers" is found, the other window works, and stale or missing data gives nothing', () => {
+  const data = table({ team: 'Los Angeles Clippers' });
+  assert.ok(dvp.defenseView({ data, team: 'LA Clippers' }));
+  assert.equal(dvp.defenseView({ data, team: 'LA Clippers', windowKey: 'last15' }).window, 'last15');
+  assert.equal(dvp.defenseView({ data, team: 'LA Clippers', windowKey: 'nonsense' }), null);
+  assert.equal(dvp.defenseView({ data: table({ fetchedAt: '2026-01-01T00:00:00Z' }), team: 'Atlanta Hawks' }), null, 'a table older than ten days is not shown');
+  assert.equal(dvp.defenseView({ data: null, team: 'Atlanta Hawks' }), null);
+  assert.equal(dvp.defenseView({ data, team: 'Nobody' }), null);
+});
+test('the three groups on the Matchup tab add up to what the team allowed in total', () => {
+  const v = dvp.defenseView({ data: table(), team: 'Atlanta Hawks' });
+  const pts = v.byPosition.Guards.pts + v.byPosition.Forwards.pts + v.byPosition.Centers.pts;
+  assert.equal(pts, 110);   // 40 + 46 + 24
+});

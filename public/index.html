@@ -1003,6 +1003,7 @@
 .tm .tm-sc{display:flex;align-items:center;gap:10px;min-width:0}
 .tm .tm-sv{font-family:var(--display);font-weight:800;font-size:23px;letter-spacing:.03em;min-width:48px;font-variant-numeric:tabular-nums}
 .tm .tm-sc.tm-r .tm-sv{text-align:right}
+.tm .tm-sr.tm-wl .tm-sc.tm-r .tm-sv,.tm .tm-sr.tm-wr .tm-sc.tm-l .tm-sv{color:var(--muted)}
 .tm .tm-rk{font-size:11px;font-weight:600;padding:1px 6px;border-radius:5px;border:1px solid var(--border2);color:var(--muted2);min-width:34px;text-align:center}
 .tm .tm-rk.tm-pos{background:var(--pos-bg);border-color:var(--pos-line);color:var(--pos)}
 .tm .tm-rk.tm-neg{background:var(--neg-bg);border-color:var(--neg-line);color:var(--neg)}
@@ -1017,7 +1018,7 @@
 .tm .tm-ic{width:16px;height:16px;flex:none;margin-top:2px}
 .tm .tm-ic.tm-mid{color:var(--muted)}
 .tm .tm-pg{display:flex;flex-direction:column;gap:6px}
-.tm .tm-pr{display:grid;grid-template-columns:62px repeat(4,minmax(0,1fr));gap:6px;align-items:stretch}
+.tm .tm-pr{display:grid;grid-template-columns:78px repeat(4,minmax(0,1fr));gap:6px;align-items:stretch}
 .tm .tm-pr.tm-hd{margin-bottom:-2px}
 .tm .tm-pc-h{text-align:center;font-family:var(--display);font-weight:700;font-size:13px;letter-spacing:.12em;color:var(--muted)}
 .tm .tm-pl{display:flex;align-items:center;font-family:var(--display);font-weight:700;font-size:15px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted2)}
@@ -1557,6 +1558,8 @@
 
   /* Confidence bars: one chart green */
   .pk-bar,.td-cbar{height:6px;}
+
+  @media (max-width:560px){.tm .tm-tk-h{flex-wrap:wrap;row-gap:2px;} .tm .tm-tk-h .tm-hint{flex-basis:100%;order:3;white-space:normal;margin-left:40px;}}
 
   /* Projection range: the 80% band, the model's number and the posted line on one axis */
   .rb{margin:2px 0 6px;} .rb-ax{position:relative;height:30px;} .rb-tr{position:absolute;left:0;right:0;top:13px;height:4px;border-radius:2px;background:var(--surface3);}
@@ -4049,29 +4052,35 @@ function tmStatCell(s, key, rk, colored, side) {
 }
 function tmStatsCard(s1, s2, t1, t2) {
   const rows = TM_STAT_ROWS.filter(([, k]) => s1?.[k] != null || s2?.[k] != null)
-    .map(([lab, k, rk, col]) => `<div class="tm-sr">${tmStatCell(s1, k, rk, col, 'l')}<div class="tm-sl">${lab}</div>${tmStatCell(s2, k, rk, col, 'r')}</div>`).join('');
+    .map(([lab, k, rk, col]) => {
+      // The side with the better league rank (1 = best) is picked out; the other value is dimmed. Pace has no better side.
+      const a = col ? s1?.[rk] : null, b = col ? s2?.[rk] : null, lw = a != null && b != null && a !== b ? (a < b ? 'l' : 'r') : '';
+      return `<div class="tm-sr${lw ? ' tm-w' + lw : ''}">${tmStatCell(s1, k, rk, col, 'l')}<div class="tm-sl">${lab}</div>${tmStatCell(s2, k, rk, col, 'r')}</div>`;
+    }).join('');
   // pace / ratings come from stats.nba.com; newer teams aren't onboarded there yet
   const warn = (label, s) => (s?.pace == null || s?.offRating == null || s?.defRating == null)
     ? `${escapeHtml(label)}: pace and ratings unverified${s?.source ? ' (' + escapeHtml(s.source) + ')' : ''}` : '';
   const notes = [warn(t1, s1), warn(t2, s2)].filter(Boolean).join(' · ');
   return `<div class="tm-card tm-stats">${rows || '<div class="tm-none">No team stats available.</div>'}</div>${notes ? `<p class="tm-src">${notes}</p>` : ''}`;
 }
-const TM_POS = ['Guards', 'Wings', 'Bigs'];
+const TM_POS = ['Guards', 'Forwards', 'Centers'];   // the box-score fallback (and the WNBA) still says Wings and Bigs: tmGroupLabel maps those
 const TM_CATS = [['pts', 'PTS'], ['reb', 'REB'], ['ast', 'AST'], ['fg3m', '3PM']];
+const tmGroupKey = (pd, g) => pd?.byPosition?.[g] ? g : ({ Forwards: 'Wings', Centers: 'Bigs' }[g] || g);
 function tmPosDefCard(league, t, pd) {
-  const head = `<div class="tm-tk-h">${tmLogo(league, t, 'tm-sm')}<h3>${escapeHtml(tmShort(t))} defense</h3>${pd?.available ? `<span class="tm-hint">allowed per game · last ${pd.gamesAnalyzed}</span>` : ''}</div>`;
+  const head = `<div class="tm-tk-h">${tmLogo(league, t, 'tm-sm')}<h3>${escapeHtml(tmShort(t))} defense</h3>${pd?.available ? `<span class="tm-hint">allowed per game · ${pd.source ? 'season, ' + pd.gamesAnalyzed + ' games' : 'last ' + pd.gamesAnalyzed}</span>` : ''}</div>`;
   if (!pd?.available) return `<div class="tm-card">${head}<div class="tm-none">Not enough recent box-score data.</div></div>`;
   let thin = false;
-  const rows = TM_POS.map(g => {
+  const rows = TM_POS.map(label => {
+    const g = tmGroupKey(pd, label);
     const sparse = (pd.ranks?.[g]?.pts?.value ?? 99) < 2;   // almost no opposing minutes classified here
     thin = thin || sparse;
     const cells = TM_CATS.map(([k]) => {
       const c = pd.ranks?.[g]?.[k];
       if (!c) return `<div class="tm-pc tm-avg"><b>—</b></div>`;
       const cls = sparse ? 'avg' : c.rank >= c.of - 4 ? 'soft' : c.rank <= 5 ? 'tough' : 'avg';
-      return `<div class="tm-pc tm-${cls}${sparse ? ' tm-thin' : ''}" title="${g}: allows ${c.value} ${k} a game, ${tmOrd(c.rank)} fewest of ${c.of}"><b>${c.value}</b><i>${tmOrd(c.rank)}</i></div>`;
+      return `<div class="tm-pc tm-${cls}${sparse ? ' tm-thin' : ''}" title="${label}: allows ${c.value} ${k} a game${c.leagueAvg != null ? ` (league average ${c.leagueAvg})` : ''}, ${tmOrd(c.rank)} fewest of ${c.of}"><b>${c.value}</b><i>${tmOrd(c.rank)}</i></div>`;
     }).join('');
-    return `<div class="tm-pr"><div class="tm-pl">${g}</div>${cells}</div>`;
+    return `<div class="tm-pr"><div class="tm-pl">${label}</div>${cells}</div>`;
   }).join('');
   return `<div class="tm-card">${head}<div class="tm-pg"><div class="tm-pr tm-hd"><div class="tm-pl"></div>${TM_CATS.map(([, l]) => `<div class="tm-pc-h">${l}</div>`).join('')}</div>${rows}</div>${thin ? '<div class="tm-pnote">Greyed: too few opposing minutes at this position.</div>' : ''}</div>`;
 }
@@ -4222,7 +4231,7 @@ async function loadMatchupAIAnalysis(compare, t1, t2, league, zone1, zone2, r1, 
   const rk = (s, k) => (s?.[k + 'Rank'] != null ? ` (#${s[k + 'Rank']}/${s.totalTeams || '?'})` : '');
   const statsLine = (t, s) => !s ? '' : `${t} LIVE STATS: record ${s.record}, pace ${s.pace ?? 'unavailable'}${rk(s, 'pace')}, offensive rating ${s.offRating ?? 'unavailable'}${rk(s, 'offRating')}, defensive rating ${s.defRating ?? 'unavailable'}${rk(s, 'defRating')}, PPG ${s.ppg}${rk(s, 'ppg')}, RPG ${s.rpg}${rk(s, 'rpg')}, APG ${s.apg}${rk(s, 'apg')}, turnovers ${s.topg}${rk(s, 'topg')}, FG% ${s.fgPct}${rk(s, 'fgPct')}, 3P% ${s.fg3Pct}${rk(s, 'fg3Pct')}; ranks are 1 = best`;
   const usageLine = (t, u) => u?.length ? `${t} TOP USAGE: ` + u.map(p => `${p.name} ${p.usgPct}% USG (${p.ppg ?? '—'} PPG, ${p.minutes} MIN)`).join(', ') : '';
-  const posLine = (t, pd) => !pd?.available ? '' : `${t} DEFENSE BY POSITION (real box scores, last ${pd.gamesAnalyzed} games; rank 1 = allows the least): ` +
+  const posLine = (t, pd) => !pd?.available ? '' : `${t} DEFENSE BY POSITION (${pd.source ? 'FantasyPros game-day positions, season, ' + pd.gamesAnalyzed + ' games' : 'real box scores, last ' + pd.gamesAnalyzed + ' games'}; rank 1 = allows the least): ` +
     Object.entries(pd.byPosition || {}).map(([g, v]) => { const r = pd.ranks?.[g]?.pts; return `${g} allow ${v.pts} pts${r ? ` (#${r.rank}/${r.of})` : ''}, ${v.reb} reb, ${v.ast} ast, ${v.fg3m} threes per game`; }).join('; ');
   const zoneLine = (t, z) => z?.zones?.length ? `${t} SHOT DEFENSE BY ZONE: ` + z.zones.filter(x => x.fga > 0).map(x => `${x.zone} allows ${x.fgPct}% (league ${x.leagueAvgPct ?? 'n/a'}%${x.rank ? `, rank ${x.rank}/${x.rankOf}` : ''})`).join(', ') : '';
   const lastLine = (t, g) => g?.length ? `${t} LAST 5: ` + g.map(x => `${x.result} ${x.ownScore}-${x.oppScore} ${x.isHome ? 'vs' : '@'} ${x.opponent}`).join(', ') : '';
