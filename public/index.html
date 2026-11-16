@@ -4,6 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>WIN AI — NBA Props Engine</title>
+<meta name="description" content="NBA and WNBA player prop analytics: projections, sportsbook lines, matchups and a tracked record. Analytics, not betting advice.">
+<meta name="theme-color" content="#0a0a0b">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon.ico" sizes="32x32">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.webmanifest">
 <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Semi+Condensed:wght@500;600;700&family=Barlow+Condensed:wght@600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -1422,7 +1428,7 @@
   .rg-remind p{margin:4px 0 0;font-size:13.5px;color:var(--muted)}
   .rg-remind div{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
   .rg-foot{margin:28px auto 8px;max-width:640px;padding:0 16px;text-align:center;font-size:12.5px;color:var(--muted)}
-  .rg-foot a{color:var(--muted2);text-underline-offset:3px}
+  .rg-foot a{color:var(--text);font-weight:600;text-underline-offset:3px;display:inline-block;padding:13px 6px;min-height:44px;box-sizing:border-box}   /* the helpline: a full-size touch target */
   .up-list{list-style:none;margin:14px 0 0;padding:0;display:flex;flex-direction:column;gap:9px}
   .up-list li{display:flex;gap:10px;font-size:14.5px;color:var(--muted2)}
   .up-list li::before{content:"";flex:none;width:6px;height:6px;border-radius:50%;background:var(--pos,#4cb47e);margin-top:8px}
@@ -1827,7 +1833,7 @@
     <div style="display:flex;gap:8px;" id="betslip-actions">
       <button class="mini-btn" id="betslip-refresh-btn" onclick="refreshBetslip()">↻ CHECK RESULTS</button>
       <button class="mini-btn" onclick="exportBetslip()">EXPORT CSV</button>
-      <button class="mini-btn" onclick="clearBetslip()" style="color:var(--red);">CLEAR ALL</button>
+      <button type="button" class="mini-btn" id="clear-all-btn" onclick="clearBetslip()" style="color:var(--red);">CLEAR ALL</button>
     </div>
   </div>
   <div id="accuracy-panel" style="margin-bottom:16px;"></div>
@@ -2018,7 +2024,7 @@ function onPlayerInput(val, league='nba') {
   const box = elFor(league, 'player-suggestions');
   const list = league === 'wnba' ? WNBA_PLAYERS : NBA_PLAYERS;
   if (val.length < 2) { box.classList.remove('open'); return; }
-  const matches = list.filter(p => p.toLowerCase().includes(val.toLowerCase())).slice(0, 6);
+  const needle = foldText(val), matches = list.filter(p => foldText(p).includes(needle)).slice(0, 6);
   if (!matches.length) { box.classList.remove('open'); return; }
   box.innerHTML = matches.map((p, i) => `<div class="suggestion-item" role="option" id="${idFor(league, 'sug-p')}-${i}" data-name="${escapeHtml(p)}" data-league="${league}">${escapeHtml(p)}</div>`).join('');
   box.classList.add('open');
@@ -2072,7 +2078,7 @@ function onOppTeamInput(val, league='nba') {
   const box = elFor(league, 'opp-team-suggestions');
   if (!box) return;
   const list = league === 'wnba' ? WNBA_TEAMS : NBA_TEAMS;
-  const matches = val.length < 1 ? list : list.filter(t => t.toLowerCase().includes(val.toLowerCase()));
+  const matches = val.length < 1 ? list : list.filter(t => foldText(t).includes(foldText(val)));
   if (!matches.length) { box.classList.remove('open'); return; }
   box.innerHTML = matches.map((t, i) => `<div class="suggestion-item" role="option" id="${idFor(league, 'sug-t')}-${i}" data-name="${escapeHtml(t)}" data-league="${league}">${escapeHtml(t)}</div>`).join('');
   box.classList.add('open');
@@ -2683,13 +2689,14 @@ async function analyzeProp(league='nba') {
   const propType = elFor(league,'prop-type').value;
   const line     = elFor(league,'prop-line').value;
   const context  = elFor(league,'game-context').value;
-  if (!player || !line) { alert('Fill in player name and prop line.'); return; }
-  if (parseFloat(line) <= 0) { alert('Line must be a positive number.'); return; }
+  if (!player) { notify('Enter a player name first.', elFor(league,'player-name')); return; }
+  if (!line) { notify('Enter the prop line, for example 24.5.', elFor(league,'prop-line')); return; }
+  if (!(parseFloat(line) > 0)) { notify('The line has to be a number above zero.', elFor(league,'prop-line')); return; }
 
   // While the paywall is on, each analysis starts with a ticket from the server: free accounts get one a day.
   let ticketHeaders;
   try { const tk = await analysisStart(); if (tk) ticketHeaders = { 'X-Analysis-Ticket': tk }; }
-  catch (e) { if (!gateError(e, 'analyzer')) alert(e.message); return; }
+  catch (e) { if (!gateError(e, 'analyzer')) notify(errorLine(e, 'Could not start the analysis')); return; }
 
   const myGen = ++_analyzeRequestGen[league];
   const isCurrent = () => _analyzeRequestGen[league] === myGen;
@@ -2710,17 +2717,17 @@ async function analyzeProp(league='nba') {
           `${matchup.team} ${matchup.isHome ? 'vs' : '@'} ${matchup.opponent} · ${matchup.gameTime}`;
         elFor(league,'matchup-info').style.color = 'var(--green)';
       } else if (matchup.found && !matchup.playing) {
-        alert(`${player}'s team has no game today. Enter opponent manually.`);
+        notify(`${player}'s team has no game today. Type the opponent to analyze anyway.`, elFor(league,'opp-team'));
         btn.disabled = false; btn.textContent = 'ANALYZE PROP';
         return;
       } else {
-        alert('Could not find today\'s matchup. Please enter opponent manually.');
+        notify('No matchup found for that player today. Type the opponent.', elFor(league,'opp-team'));
         btn.disabled = false; btn.textContent = 'ANALYZE PROP';
         return;
       }
     } catch (e) {
       if (!isCurrent()) return;
-      alert('Please enter the opposing team manually.');
+      notify('Could not look up the matchup. Type the opponent.', elFor(league,'opp-team'));
       btn.disabled = false; btn.textContent = 'ANALYZE PROP';
       return;
     }
@@ -4225,6 +4232,8 @@ function tmBreakdownHtml(w, league, t1, t2) {
     <p class="tm-src">Written by WIN AI from this game's live stats, shot zones, position defense and availability. Season-to-date numbers, so rotations in a preseason or playoff game may differ.</p>`;
 }
 
+const TM_WAIT_HTML = `<div class="tm-card tm-wait"><div class="spinner" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:8px;"></div>Writing the offense and defense breakdown from this game's live data...</div>`;
+function retryTeamBreakdown() { if (typeof window._tmRetry === 'function') window._tmRetry(); }
 async function loadMatchupAIAnalysis(compare, t1, t2, league, zone1, zone2, r1, r2, posDef1, posDef2, odds, token) {
   const body = document.getElementById('tm-breakdown-body');
   const A = compare.team1, B = compare.team2;
@@ -4257,12 +4266,19 @@ Return ONLY valid JSON in exactly this shape:
   "blowout": {"level": "LOW or MODERATE or HIGH", "note": "one sentence${odds?.available ? ' using the spread and total' : ''}"}
 }`;
   try {
-    const res = await apiPost('/api/analyze', { prompt, kind: 'team' });
+    const res = await apiPost('/api/analyze', { prompt, kind: 'team' }, null, 120000);   // a written answer takes far longer than a stats lookup
     if (window._tmToken !== token || !body) return;
-    const json = (res.response.match(/\{[\s\S]*\}/) || [])[0];
-    body.innerHTML = tmBreakdownHtml(JSON.parse(json), league, t1, t2);
+    // The answer should hold one JSON object. If it does not, or it is cut off, that is a failed write-up, not something to show as a code error.
+    let parsed = null;
+    try { parsed = JSON.parse((String(res.response || '').match(/\{[\s\S]*\}/) || [])[0]); } catch (_) {}
+    if (!parsed || typeof parsed !== 'object') { const e = new Error('The write-up came back incomplete.'); e.code = 'bad_writeup'; throw e; }
+    body.innerHTML = tmBreakdownHtml(parsed, league, t1, t2);
   } catch (err) {
-    if (window._tmToken === token && body) body.innerHTML = `<div class="tm-card tm-wait" style="color:var(--neg);">The written breakdown failed to load: ${escapeHtml(err.message)}</div>`;
+    if (window._tmToken !== token || !body) return;
+    window._tmRetry = () => { body.innerHTML = TM_WAIT_HTML; loadMatchupAIAnalysis(compare, t1, t2, league, zone1, zone2, r1, r2, posDef1, posDef2, odds, token); };
+    body.innerHTML = err.code === 'bad_writeup'
+      ? `<div class="err-box" role="alert"><b>The written breakdown did not come through</b><span>The numbers above are complete. Only the write-up is missing.</span><div class="err-acts"><button type="button" class="err-btn" data-retry="retryTeamBreakdown">Try again</button></div></div>`
+      : errorBox(err, 'retryTeamBreakdown', null, 'Written breakdown');
   }
 }
 
@@ -4270,7 +4286,7 @@ async function analyzeMatchup() {
   const league = document.getElementById('matchup-league').value;
   const t1 = document.getElementById('matchup-team1').value;
   const t2 = document.getElementById('matchup-team2').value;
-  if (!t1 || !t2 || t1 === t2) { alert('Pick two different teams.'); return; }
+  if (!t1 || !t2 || t1 === t2) { notify('Pick two different teams.', document.getElementById(!t1 ? 'matchup-team1' : 'matchup-team2')); return; }
 
   const div = document.getElementById('matchup-result');
   div.innerHTML = `
@@ -4292,8 +4308,8 @@ async function analyzeMatchup() {
       // Real opponent-defense-by-zone, the same shot-chart bridge the single-player
       // analyzer uses. A team the bridge can't resolve only costs the written
       // breakdown one data line; it shouldn't sink the page.
-      apiGet(`/api/shotchart?league=${league}&mode=defense&name=${encodeURIComponent(t1)}`).catch(() => null),
-      apiGet(`/api/shotchart?league=${league}&mode=defense&name=${encodeURIComponent(t2)}`).catch(() => null),
+      apiGet(`/api/shotchart?league=${league}&mode=defense&name=${encodeURIComponent(t1)}`, null, 60000).catch(() => null),
+      apiGet(`/api/shotchart?league=${league}&mode=defense&name=${encodeURIComponent(t2)}`, null, 60000).catch(() => null),
       apiGet(`${rosterRoute}?team=${encodeURIComponent(t1)}`).catch(() => null),
       apiGet(`${rosterRoute}?team=${encodeURIComponent(t2)}`).catch(() => null),
       // Real spread/moneyline/total (ESPN, DraftKings-sourced, free): an honest
@@ -4455,21 +4471,43 @@ kbify();
 // AI answers and text from outside feeds are untrusted: they are always shown as text, never as markup.
 function aiHtml(t) { return escapeHtml(t).replace(/\n/g, '<br>'); }
 
-async function apiGet(url, headers) {
-  const res = await fetch(url, headers ? { headers } : undefined);
-  if (!res.ok) { const e = await res.json().catch(()=>({error:'Unknown'})); const err = new Error(e.error || `Server error ${res.status}`); err.code = e.code; err.status = res.status; throw err; }
-  return res.json();
+// Every request gives up after a set time (30 seconds unless the caller allows longer), so a server that never answers ends in an error with
+// a Try again button instead of a loading placeholder that stays forever. The clock covers reading the answer too, not just the first byte.
+const API_TIMEOUT_MS = 30000;
+async function apiFetch(url, init, timeoutMs, fallbackLabel) {
+  const ctl = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => { timedOut = true; ctl.abort(); }, timeoutMs || API_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { ...(init || {}), signal: ctl.signal });
+    if (!res.ok) { const e = await res.json().catch(()=>({error:'Unknown'})); const err = new Error(e.error || `${fallbackLabel} ${res.status}`); err.code = e.code; err.status = res.status; throw err; }
+    return await res.json();
+  } catch (err) {
+    if (timedOut) { const t = new Error('The server took too long to answer.'); t.code = 'timeout'; throw t; }
+    throw err;
+  } finally { clearTimeout(timer); }
 }
-async function apiPost(url, body, headers) {
-  const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json', ...(headers || {})}, body:JSON.stringify(body) });
-  if (!res.ok) { const e = await res.json().catch(()=>({error:'Unknown'})); const err = new Error(e.error || `Error ${res.status}`); err.code = e.code; err.status = res.status; throw err; }
-  return res.json();
+function apiGet(url, headers, timeoutMs) { return apiFetch(url, headers ? { headers } : undefined, timeoutMs, 'Server error'); }
+function apiPost(url, body, headers, timeoutMs) {
+  return apiFetch(url, { method:'POST', headers:{'Content-Type':'application/json', ...(headers || {})}, body:JSON.stringify(body) }, timeoutMs, 'Error');
 }
+// The same search finds a name with or without its accents ("jokic" finds Jokić) and whatever the capitals.
+function foldText(s) { return String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase(); }
+// A short message at the bottom of the screen, read out by screen readers, that goes away by itself. With a field, the cursor moves there.
+function notify(msg, focusEl) {
+  document.getElementById('acct-toast')?.remove();
+  const t = document.createElement('div'); t.id = 'acct-toast'; t.className = 'acct-toast'; t.setAttribute('role', 'status'); t.textContent = msg;
+  document.body.appendChild(t); setTimeout(() => t.remove(), Math.max(3200, String(msg).length * 70));
+  if (focusEl && typeof focusEl.focus === 'function') focusEl.focus();
+}
+// An error as one plain sentence, for the short message above.
+function errorLine(err, what) { const d = describeError(err); return `${what ? what + ': ' + d.title.toLowerCase() : d.title}${d.detail ? '. ' + d.detail : ''}`; }
 
 // ── Errors people can act on, skeletons, and screen-reader announcements ──
 // What went wrong, in words a person can act on, and whether trying again can help.
 function describeError(err) {
   const s = err && err.status, code = err && err.code, m = String((err && err.message) || '');
+  if (code === 'timeout') return { title: 'This is taking too long', detail: 'The server did not answer in time. Try again.', retry: true };
   if (code === 'auth_required' || s === 401) return { title: 'You are signed out', detail: 'Sign in again to continue.', retry: false, signin: true };
   if (code === 'pro_required' || s === 402) return { title: 'This is a Pro feature', detail: m || '', retry: false };
   if (s === 429) return { title: 'Too many requests', detail: /Daily|limit/i.test(m) ? m : 'Wait a minute, then try again.', retry: !/Daily/i.test(m) };
@@ -4634,7 +4672,7 @@ function fmtEv(ev) {
 }
 // Which projection the page shows: the model's own number, or the one blended with the books' line (the win chance and EV are worked out from the blend).
 const tdProj = p => (TD.projMode === 'blend' && p?.blendedProjection != null ? p.blendedProjection : p?.projection);
-const tdHay = p => `${p.player} ${p.team} ${p.opponent} ${p.propType} ${PROP_LABEL[p.propType] || ''} ${p.direction}`.toLowerCase();
+const tdHay = p => foldText(`${p.player} ${p.team} ${p.opponent} ${p.propType} ${PROP_LABEL[p.propType] || ''} ${p.direction}`);
 const tdAm = n => n == null ? '—' : (n > 0 ? '+' : '−') + Math.abs(n);
 
 async function renderTodayPage() {
@@ -4807,7 +4845,7 @@ function tdGameCard(g) {
 }
 
 function tdBoardRows() {
-  const D = TD.data, words = TD.q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const D = TD.data, words = foldText(TD.q.trim()).split(/\s+/).filter(Boolean);
   let rows = D.props.filter(p => (TD.league === 'both' || p.league === TD.league) && (TD.prop === 'all' || p.propType === TD.prop) && words.every(w => tdHay(p).includes(w)));
   const val = p => ({ player: p.player, line: p.line, proj: tdProj(p), conf: tdShown(p), ev: p.realEdge?.expectedValue ?? -1 }[TD.key]);
   rows.sort((a, b) => { const x = val(a), y = val(b); return (typeof x === 'string' ? x.localeCompare(y) : x - y) * TD.dir; });
@@ -5008,9 +5046,9 @@ function gsItems() {
   return list;
 }
 function gsSearch() {
-  const q = document.getElementById('gs-q').value.trim().toLowerCase(), box = document.getElementById('gs-res');
+  const q = foldText(document.getElementById('gs-q').value.trim()), box = document.getElementById('gs-res');
   if (!q) { box.hidden = true; document.getElementById('gs-q').setAttribute('aria-expanded', 'false'); return; }
-  const score = i => { const n = i.n.toLowerCase(); return n.startsWith(q) ? 4 : n.split(' ').some(w => w.startsWith(q)) ? 3 : n.includes(q) ? 1 : 0; };
+  const score = i => { const n = foldText(i.n); return n.startsWith(q) ? 4 : n.split(' ').some(w => w.startsWith(q)) ? 3 : n.includes(q) ? 1 : 0; };
   const hit = gsItems().map(i => ({ i, s: score(i) })).filter(x => x.s);
   const best = t => Math.max(0, ...hit.filter(x => x.i.t === t).map(x => x.s));
   _gsRes = ['Pages', 'Players', 'Teams'].sort((a, b) => best(b) - best(a)).flatMap(t => hit.filter(x => x.i.t === t).sort((a, b) => b.s - a.s || a.i.n.localeCompare(b.i.n)).slice(0, 4).map(x => x.i));
@@ -5395,8 +5433,8 @@ function scSetMode(league, mode) {
 async function fetchShotChartData(league, playerName, opponentName) {
   try {
     const [playerData, defData] = await Promise.all([
-      apiGet(`/api/shotchart?league=${league}&mode=player&name=${encodeURIComponent(playerName)}`).catch(e => ({ error: e.message })),
-      opponentName ? apiGet(`/api/shotchart?league=${league}&mode=defense&name=${encodeURIComponent(opponentName)}`).catch(e => ({ error: e.message })) : Promise.resolve(null),
+      apiGet(`/api/shotchart?league=${league}&mode=player&name=${encodeURIComponent(playerName)}`, null, 60000).catch(e => ({ error: e.message })),
+      opponentName ? apiGet(`/api/shotchart?league=${league}&mode=defense&name=${encodeURIComponent(opponentName)}`, null, 60000).catch(e => ({ error: e.message })) : Promise.resolve(null),
     ]);
     return { playerData, defData };
   } catch (err) {
@@ -5490,13 +5528,13 @@ const betslip = [];
 let _currentAnalysis = null;
 
 async function addToBetslip() {
-  if (!_currentAnalysis) { alert('Run an analysis first.'); return; }
+  if (!_currentAnalysis) { notify('Run an analysis first, then save it.'); return; }
   const { player, opp, propType, line, verdict, edge, projection, confidence, league } = _currentAnalysis;
   // An account is only asked for here, at the moment someone saves. The prop is kept and saved after sign-in.
   if (!AUTH.user) { openSignin('save', { player, opp, propType, line, verdict, edge, projection, confidence, league }); return; }
   if (AUTH.paywall && AUTH.plan !== 'pro') { openUpgrade('prop_list'); return; }
   if (betslip.find(b => b.player===player && b.propType===propType && b.line==line)) {
-    alert(player+' '+propType+' '+line+' already in list.'); return;
+    notify(`${player} ${propType} ${line} is already in your Prop List.`); return;
   }
   const btn = document.getElementById('add-to-list-btn');
   try {
@@ -5515,7 +5553,7 @@ async function addToBetslip() {
     if (err.code === 'pro_required') { openUpgrade('prop_list', err.message); return; }
     if (err.code === 'rg_break') { acctToast(err.message); refreshMe(); return; }
     if (err.code === 'auth_required') { AUTH.user = null; paintAccount(); openSignin('save', { player, opp, propType, line, verdict, edge, projection, confidence, league }); return; }
-    alert('Could not save prop: ' + err.message);
+    notify(errorLine(err, 'Could not save the prop'));
   }
 }
 
@@ -5721,7 +5759,7 @@ function renderBetslip() {
 }
 
 function exportBetslip() {
-  if (!betslip.length) { alert('No props to export.'); return; }
+  if (!betslip.length) { notify('There are no props to export yet.'); return; }
   const rows=[['Player','League','Opp','Prop','Line','Proj','Edge','Verdict','Conf','Result','Actual','ClosingLine','CLV','Date']];
   betslip.forEach(b=>rows.push([b.player,b.league||'nba',b.opp||'',b.propType||'',b.line||'',b.projection||'',b.edge||'',b.verdict||'',b.confidence||'',b.result||'',b.actualStat||'',b.closingLine||'',b.clv||'',b.date||'']));
   const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
@@ -5733,7 +5771,17 @@ function exportBetslip() {
 
 async function clearBetslip() {
   if (!betslip.length) return;
-  if (!confirm('Clear all props?')) return;
+  // Deleting everything cannot be undone, so it takes two presses: the first turns the button into the question, the second within 5 seconds does it.
+  const btn = document.getElementById('clear-all-btn');
+  if (btn && !btn.dataset.armed) {
+    const n = betslip.length;
+    btn.dataset.armed = '1'; btn.textContent = `DELETE ALL ${n}? PRESS AGAIN`;
+    announce(`Press again to delete all ${n} saved ${n === 1 ? 'prop' : 'props'}. This cannot be undone.`);
+    clearTimeout(clearBetslip._t);
+    clearBetslip._t = setTimeout(() => { delete btn.dataset.armed; btn.textContent = 'CLEAR ALL'; }, 5000);
+    return;
+  }
+  if (btn) { clearTimeout(clearBetslip._t); delete btn.dataset.armed; btn.textContent = 'CLEAR ALL'; }
   const ids = betslip.map(b=>b.id);
   betslip.length=0; renderBetslip(); updateBetslipCount();
   const results = await Promise.all(ids.map(id => fetch(`/api/clv/${id}`, { method:'DELETE' }).then(r => r.status, () => 0)));
