@@ -1053,30 +1053,24 @@
 @media (max-width:760px){.tm .tm-favtag{display:block;width:max-content;margin:4px 0 0}
 .tm .tm-th.tm-r .tm-favtag{margin-left:auto}}
 
-  /* Page navigation: two dropdowns (sport, tools) instead of a scrolling tab strip */
-  .nav-bar{display:flex;gap:10px;padding:12px 28px;border-bottom:1px solid var(--border);}
-  .nav-dd{position:relative;}
-  .nav-btn{display:inline-flex;align-items:center;gap:12px;min-width:176px;justify-content:space-between;padding:9px 14px 9px 18px;background:var(--surface);border:1px solid var(--border);border-radius:10px;color:var(--muted);font-family:var(--display);font-weight:800;font-size:21px;letter-spacing:.08em;cursor:pointer;}
-  .nav-btn.on{background:var(--surface2);border-color:var(--border2);color:var(--text);}
-  .nav-btn:hover,.nav-btn[aria-expanded="true"]{background:var(--surface3);color:var(--text);}
-  .nav-btn:focus-visible,.nav-item:focus-visible{outline:2px solid var(--muted2);outline-offset:2px;}
-  .nav-cur{flex:1;text-align:left;}
-  .nav-chev{width:18px;height:18px;flex:none;color:var(--muted2);transition:transform .15s;}
-  .nav-btn[aria-expanded="true"] .nav-chev{transform:rotate(180deg);}
-  .nav-count{background:var(--text);color:var(--bg);border-radius:10px;padding:1px 8px;font-family:var(--display);font-weight:800;font-size:13px;letter-spacing:.04em;vertical-align:2px;}
-  .nav-menu{position:absolute;top:calc(100% + 6px);left:0;min-width:100%;width:max-content;max-width:calc(100vw - 32px);background:var(--surface);border:1px solid var(--border2);border-radius:12px;padding:6px;box-shadow:0 16px 44px rgba(0,0,0,.6);z-index:300;display:flex;flex-direction:column;}
-  .nav-menu[hidden]{display:none;}
-  .nav-item{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:none;border:0;border-radius:8px;padding:10px 12px;color:var(--muted2);font-family:var(--display);font-weight:700;font-size:19px;letter-spacing:.08em;cursor:pointer;}
-  .nav-item:hover{background:var(--surface2);color:var(--text);}
-  .nav-item.active{background:var(--surface3);color:var(--text);}
-  .nav-item.active::after{content:"\2713";margin-left:auto;font-size:15px;color:var(--text);}
-  .nav-item .nav-count{margin-left:auto;}
+  /* Page navigation: three sections (Board, Analyze, Track); each section has a small tab row for its own pages */
+  .nav-bar{display:flex;align-items:center;gap:10px;padding:12px 28px;border-bottom:1px solid var(--border);}
+  .nav-tabs{display:flex;gap:6px;}
+  .nav-tab{display:inline-flex;align-items:center;justify-content:center;gap:9px;min-height:44px;padding:8px 18px;background:transparent;border:1px solid transparent;border-radius:10px;color:var(--muted);font-family:var(--display);font-weight:800;font-size:19px;letter-spacing:.09em;text-transform:uppercase;cursor:pointer;}
+  .nav-tab svg{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;}
+  .nav-tab:hover{background:var(--surface);color:var(--text);}
+  .nav-tab[aria-current="page"]{background:var(--surface2);border-color:var(--border2);color:var(--text);box-shadow:inset 0 -2px 0 var(--viz);}
+  .nav-tab:focus-visible,.subtab:focus-visible{outline:2px solid var(--muted2);outline-offset:2px;}
+  .nav-count{background:var(--text);color:var(--bg);border-radius:10px;padding:1px 8px;font-family:var(--display);font-weight:800;font-size:13px;letter-spacing:.04em;}
+  .subtabs{display:flex;gap:26px;border-bottom:1px solid var(--border);margin:0 0 18px;}
+  .subtab{min-height:44px;padding:8px 2px;margin-bottom:-1px;background:none;border:0;border-bottom:2px solid transparent;color:var(--muted);font-family:var(--display);font-weight:700;font-size:18px;letter-spacing:.09em;text-transform:uppercase;cursor:pointer;}
+  .subtab:hover{color:var(--text);}
+  .subtab[aria-current="page"]{color:var(--text);border-bottom-color:var(--viz);}
   @media (max-width:760px){
-    .nav-bar{padding:10px 16px;gap:8px;}
-    .nav-dd{flex:1 1 0;min-width:0;}
-    .nav-btn{width:100%;min-width:0;padding:9px 10px 9px 12px;gap:6px;font-size:17px;letter-spacing:.05em;}
-    .nav-cur{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-    .nav-dd + .nav-dd .nav-menu{left:auto;right:0;}
+    .nav-bar{padding:10px 16px;gap:8px;flex-wrap:wrap;}
+    .nav-tabs{flex:1 1 100%;gap:4px;}
+    .nav-tab{flex:1 1 0;min-width:0;padding:8px 6px;gap:7px;font-size:17px;letter-spacing:.06em;}
+    .nav-tab svg{width:16px;height:16px;}
   }
 
   /* Header search */
@@ -1096,7 +1090,7 @@
   .gs-lg{width:24px;height:24px;object-fit:contain;flex:none;}
   .gs-av{width:28px;height:28px;border-radius:50%;background:var(--surface3);border:1px solid var(--border2);display:inline-flex;align-items:center;justify-content:center;font-family:var(--display);font-weight:800;font-size:11px;color:var(--muted2);flex:none;}
   .gs-none{padding:18px;text-align:center;color:var(--muted);}
-  @media (max-width:760px){ .nav-bar{flex-wrap:wrap;} .nav-bar .gs{flex:1 1 100%;max-width:none;margin-left:0;} .gs-k{display:none;} }
+  @media (max-width:760px){ .nav-bar .gs{flex:1 1 0;min-width:0;max-width:none;margin-left:0;order:2;} .gs-k{display:none;} }
   /* accounts */
   .acct-slot{position:relative;flex:none;display:flex;align-items:stretch}
   .acct-btn{display:inline-flex;align-items:center;gap:8px;max-width:240px;background:var(--surface2);border:1px solid var(--border2);border-radius:10px;padding:8px 16px;font-family:var(--label);font-weight:700;font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--text);cursor:pointer}
@@ -1198,7 +1192,7 @@
   .pl-empty{padding:34px 16px;text-align:center;color:var(--muted);background:var(--surface);border:1px solid var(--border);border-radius:12px}
   .pl-empty b{display:block;color:var(--muted2);font-family:var(--display);font-weight:800;font-size:24px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:4px}
   .pl-empty button{margin-top:14px;background:#e6e6ea;border:1px solid #e6e6ea;color:#0a0a0b;border-radius:9px;padding:10px 20px;font-family:var(--label);font-weight:700;font-size:13px;letter-spacing:.12em;text-transform:uppercase;cursor:pointer}
-  @media (max-width:760px){ .nav-bar .acct-slot{order:2;margin-left:auto} .nav-bar .gs{order:3} .acct-btn.in{padding:4px} .acct-btn.in .acct-em{display:none} }
+  @media (max-width:760px){ .nav-bar .acct-slot{order:3;margin-left:0} .acct-btn.in{padding:4px} .acct-btn.in .acct-em{display:none} }
 
   /* Today page (all classes td-) */
   #today-root{padding:6px 0 0;display:flex;flex-direction:column;gap:18px;}
@@ -1283,17 +1277,63 @@
   .td-srch input{border:0;background:transparent;padding:8px 10px;font-size:15px;flex:1;min-width:0;color:var(--text);font-family:var(--body);}
   .td-srch input:focus{outline:none;}
   .td-srch input::-webkit-search-cancel-button{display:none;}
-  .td-scroll{overflow-x:auto;}
-  #today-root table{width:100%;border-collapse:collapse;}
-  #today-root th{font-family:var(--label);font-weight:700;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);text-align:left;padding:8px 10px;border-bottom:1px solid var(--border2);white-space:nowrap;}
-  #today-root th.s{cursor:pointer;user-select:none;} #today-root th.s:hover{color:var(--muted2);} #today-root th.s[aria-sort]{color:var(--text);}
-  #today-root td{padding:9px 10px;border-bottom:1px solid var(--border);white-space:nowrap;}
-  #today-root tbody tr[data-pick]{cursor:pointer;} #today-root tbody tr[data-pick]:hover{background:var(--surface2);}
-  #today-root tr:last-child td{border-bottom:0;}
-  #today-root td.r,#today-root th.r{text-align:right;}
-  .td-who{display:flex;align-items:center;gap:10px;}
-  .td-who .pk-av{width:38px;height:38px;}
-  .td-who b{font-weight:600;display:block;line-height:1.15;} .td-who small{color:var(--muted);font-size:12.5px;}
+  /* Prop board: a filter bar that stays pinned under the header while the rows scroll, then one row per prop */
+  .bd-meta{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:2px 10px 8px;}
+  .bd-count{color:var(--muted);font-size:14px;font-variant-numeric:tabular-nums;white-space:nowrap;}
+  .bd-sort{display:inline-flex;align-items:center;gap:8px;color:var(--muted);font-family:var(--label);font-weight:700;font-size:12px;letter-spacing:.14em;text-transform:uppercase;}
+  .bd-sort select{min-height:40px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:9px;padding:0 10px;font:600 14px var(--body);letter-spacing:0;text-transform:none;}
+  .bd-bar{position:sticky;top:var(--hdr-h,0px);z-index:60;background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:8px 10px;display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;}
+  .bd-bar .td-chips{padding:0;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;min-width:0;}
+  .bd-bar .td-chip{flex:none;min-height:40px;}
+  .bd-segs{display:flex;flex-wrap:wrap;gap:8px;}
+  @media (max-width:760px){
+    .bd-bar .td-chips{flex:1 1 100%;}
+    .bd-bar .td-seg button{min-height:40px;padding:0 11px;font-size:12.5px;letter-spacing:.06em;}
+    .bd-segs{gap:6px;flex-wrap:nowrap;}
+  }
+  .bd{container-type:inline-size;}
+  .bd-head,.bd-row{display:grid;grid-template-columns:minmax(0,1.8fr) minmax(0,1.15fr) 96px minmax(0,1.1fr) 92px 112px 40px;column-gap:12px;align-items:center;}
+  .bd-head{padding:8px 12px;border-bottom:1px solid var(--border2);font-family:var(--label);font-weight:700;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);}
+  .bd-row{padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer;}
+  .bd-row:hover{background:var(--surface2);}
+  .bd-row:focus-visible{outline:2px solid var(--muted2);outline-offset:-2px;}
+  .bd-who{display:flex;align-items:center;gap:10px;min-width:0;}
+  .bd-who .pk-av{width:38px;height:38px;flex:none;}
+  .bd-who>div{min-width:0;}
+  .bd-who b{display:block;font-weight:600;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .bd-who small{display:block;color:var(--muted);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .bd-lp{display:flex;flex-direction:column;gap:1px;font-variant-numeric:tabular-nums;min-width:0;}
+  .bd-pt{font-family:var(--label);font-weight:700;font-size:11.5px;letter-spacing:.14em;color:var(--dim);}
+  .bd-nums{display:flex;align-items:baseline;gap:6px;white-space:nowrap;}
+  .bd-line{font-weight:700;font-size:17px;} .bd-nums i{font-style:normal;color:var(--dim);} .bd-proj{color:var(--muted2);font-size:16px;}
+  .bd-edge{display:flex;flex-direction:column;gap:5px;}
+  .bd-edge b{font-family:var(--label);font-weight:700;font-size:15px;font-variant-numeric:tabular-nums;}
+  .bd-edge b.off{color:var(--muted2);}
+  .bd-eb{position:relative;display:block;height:5px;background:var(--surface3);border-radius:3px;}
+  .bd-eb::after{content:"";position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:var(--muted);}
+  .bd-eb i{position:absolute;top:0;bottom:0;border-radius:3px;background:var(--viz);}
+  .bd-edge b.off + .bd-eb i{background:var(--muted2);}
+  .bd-price{display:flex;flex-direction:column;line-height:1.25;font-variant-numeric:tabular-nums;min-width:0;}
+  .bd-price b{font-size:16px;}
+  .bd-price small{color:var(--muted);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .bd-ev.pos{color:var(--pos);} .bd-ev.neg{color:var(--muted2);}
+  .bd-side .td-pill{font-size:13px;padding:3px 10px;white-space:nowrap;}
+  .bd-conf{display:flex;align-items:center;gap:6px;white-space:nowrap;font-variant-numeric:tabular-nums;}
+  .bd-conf .td-bar{width:44px;margin-right:0;}
+  .bd-add{width:40px;height:40px;border-radius:10px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);font-size:22px;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;}
+  .bd-add:hover{background:var(--surface3);}
+  .bd-add[aria-pressed="true"]{color:var(--pos);border-color:var(--pos-line);background:var(--pos-bg);}
+  .bd-add:focus-visible{outline:2px solid var(--muted2);outline-offset:2px;}
+  /* on a narrow board (a phone, or the side column squeezing it) each row becomes two lines */
+  @container (max-width:720px){
+    .bd-head{display:none;}
+    .bd-row{grid-template-columns:minmax(0,1.2fr) minmax(0,.8fr) minmax(70px,auto) minmax(46px,auto);grid-template-areas:"who who side add" "lp edge price conf";row-gap:10px;column-gap:10px;padding:12px 8px;}
+    .bd-who{grid-area:who;} .bd-side{grid-area:side;justify-self:start;} .bd-add{grid-area:add;justify-self:end;}
+    .bd-lp{grid-area:lp;} .bd-edge{grid-area:edge;} .bd-price{grid-area:price;} .bd-conf{grid-area:conf;flex-direction:column;align-items:flex-start;gap:4px;}
+    .bd-lp .td-model{display:none;}
+    .bd-conf .td-bar{width:100%;max-width:46px;height:5px;order:2;}
+  }
+  @media (max-width:760px){ header{position:static;} }   /* a pinned header would take a fifth of a phone screen; the filter bar pins at the top instead */
   .td-bar{display:inline-block;width:64px;height:7px;background:var(--surface3);border-radius:4px;vertical-align:middle;margin-right:8px;overflow:hidden;}
   .td-bar i{display:block;height:100%;background:var(--viz);border-radius:4px;}
   .td-bf{padding:10px 12px 4px;display:flex;justify-content:space-between;align-items:center;gap:10px;}
@@ -1362,29 +1402,11 @@
   </div>
 </header>
 
-<nav class="nav-bar" aria-label="Pages">
-  <div class="nav-dd" id="nav-dd-sport">
-    <button type="button" class="nav-btn" id="nav-btn-sport" aria-haspopup="menu" aria-expanded="false" aria-controls="nav-menu-sport" onclick="toggleNavMenu('sport')">
-      <span class="nav-cur" id="nav-cur-sport">SPORT</span>
-      <svg class="nav-chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6l4.5 4.5L12.5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    </button>
-    <div class="nav-menu" id="nav-menu-sport" role="menu" aria-label="Sport" hidden>
-      <button type="button" role="menuitem" class="nav-item" data-page="analyzer" onclick="switchTab('analyzer')">NBA</button>
-      <button type="button" role="menuitem" class="nav-item" data-page="wnba" onclick="switchTab('wnba')">WNBA</button>
-    </div>
-  </div>
-  <div class="nav-dd" id="nav-dd-tools">
-    <button type="button" class="nav-btn on" id="nav-btn-tools" aria-haspopup="menu" aria-expanded="false" aria-controls="nav-menu-tools" onclick="toggleNavMenu('tools')">
-      <span class="nav-cur" id="nav-cur-tools">TODAY</span>
-      <span class="nav-count" id="nav-count" style="display:none;">0</span>
-      <svg class="nav-chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6l4.5 4.5L12.5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    </button>
-    <div class="nav-menu" id="nav-menu-tools" role="menu" aria-label="Tools" hidden>
-      <button type="button" role="menuitem" class="nav-item active" data-page="today" aria-current="page" onclick="switchTab('today')">TODAY</button>
-      <button type="button" role="menuitem" class="nav-item" data-page="matchups" onclick="switchTab('matchups')">DAILY MATCHUPS</button>
-      <button type="button" role="menuitem" class="nav-item" data-page="history" onclick="switchTab('history')">HISTORY / CLV</button>
-      <button type="button" role="menuitem" class="nav-item" data-page="betslip" onclick="switchTab('betslip')">PROP LIST <span class="nav-count" id="betslip-count" style="display:none;">0</span></button>
-    </div>
+<nav class="nav-bar" aria-label="Sections">
+  <div class="nav-tabs">
+    <button type="button" class="nav-tab" data-section="board" aria-current="page" onclick="goSection('board')"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3" width="6" height="6" rx="1.5"/><rect x="11" y="3" width="6" height="6" rx="1.5"/><rect x="3" y="11" width="6" height="6" rx="1.5"/><rect x="11" y="11" width="6" height="6" rx="1.5"/></svg><span>Board</span></button>
+    <button type="button" class="nav-tab" data-section="analyze" onclick="goSection('analyze')"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/><circle cx="10" cy="10" r="1.6"/><path d="M10 1.5v3M10 15.5v3M1.5 10h3M15.5 10h3"/></svg><span>Analyze</span></button>
+    <button type="button" class="nav-tab" data-section="track" onclick="goSection('track')"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 5l1.6 1.6L8 3.8M3.5 11l1.6 1.6L8 9.8M11 5.5h6M11 11.5h6M3.5 16.5h13"/></svg><span>Track</span><span class="nav-count" id="betslip-count" style="display:none;">0</span></button>
   </div>
   <div class="gs" id="gs">
     <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M13 13l4.5 4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
@@ -1399,10 +1421,12 @@
 <main id="main" tabindex="-1">
 <h1 class="sr-only" id="page-h1" hidden></h1>
 <div id="panel-today" class="panel active">
+  <nav class="subtabs" data-section="board"></nav>
   <div id="today-root"><div class="td-empty">Loading today's slate...</div></div>
 </div>
 
 <div id="panel-analyzer" class="panel">
+  <nav class="subtabs" data-section="analyze"></nav>
   <div class="top-plays-box">
     <div class="top-plays-title">Top 3 Most Confident — NBA <span class="top-plays-refresh" onclick="renderTopPlays('nba')" title="Refresh" aria-label="Refresh top plays">⟳</span></div>
     <div id="top-plays-nba" class="top-plays-grid"><div class="top-plays-empty">Loading tonight's slate...</div></div>
@@ -1477,6 +1501,7 @@
 </div>
 
 <div id="panel-wnba" class="panel">
+  <nav class="subtabs" data-section="analyze"></nav>
   <div class="top-plays-box">
     <div class="top-plays-title">Top 3 Most Confident — WNBA <span class="top-plays-refresh" onclick="renderTopPlays('wnba')" title="Refresh" aria-label="Refresh top plays">⟳</span></div>
     <div id="top-plays-wnba" class="top-plays-grid"><div class="top-plays-empty">Loading tonight's slate...</div></div>
@@ -1551,6 +1576,7 @@
 </div>
 
 <div id="panel-matchups" class="panel">
+  <nav class="subtabs" data-section="board"></nav>
   <div class="card-label" style="margin-bottom:8px;">Select A Day</div>
   <div class="day-picker">
     <button class="day-nav" onclick="shiftMatchupWeek(-1)" aria-label="Previous week">‹</button>
@@ -1577,6 +1603,7 @@
 </div>
 
 <div id="panel-history" class="panel">
+  <nav class="subtabs" data-section="track"></nav>
   <div class="card-label" style="margin-bottom:14px;">Analysis History</div>
   <div class="history-list" id="history-list">
     <div style="color:var(--muted);font-family:var(--label);font-size:11px;letter-spacing:1px;padding:16px 0;">NO ANALYSES YET</div>
@@ -1584,6 +1611,7 @@
 </div>
 
 <div id="panel-betslip" class="panel">
+  <nav class="subtabs" data-section="track"></nav>
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
     <div class="card-label">PROP LIST <span style="font-family:var(--label);font-size:11px;color:var(--muted);font-weight:normal;letter-spacing:1px;">— save props you like today</span></div>
     <div style="display:flex;gap:8px;" id="betslip-actions">
@@ -4100,11 +4128,6 @@ function toggleAccordion(id) {
 }
 
 // ── Daily Matchups AI breakdown — structured cards, real data only ──
-const PROP_TYPE_MAP = {
-  points:'points', pts:'points', rebounds:'rebounds', reb:'rebounds', assists:'assists', ast:'assists',
-  '3-pointers made':'3pm', '3pm':'3pm', threes:'3pm', steals:'steals', stl:'steals', blocks:'blocks', blk:'blocks',
-};
-function mapPropType(text) { return PROP_TYPE_MAP[(text||'').toLowerCase().trim()] || 'points'; }
 function initials(name) { return (name||'').split(' ').filter(Boolean).map(w=>w[0]).slice(0,2).join('').toUpperCase(); }
 // Real headshot CDNs, keyed by the same stats.nba.com-style PLAYER_ID
 // already present in ctx.playerAdvancedStats (mirrors headshotUrl in server.js).
@@ -4301,53 +4324,45 @@ function extractSection(text, header) {
   const re = new RegExp(header.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+':?\\s*(.+?)(?=\\n[A-Z][A-Z &]+:|$)','is');
   return (text.match(re)||[])[1]?.trim()||'';
 }
-// Two dropdowns: SPORT (NBA, WNBA) and TOOLS (everything else). Each button shows
-// where you are when the current page belongs to it, and its own name otherwise.
-const NAV_SPORT = { analyzer: 'NBA', wnba: 'WNBA' };
-const NAV_TOOLS = { today: 'TODAY', matchups: 'DAILY MATCHUPS', history: 'HISTORY / CLV', betslip: 'PROP LIST' };
-function toggleNavMenu(which, force) {
-  for (const w of ['sport', 'tools']) {
-    const menu = document.getElementById('nav-menu-' + w), btn = document.getElementById('nav-btn-' + w);
-    if (!menu || !btn) continue;
-    const open = w === which && (force === undefined ? menu.hidden : force);
-    menu.hidden = !open;
-    btn.setAttribute('aria-expanded', open);
-    if (open) (menu.querySelector('.nav-item.active') || menu.querySelector('.nav-item'))?.focus();
-  }
-}
-function closeNavMenu() { toggleNavMenu(null); }
-document.addEventListener('click', e => { if (!e.target.closest('.nav-dd')) closeNavMenu(); });
-document.addEventListener('keydown', e => {
-  const menu = [...document.querySelectorAll('.nav-menu')].find(m => !m.hidden);
-  if (!menu) return;
-  if (e.key === 'Escape') {
-    const btn = document.getElementById(menu.id.replace('menu', 'btn'));
-    closeNavMenu();
-    btn?.focus();
-    return;
-  }
-  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
-  e.preventDefault();
-  const items = [...menu.querySelectorAll('.nav-item')];
-  const i = items.indexOf(document.activeElement);
-  items[(i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length].focus();
-});
-
-function switchTab(name) {
-  document.querySelectorAll('.nav-item').forEach(b => {
-    const on = b.dataset.page === name;
-    b.classList.toggle('active', on);
-    if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+// Three sections, each with two pages. The top tabs move between sections; the small tab row at the top of every page moves between that
+// section's pages. switchTab(page) is still what actually shows a page, so every link and button elsewhere keeps working.
+const SECTIONS = {
+  board:   { label: 'Board',   pages: [['today', 'Props'], ['matchups', 'Games']] },
+  analyze: { label: 'Analyze', pages: [['analyzer', 'NBA'], ['wnba', 'WNBA']] },
+  track:   { label: 'Track',   pages: [['betslip', 'Prop List'], ['history', 'History']] },
+};
+const PAGE_SECTION = Object.fromEntries(Object.entries(SECTIONS).flatMap(([sec, v]) => v.pages.map(([pg]) => [pg, sec])));
+const PAGE_NAME = { today: 'Today', matchups: 'Daily Matchups', analyzer: 'NBA prop analyzer', wnba: 'WNBA prop analyzer', history: 'History / CLV', betslip: 'Prop List' };
+// Where each section was last left, so Board always returns to the page you were on. Analyze also remembers across visits.
+const SECTION_LAST = { board: 'today', analyze: (() => { try { return localStorage.getItem('winai_analyze_page') === 'wnba' ? 'wnba' : 'analyzer'; } catch (_) { return 'analyzer'; } })(), track: 'betslip' };
+document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('.subtab'); if (b && b.dataset.page) switchTab(b.dataset.page); });
+function goSection(sec) { switchTab(SECTION_LAST[sec] || SECTIONS[sec].pages[0][0]); }
+function paintNav(page) {
+  const sec = PAGE_SECTION[page];
+  document.querySelectorAll('.nav-tab').forEach(b => { const on = b.dataset.section === sec; if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
+  document.querySelectorAll('.subtabs').forEach(bar => {
+    const s2 = bar.dataset.section;
+    if (!bar.firstChild) bar.innerHTML = SECTIONS[s2].pages.map(([pg, label]) => `<button type="button" class="subtab" data-page="${pg}">${label}</button>`).join('');
+    bar.setAttribute('aria-label', SECTIONS[s2].label + ' pages');
+    bar.querySelectorAll('.subtab').forEach(b => { if (b.dataset.page === page) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
   });
-  const sp = document.getElementById('nav-cur-sport'), tl = document.getElementById('nav-cur-tools');
-  if (sp) sp.textContent = NAV_SPORT[name] || 'SPORT';
-  if (tl) tl.textContent = NAV_TOOLS[name] || 'TOOLS';
-  document.getElementById('nav-btn-sport')?.classList.toggle('on', name in NAV_SPORT);
-  document.getElementById('nav-btn-tools')?.classList.toggle('on', name in NAV_TOOLS);
-  closeNavMenu();
+}
+
+paintNav('today');   // the page that is showing when the site opens
+// The board's filter bar pins just below the header while the header itself is pinned (on a phone it is not, so the bar pins at the very top).
+(function pinOffset() {
+  const h = document.querySelector('header'); if (!h) return;
+  const set = () => document.documentElement.style.setProperty('--hdr-h', getComputedStyle(h).position === 'sticky' ? h.offsetHeight + 'px' : '0px');
+  set(); window.addEventListener('resize', set);
+  if (typeof ResizeObserver === 'function') new ResizeObserver(set).observe(h);
+})();
+function switchTab(name) {
+  const sec = PAGE_SECTION[name];
+  if (sec) { SECTION_LAST[sec] = name; if (sec === 'analyze') lsSet('winai_analyze_page', name); }
+  paintNav(name);
   const h1 = document.getElementById('page-h1');
-  if (h1) { const label = NAV_SPORT[name] ? NAV_SPORT[name] + ' prop analyzer' : (NAV_TOOLS[name] || '').toLowerCase().replace(/(^|\s)\S/g, c => c.toUpperCase()); h1.textContent = label; h1.hidden = name === 'today'; }   // Today draws its own heading
-  document.title = (NAV_SPORT[name] ? NAV_SPORT[name] + ' prop analyzer' : (NAV_TOOLS[name] || 'Today').toLowerCase().replace(/(^|\s)\S/g, c => c.toUpperCase())) + ' · WIN AI';
+  if (h1) { h1.textContent = PAGE_NAME[name] || ''; h1.hidden = name === 'today'; }   // Today draws its own heading
+  document.title = (PAGE_NAME[name] || 'Today') + ' · WIN AI';
   gpSync(name);
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.getElementById('panel-'+name)?.classList.add('active');
@@ -4355,7 +4370,7 @@ function switchTab(name) {
   if (name==='history') renderHistory();
   if (name==='analyzer') renderTopPlays('nba');
   if (name==='wnba') renderTopPlays('wnba');
-  if (name==='today') renderTodayPage(document.getElementById('today-league-select')?.value || 'nba');
+  if (name==='today') renderTodayPage();
 }
 // Enter starts an analysis only from the form's own text fields. Anywhere else on the page (a tab, a button, a list item, the
 // autocomplete box) Enter does what that control does and nothing more: every analysis uses up one of the day's.
@@ -4372,7 +4387,7 @@ let _todayPicks = []; // flat list so onclick can reference by index (player nam
 // ── TODAY PAGE: top picks, tonight's games with their lines, a searchable prop board, and a
 // side column (closing-line check, injuries, Prop List, recently viewed). Every number is real:
 // the same day-locked slate scan the NBA / WNBA pages use, so opening this costs no extra credits.
-const TD = { league: 'both', prop: 'all', q: '', key: 'conf', dir: -1, all: false, data: null, projMode: (() => { try { return localStorage.getItem('winai_projmode') === 'blend' ? 'blend' : 'model'; } catch (_) { return 'model'; } })(), fresh: null, freshAt: 0 };
+const TD = { league: 'both', prop: 'all', q: '', sort: 'conf', minConf: 0, side: 'both', all: false, data: null, projMode: (() => { try { return localStorage.getItem('winai_projmode') === 'blend' ? 'blend' : 'model'; } catch (_) { return 'model'; } })(), fresh: null, freshAt: 0 };
 // Expected value as a signed percent. One decimal under 10% (so -0.3% does not read as "-0%"), none above; a value that rounds to zero is just 0.0%.
 function fmtEv(ev) {
   if (ev == null || !isFinite(ev)) return '—';
@@ -4552,26 +4567,68 @@ function tdGameCard(g) {
     <div class="td-gm-f"><span>${TD.data.loadingBoard ? '' : `<b>${pk.length}</b> props priced`}</span><button type="button" class="td-link" data-matchup="${escapeHtml(g.away)}|${escapeHtml(g.home)}|${g.league}">Matchup</button></div></div>`;
 }
 
+// What the board can be sorted by (the menu in the filter bar). Each has the label, what to sort on, and which way is "first".
+const TD_SORTS = {
+  conf:   ['Strength',       p => tdShown(p),                       -1],
+  ev:     ['Expected value', p => p.realEdge?.expectedValue ?? -9,  -1],
+  edge:   ['Biggest edge',   p => Math.abs(tdEdge(p) ?? 0),         -1],
+  player: ['Player A to Z',  p => p.player,                          1],
+};
+// How far the shown projection sits above (+) or below (-) the posted line.
+const tdEdge = p => { const v = tdProj(p); return p?.line != null && v != null && isFinite(v - p.line) ? v - p.line : null; };
+const bdSigned = n => (n >= 0 ? '+' : '−') + Math.abs(n).toFixed(1);
+const bdOdds = n => (n == null || !isFinite(n)) ? '' : (n > 0 ? '+' : '−') + Math.abs(n);
+
 function tdBoardRows() {
   const D = TD.data, words = foldText(TD.q.trim()).split(/\s+/).filter(Boolean);
-  let rows = D.props.filter(p => (TD.league === 'both' || p.league === TD.league) && (TD.prop === 'all' || p.propType === TD.prop) && words.every(w => tdHay(p).includes(w)));
-  const val = p => ({ player: p.player, line: p.line, proj: tdProj(p), conf: tdShown(p), ev: p.realEdge?.expectedValue ?? -1 }[TD.key]);
-  rows.sort((a, b) => { const x = val(a), y = val(b); return (typeof x === 'string' ? x.localeCompare(y) : x - y) * TD.dir; });
+  const rows = D.props.filter(p => (TD.league === 'both' || p.league === TD.league) && (TD.prop === 'all' || p.propType === TD.prop)
+    && (!TD.minConf || tdShown(p) >= TD.minConf) && (TD.side === 'both' || p.direction === TD.side) && words.every(w => tdHay(p).includes(w)));
+  const [, val, dir] = TD_SORTS[TD.sort] || TD_SORTS.conf;
+  rows.sort((a, b) => { const x = val(a), y = val(b); return (typeof x === 'string' ? x.localeCompare(y) : x - y) * dir; });
   return rows;
+}
+
+// One prop as one row: who and when, the line and what we project, the gap between them, the best price (with EV under it), the side, strength, and a + to save it.
+function tdBoardRow(p, times) {
+  const over = p.direction === 'OVER', ev = p.realEdge?.expectedValue, hot = ev != null && ev * 100 >= EV_TRUST_LIMIT, conf = tdShown(p), idx = tdOpenIdx(p);
+  const edge = tdEdge(p), agree = edge != null && (edge >= 0) === over, price = p.realEdge?.price;
+  const half = edge == null ? 0 : Math.min(50, Math.abs(edge) / Math.max(1, (p.line || 0) * 0.2) * 50);   // the bar fills the side the projection leans toward, out from the line
+  const when = times.get(`${p.league}|${tdLast(p.awayTeam)}|${tdLast(p.homeTeam)}`);
+  const prop = PROP_LABEL[p.propType] || escapeHtml(String(p.propType).toUpperCase());
+  const inList = typeof betslip !== 'undefined' && betslip.some(b => b.player === p.player && b.propType === p.propType && b.line == p.line);
+  return `<div class="bd-row" role="listitem" data-pick="${idx}" tabindex="0" aria-label="${escapeHtml(`${p.player}, ${prop} ${p.direction} ${p.line}. Open the analysis.`)}">
+    <div class="bd-who">${pickAvatar(p.league, p.playerId, p.player)}<div><b>${escapeHtml(p.player)}</b><small>${escapeHtml((p.awayTeam || '').split(' ').pop())} @ ${escapeHtml((p.homeTeam || '').split(' ').pop())}${when ? ' · ' + escapeHtml(when) : ''}</small></div></div>
+    <div class="bd-lp"><span class="bd-pt">${prop}</span><span class="bd-nums"><b class="bd-line">${escapeHtml(p.line)}</b><i aria-hidden="true">→</i><span class="bd-proj" title="${TD.projMode === 'blend' ? 'Market-blend projection' : 'Our projection'}">${escapeHtml(tdProj(p))}</span></span>${modelNote(p)}</div>
+    <div class="bd-edge">${edge == null ? '<b class="off">—</b>' : `<b class="${agree ? '' : 'off'}" title="${agree ? 'The projection leans the same way as the pick' : 'The projection leans the other way: the pick comes from the price, not the projection'}">${bdSigned(edge)}</b><span class="bd-eb" aria-hidden="true"><i style="${edge >= 0 ? 'left:50%' : 'right:50%'};width:${half.toFixed(1)}%"></i></span>`}</div>
+    <div class="bd-price"><b>${price != null ? bdOdds(price) : '—'}</b><small>${escapeHtml(p.book || '')}</small><small class="bd-ev ${ev != null && ev >= 0 ? 'pos' : 'neg'}" ${hot ? 'title="Unusually large: more often the model being overconfident than free money."' : ''}>EV ${fmtEv(ev)}${hot ? ' <span class="neg">⚠</span>' : ''}</small></div>
+    <div class="bd-side"><span class="td-pill ${over ? 'pos' : 'neg'}">${over ? '↑' : '↓'} ${escapeHtml(p.direction)}</span></div>
+    <div class="bd-conf"><span class="td-bar" aria-hidden="true"><i style="width:${Math.max(0, Math.min(100, conf))}%"></i></span><span class="num" title="Strength: how reliable the numbers behind this are. It is not the chance of winning.">${fmtConf(conf)}</span></div>
+    <button type="button" class="bd-add" data-add="${idx}" aria-pressed="${inList}" aria-label="${inList ? 'In your Prop List: ' : 'Add to your Prop List: '}${escapeHtml(`${p.player} ${prop} ${p.direction} ${p.line}`)}">${inList ? '✓' : '+'}</button>
+  </div>`;
 }
 
 function tdBoardHtml() {
   const rows = tdBoardRows(), shown = TD.all || TD.q ? rows : rows.slice(0, 10);
-  const th = (k, l, r) => `<th class="s${r ? ' r' : ''}" data-k="${k}" ${TD.key === k ? `aria-sort="${TD.dir < 0 ? 'descending' : 'ascending'}"` : ''}>${l}${TD.key === k ? (TD.dir < 0 ? ' ↓' : ' ↑') : ''}</th>`;
-  const body = shown.length ? shown.map(p => {
-    const over = p.direction === 'OVER', ev = p.realEdge?.expectedValue, hot = ev != null && ev * 100 >= EV_TRUST_LIMIT, conf = tdShown(p), idx = tdOpenIdx(p);
-    return `<tr data-pick="${idx}" tabindex="0"><td><div class="td-who">${pickAvatar(p.league, p.playerId, p.player)}<div><b>${escapeHtml(p.player)}</b><small>${escapeHtml((p.awayTeam || '').split(' ').pop())} @ ${escapeHtml((p.homeTeam || '').split(' ').pop())}</small></div></div></td>
-      <td>${PROP_LABEL[p.propType] || escapeHtml(String(p.propType).toUpperCase())}</td><td><span class="td-pill ${over ? 'pos' : 'neg'}">${escapeHtml(p.direction)}</span></td>
-      <td class="r num">${escapeHtml(p.line)}</td><td class="r num">${escapeHtml(tdProj(p))}${modelNote(p)}</td>
-      <td><span class="td-bar"><i style="width:${Math.max(0, Math.min(100, conf))}%"></i></span><span class="num">${fmtConf(conf)}</span></td>
-      <td class="r num${ev != null && ev < 0 ? ' neg' : ''}" ${hot ? 'title="Unusually large: more often the model being overconfident than free money."' : ''}>${fmtEv(ev)}${hot ? ' <span class="neg">⚠</span>' : ''}</td></tr>`;
-  }).join('') : `<tr><td colspan="7"><div class="td-empty" style="padding:22px 8px">${TD.data.loadingBoard ? '<b>Working out the prop board</b>The games are above. Props appear here game by game as they are ready, which can take a few minutes after a restart.' : TD.data.fallback.nba || TD.data.fallback.wnba ? 'No live sportsbook lines right now, so there is nothing to rank yet.' : `No props match${TD.q ? ' “' + escapeHtml(TD.q) + '”' : ' these filters'}.`}</div></td></tr>`;
-  return { html: `<thead><tr>${th('player', 'Player')}<th>Prop</th><th>Side</th>${th('line', 'Line', 1)}${th('proj', 'Proj', 1)}${th('conf', 'Confidence')}${th('ev', 'EV', 1)}</tr></thead><tbody>${body}</tbody>`, total: rows.length, shown: shown.length };
+  const times = new Map((TD.data.games || []).map(g => [`${g.league}|${tdLast(g.away)}|${tdLast(g.home)}`, g.gameTime]));
+  const body = shown.length ? shown.map(p => tdBoardRow(p, times)).join('')
+    : `<div class="td-empty" style="padding:22px 8px">${TD.data.loadingBoard ? '<b>Working out the prop board</b>The games are above. Props appear here game by game as they are ready, which can take a few minutes after a restart.' : TD.data.fallback.nba || TD.data.fallback.wnba ? 'No live sportsbook lines right now, so there is nothing to rank yet.' : `No props match${TD.q ? ' “' + escapeHtml(TD.q) + '”' : ' these filters'}.`}</div>`;
+  return { html: body, total: rows.length, shown: shown.length };
+}
+
+// The filter bar that stays pinned while the board scrolls: stat, minimum strength, side, how many, and the sort.
+const BD_CHIPS = [['all', 'All', 'All props'], ['points', 'PTS', 'Points'], ['rebounds', 'REB', 'Rebounds'], ['assists', 'AST', 'Assists']];
+function tdBarHtml(total) {
+  return `<div class="bd-meta">
+      <span class="bd-count" id="bd-count" role="status" aria-live="polite">${total} prop${total === 1 ? '' : 's'}</span>
+      <label class="bd-sort"><span class="bd-sort-l">Sort</span><select id="bd-sort" aria-label="Sort by">${Object.entries(TD_SORTS).map(([k, v]) => `<option value="${k}"${TD.sort === k ? ' selected' : ''}>${v[0]}</option>`).join('')}</select></label>
+    </div>
+    <div class="bd-bar" id="bd-bar">
+      <div class="td-chips" id="td-chips" role="group" aria-label="Stat">${BD_CHIPS.map(([v, l, full]) => `<button type="button" class="td-chip" data-prop="${v}" aria-label="${full}" aria-pressed="${TD.prop === v}">${l}</button>`).join('')}</div>
+      <div class="bd-segs">
+        <div class="td-seg" id="bd-conf" role="group" aria-label="Minimum strength">${[[0, 'Any'], [55, '55+'], [75, '75+']].map(([v, l]) => `<button type="button" data-conf="${v}" aria-pressed="${TD.minConf === v}">${l}</button>`).join('')}</div>
+        <div class="td-seg" id="bd-side" role="group" aria-label="Side">${[['both', 'Both'], ['OVER', 'Over'], ['UNDER', 'Under']].map(([v, l]) => `<button type="button" data-side="${v}" aria-pressed="${TD.side === v}">${l}</button>`).join('')}</div>
+      </div>
+    </div>`;
 }
 
 function paintToday() {
@@ -4598,8 +4655,8 @@ function paintToday() {
   const board = tdBoardHtml();
   const boardSec = (scanned || nGames) ? `<section class="td-card td-board">
       <div class="td-sh" style="padding:0 10px"><h2>Prop board</h2><div class="td-srch"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M13 13l4.5 4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><input type="search" id="td-q" placeholder="Search a player or team" autocomplete="off" aria-label="Search the prop board" value="${escapeHtml(TD.q)}"></div></div>
-      <div class="td-chips" id="td-chips">${[['all', 'All'], ['points', 'Points'], ['assists', 'Assists'], ['rebounds', 'Rebounds']].map(([v, l]) => `<button type="button" class="td-chip" data-prop="${v}" aria-pressed="${TD.prop === v}">${l}</button>`).join('')}</div>
-      <div class="td-scroll"><table id="td-brd">${board.html}</table></div>
+      ${tdBarHtml(board.total)}
+      <div class="bd"><div class="bd-head" aria-hidden="true"><span>Player</span><span>Line → projection</span><span>Edge</span><span>Best price</span><span>Side</span><span>Strength</span><span></span></div><div id="bd-list" role="list" aria-label="Prop board">${board.html}</div></div>
       <div class="td-bf"><button type="button" class="td-link" id="td-more" ${tdMoreState(board.total).hidden ? 'hidden' : ''}>${tdMoreState(board.total).text}</button><span class="td-note">⚠ = EV of ${EV_TRUST_LIMIT}% or more, treated as too good to trust</span></div></section>` : '';
 
   // side column
@@ -4654,19 +4711,23 @@ function tdMoreState(total) {
   return { hidden: !!TD.q || total <= 10, text: TD.all ? 'Show top 10' : 'Show all ' + total };
 }
 function tdRepaintBoard() {
-  const t = document.getElementById('td-brd'); if (!t) return;
-  const prev = _todayPicks.length;
+  const list = document.getElementById('bd-list'); if (!list) return;
   const b = tdBoardHtml();
-  t.innerHTML = b.html;
+  list.innerHTML = b.html;
   document.querySelectorAll('#td-chips .td-chip').forEach(x => x.setAttribute('aria-pressed', x.dataset.prop === TD.prop));
+  document.querySelectorAll('#bd-conf button').forEach(x => x.setAttribute('aria-pressed', +x.dataset.conf === TD.minConf));
+  document.querySelectorAll('#bd-side button').forEach(x => x.setAttribute('aria-pressed', x.dataset.side === TD.side));
+  const c = document.getElementById('bd-count'); if (c) c.textContent = `${b.total} prop${b.total === 1 ? '' : 's'}`;
+  const sel = document.getElementById('bd-sort'); if (sel) sel.value = TD.sort;
   const more = document.getElementById('td-more');
   if (more) { const m = tdMoreState(b.total); more.hidden = m.hidden; more.textContent = m.text; }
 }
 function tdBindBoard() {
   const root = document.getElementById('today-root');
   root.onclick = e => {
-    const th = e.target.closest('#td-brd th.s');
-    if (th) { const k = th.dataset.k; TD.dir = TD.key === k ? -TD.dir : (k === 'player' ? 1 : -1); TD.key = k; return tdRepaintBoard(); }
+    const add = e.target.closest('[data-add]'); if (add) return tdQuickAdd(+add.dataset.add, add);
+    const cf = e.target.closest('[data-conf]'); if (cf) { TD.minConf = +cf.dataset.conf; return tdRepaintBoard(); }
+    const sd = e.target.closest('[data-side]'); if (sd) { TD.side = sd.dataset.side; return tdRepaintBoard(); }
     const lg = e.target.closest('[data-lg]'); if (lg) { TD.league = lg.dataset.lg; return paintToday(); }
     const pm = e.target.closest('[data-pm]'); if (pm) { TD.projMode = pm.dataset.pm; try { localStorage.setItem('winai_projmode', TD.projMode); } catch (_) {} return paintToday(); }
     const chip = e.target.closest('[data-prop]'); if (chip) { TD.prop = chip.dataset.prop; return tdRepaintBoard(); }
@@ -4677,6 +4738,7 @@ function tdBindBoard() {
     const pk = e.target.closest('[data-pick]'); if (pk) return goToTodayPick(+pk.dataset.pick);
   };
   root.onkeydown = e => { if (e.key === 'Enter' && e.target.matches('[data-pick],[data-hist]')) e.target.click(); };
+  root.onchange = e => { if (e.target.id === 'bd-sort') { TD.sort = TD_SORTS[e.target.value] ? e.target.value : 'conf'; tdRepaintBoard(); } };
   const q = document.getElementById('td-q');
   if (q) q.oninput = e => { TD.q = e.target.value; tdRepaintBoard(); };
 }
@@ -5225,38 +5287,54 @@ function renderPlaytypeBreakdown(ctx, playerName, oppName, league) {
 const betslip = [];
 let _currentAnalysis = null;
 
-async function addToBetslip() {
-  if (!_currentAnalysis) { notify('Run an analysis first, then save it.'); return; }
-  const { player, opp, propType, line, verdict, edge, projection, confidence, league } = _currentAnalysis;
+// Saves one prop to the signed-in person's Prop List: used by the analyzer's button and the + on every board row.
+// Returns 'saved', 'have' (it was already there), or false (not saved: they are being asked to sign in, upgrade, or it failed).
+async function saveProp(pay) {
+  const { player, propType, line } = pay;
   // An account is only asked for here, at the moment someone saves. The prop is kept and saved after sign-in.
-  if (!AUTH.user) { openSignin('save', { player, opp, propType, line, verdict, edge, projection, confidence, league }); return; }
-  if (AUTH.paywall && AUTH.plan !== 'pro') { openUpgrade('prop_list'); return; }
-  if (betslip.find(b => b.player===player && b.propType===propType && b.line==line)) {
-    notify(`${player} ${propType} ${line} is already in your Prop List.`); return;
+  if (!AUTH.user) { openSignin('save', pay); return false; }
+  if (AUTH.paywall && AUTH.plan !== 'pro') { openUpgrade('prop_list'); return false; }
+  if (betslip.find(b => b.player === player && b.propType === propType && b.line == line)) {
+    notify(`${player} ${propType} ${line} is already in your Prop List.`); return 'have';
   }
-  const btn = document.getElementById('add-to-list-btn');
   try {
-    // Analyzer only ever runs against today's matchup (opponent is
-    // auto-detected from today's schedule), so today's date is the real
-    // game date to grade against later.
-    const { entry } = await apiPost('/api/clv/save', {
-      player, opp, propType, line, verdict, edge, projection, confidence, league,
-      gameDate: toDateStr(new Date()),
-    });
+    // Props are only ever saved for today's games, so today's date is the real game date to grade against later.
+    const { entry } = await apiPost('/api/clv/save', { ...pay, gameDate: toDateStr(new Date()) });
     betslip.unshift(entry);
     updateBetslipCount();
     if (document.getElementById('panel-betslip')?.classList.contains('active')) renderBetslip();
-    if (btn) { btn.textContent='✓ ADDED'; btn.style.color='var(--green)'; btn.style.borderColor='var(--green)'; setTimeout(()=>{ btn.textContent='+ ADD TO LIST'; btn.style.color='var(--gold)'; btn.style.borderColor='var(--gold)'; },2000); }
+    return 'saved';
   } catch (err) {
-    if (err.code === 'pro_required') { openUpgrade('prop_list', err.message); return; }
-    if (err.code === 'rg_break') { acctToast(err.message); refreshMe(); return; }
-    if (err.code === 'auth_required') { AUTH.user = null; paintAccount(); openSignin('save', { player, opp, propType, line, verdict, edge, projection, confidence, league }); return; }
+    if (err.code === 'pro_required') { openUpgrade('prop_list', err.message); return false; }
+    if (err.code === 'rg_break') { acctToast(err.message); refreshMe(); return false; }
+    if (err.code === 'auth_required') { AUTH.user = null; paintAccount(); openSignin('save', pay); return false; }
     notify(errorLine(err, 'Could not save the prop'));
+    return false;
+  }
+}
+async function addToBetslip() {
+  if (!_currentAnalysis) { notify('Run an analysis first, then save it.'); return; }
+  const { player, opp, propType, line, verdict, edge, projection, confidence, league } = _currentAnalysis;
+  const r = await saveProp({ player, opp, propType, line, verdict, edge, projection, confidence, league });
+  const btn = document.getElementById('add-to-list-btn');
+  if (r === 'saved' && btn) { btn.textContent='✓ ADDED'; btn.style.color='var(--green)'; btn.style.borderColor='var(--green)'; setTimeout(()=>{ btn.textContent='+ ADD TO LIST'; btn.style.color='var(--gold)'; btn.style.borderColor='var(--gold)'; },2000); }
+}
+// The + on a board row: saves the pick as the scan made it (its side, line, projection and strength), without opening an analysis first.
+async function tdQuickAdd(idx, btn) {
+  const p = _todayPicks[idx]; if (!p || btn.disabled) return;
+  btn.disabled = true;
+  const e = tdEdge(p);
+  const r = await saveProp({ player: p.player, opp: p.opponent, propType: p.propType, line: p.line, verdict: p.direction, edge: e == null ? p.edge : Math.round(e * 10) / 10, projection: p.projection, confidence: p.confidence, league: p.league });
+  btn.disabled = false;
+  if (r === 'saved' || r === 'have') {
+    btn.textContent = '✓'; btn.setAttribute('aria-pressed', 'true');
+    btn.setAttribute('aria-label', 'In your Prop List: ' + btn.getAttribute('aria-label').replace(/^Add to your Prop List: /, ''));
+    if (r === 'saved') announce(`${p.player} added to your Prop List`);
   }
 }
 
 function updateBetslipCount() {
-  for (const id of ['betslip-count', 'nav-count']) {
+  for (const id of ['betslip-count']) {
     const el = document.getElementById(id);
     if (!el) continue;
     el.style.display = betslip.length ? 'inline-block' : 'none';
