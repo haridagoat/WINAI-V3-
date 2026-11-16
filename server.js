@@ -32,6 +32,10 @@ const bestBets = require('./lib/bestbets');
 const biasLib = require('./lib/bias');
 modelParams.load();
 const { AsyncLocalStorage } = require('node:async_hooks');
+const oddsUsageLib = require('./lib/oddsusage');
+// Which job or page is behind the work happening right now, so every Odds API credit can be put against the thing that spent it.
+// Scheduled jobs set it in trackJob, page requests in the middleware below; whatever they call (however deep) carries the same label.
+const oddsJob = new AsyncLocalStorage();
 const { createAuth, sessionCookie, clearCookie, maskEmail, sha, newToken, parseCookies: parseCookiesHeader } = require('./lib/auth');
 const { createMailer } = require('./lib/mailer');
 const datachecks = require('./lib/datachecks');
@@ -69,7 +73,7 @@ function trackJob(name, fn) {
   return async (...args) => {
     const started = Date.now(), wasOk = jobRuns[name]?.ok !== false;
     try {
-      const out = await fn(...args);
+      const out = await oddsJob.run('job: ' + name, () => fn(...args));
       jobRuns[name] = { lastRun: new Date().toISOString(), ok: true, ms: Date.now() - started, detail: typeof out === 'string' ? out : null };
       return out;
     } catch (err) {
@@ -129,6 +133,7 @@ const apiLimiter = security.createRateLimiter({ windowMs: 60 * 1000, max: 300 })
 const costlyLimiter = security.createRateLimiter({ windowMs: 60 * 1000, max: 80, message: 'Too many lookups. Slow down and try again shortly.' });
 const writeLimiter = security.createRateLimiter({ windowMs: 60 * 1000, max: 30, message: 'Too many saves. Slow down and try again shortly.' });
 app.use('/api', apiLimiter);
+app.use('/api', (req, res, next) => oddsJob.run('page: ' + errorsLib.routeOf(req.method, req.originalUrl), next));   // see oddsJob above
 // Every route reads its query values as plain text. A repeated name (?x=a&x=b) or a bracket (?x[a]=b) turns a value into a list or an
 // object and would crash the handler, and control characters (line breaks, NUL) could forge lines in the server log. None of the
 // app's own calls use either, so they are refused before they reach any route.
@@ -252,10 +257,22 @@ let oddsApiHealth = (() => {
 // API's own x-requests-last header (the true cost of that exact call), so
 // "where is the quota going" is measured instead of guessed.
 const oddsUsage = { since: new Date().toISOString(), credits: 0, byCall: {} };
+// The same thing kept day by day and by the job that spent it, saved after every answer so a restart does not wipe it (lib/oddsusage.js).
+let oddsUsageLog = (() => { try { return JSON.parse(store.getMeta('odds_usage_log') || '{}'); } catch (_) { return {}; } })();
+function oddsCreditUse() {
+  const today = toLocalDateStr(new Date());
+  return { today: oddsUsageLib.summary(oddsUsageLog, today), days: oddsUsageLib.recent(oddsUsageLog, 7), dailyAverage: oddsUsageLib.dailyAverage(oddsUsageLog, today) };
+}
 axios.interceptors.response.use(
   (response) => {
     if (response.config?.url?.includes('the-odds-api.com')) {
       const last = parseInt(response.headers?.['x-requests-last'], 10);
+      try {
+        const left = parseInt(response.headers?.['x-requests-remaining'], 10);
+        oddsUsageLog = oddsUsageLib.record(oddsUsageLog, { day: toLocalDateStr(new Date()), job: oddsJob.getStore() || 'untagged', credits: isNaN(last) ? 0 : last,
+          remaining: isNaN(left) ? null : left, carried: oddsApiHealth.remaining });
+        store.setMeta('odds_usage_log', JSON.stringify(oddsUsageLog));
+      } catch (_) { /* the record is a nicety: it must never break an odds call */ }
       if (!isNaN(last)) {
         const u = response.config.url;
         const kind = /\/events$/.test(u) ? 'events list'
@@ -6175,7 +6192,7 @@ app.delete('/api/admin/notes/:id', requireAdmin, (req, res) => {
 const oddsKeyConfigured = () => !!(process.env.ODDS_API_KEY && !process.env.ODDS_API_KEY.includes('XXXXX'));
 function currentCreditBudget() {
   return creditBudget({
-    remaining: oddsApiHealth.remaining, usage: oddsUsage,
+    remaining: oddsApiHealth.remaining, usage: oddsUsage, dailyAverage: oddsUsageLib.dailyAverage(oddsUsageLog, toLocalDateStr(new Date())),
     warnAt: envNum(process.env.ODDS_CREDIT_WARN, 100), critAt: envNum(process.env.ODDS_CREDIT_CRIT, 40), scanCost: envNum(process.env.ODDS_SCAN_COST, 60),
   });
 }
@@ -6186,7 +6203,7 @@ function healthSnapshot() {
   let tests = null;
   try { tests = JSON.parse(fs.readFileSync(path.join(__dirname, 'test_results.json'), 'utf8')); } catch (_) {}
   return {
-    odds: { configured: oddsKeyConfigured(), ...oddsApiHealth, usage: oddsUsage },
+    odds: { configured: oddsKeyConfigured(), ...oddsApiHealth, usage: oddsUsage, dailyAverage: oddsUsageLib.dailyAverage(oddsUsageLog, toLocalDateStr(new Date())) },
     anthropicConfigured: !!(process.env.ANTHROPIC_KEY && !process.env.ANTHROPIC_KEY.includes('your_')),
     balldontlieConfigured: !!process.env.BALLDONTLIE_KEY,
     statFiles: { NBA: { mtime: mtime('player_stats.json') }, WNBA: { mtime: mtime('wnba_player_stats.json') } },
@@ -6358,7 +6375,7 @@ async function initAdminJobs() {
 
 app.get('/api/admin/health', requireAdmin, async (req, res) => {
   const h = evaluateHealth(healthSnapshot(), { budget: { warnAt: envNum(process.env.ODDS_CREDIT_WARN, 100), critAt: envNum(process.env.ODDS_CREDIT_CRIT, 40), scanCost: envNum(process.env.ODDS_SCAN_COST, 60) } });
-  res.json({ generatedAt: new Date().toISOString(), ...h, jobs: jobRuns, alertWebhookConfigured: alerts.configured, events: store.recentEvents(25) });
+  res.json({ generatedAt: new Date().toISOString(), ...h, creditUse: oddsCreditUse(), jobs: jobRuns, alertWebhookConfigured: alerts.configured, events: store.recentEvents(25) });
 });
 app.get('/api/admin/events', requireAdmin, (req, res) => res.json({ events: store.recentEvents(Math.min(200, parseInt(req.query.limit, 10) || 50)) }));
 app.get('/api/admin/backtest', requireAdmin, (req, res) => {

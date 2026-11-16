@@ -368,6 +368,35 @@ const pct = (x, d = 1) => x == null ? '—' : x.toFixed(d) + '%';
 const sign = x => x == null ? '—' : (x > 0 ? '+' : x < 0 ? '−' : '') + Math.abs(x);
 
 /* ───────── health ───────── */
+// Where the Odds credits went: today by job, then the last week by day. "Elsewhere" is what the provider's own count says was spent
+// that this server did not spend (another copy of the app using the same key, a script, the provider's site).
+function creditJobName(j) {
+  const lg = x => (/-wnba$/.test(x) ? ' (WNBA)' : /-nba$/.test(x) ? ' (NBA)' : '');
+  if (/^job: slate-scan/.test(j)) return 'Morning slate scan' + lg(j);
+  if (/^job: slate-fill/.test(j)) return 'Top-up of missing props' + lg(j);
+  if (/^job: reproject/.test(j)) return 'Re-pricing after late news' + lg(j);
+  if (j === 'job: closing-lines') return 'Closing-line capture';
+  if (/^job: (odds-)?credits$/.test(j)) return 'Credit check';
+  if (/^job: /.test(j)) return 'Job: ' + j.slice(5);
+  if (/prop-context/.test(j)) return 'Analyzer lookups' + (/wnba/.test(j) ? ' (WNBA)' : '');
+  if (/top-plays|prop-board|team-picks/.test(j)) return 'Scan started by opening Today';
+  if (/\/api\/admin/.test(j)) return 'Run from this admin page';
+  if (/^page: /.test(j)) return 'Page request: ' + j.slice(6);
+  return 'Not labelled (started before tracking, or a timer)';
+}
+function creditUseHtml(u) {
+  if (!u || !u.today) return '';
+  const t = u.today, rows = t.jobs.filter(j => j.credits > 0 || t.jobs.length <= 6);
+  const jobRows = rows.map(j => `<tr><td>${escapeHtml(creditJobName(j.job))}</td><td class="r">${j.calls}</td><td class="r">${j.credits}</td></tr>`).join('')
+    + (t.elsewhere > 0 ? `<tr><td><b class="neg">Spent outside this server</b></td><td class="r">—</td><td class="r"><b class="neg">${t.elsewhere}</b></td></tr>` : '');
+  const dayRows = (u.days || []).map(x => `<tr><td>${escapeHtml(x.day)}${x.day === t.day ? ' (today)' : ''}</td><td class="r">${x.credits}</td><td class="r">${x.elsewhere || 0}</td><td class="r"><b>${x.total}</b></td></tr>`).join('');
+  return `<h3 style="margin:20px 0 8px;font-family:var(--display);font-weight:700;font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)">Where today's credits went</h3>
+    <div class="scroll"><table class="t"><thead><tr><th>Spent by</th><th class="r">Calls</th><th class="r">Credits</th></tr></thead><tbody>${jobRows || '<tr><td colspan="3" style="color:var(--muted)">Nothing spent yet today.</td></tr>'}</tbody>
+      <tfoot><tr><td><b>Total today</b></td><td class="r">${t.calls}</td><td class="r"><b>${t.total}</b></td></tr></tfoot></table></div>
+    ${t.elsewhere > 0 ? '<p class="note2">"Spent outside this server" means the provider counted credits this server did not use. The usual cause is a second copy of the app (for example the deployed one and this one) sharing one key.</p>' : ''}
+    ${dayRows ? `<h3 style="margin:18px 0 8px;font-family:var(--display);font-weight:700;font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)">Last 7 days</h3>
+    <div class="scroll"><table class="t"><thead><tr><th>Day</th><th class="r">This server</th><th class="r">Elsewhere</th><th class="r">Total</th></tr></thead><tbody>${dayRows}</tbody></table></div>` : ''}`;
+}
 async function loadHealth() {
   const el = document.getElementById('p-health');
   try {
@@ -382,8 +411,9 @@ async function loadHealth() {
         <p class="note2" style="color:var(--muted2);margin-top:14px">${escapeHtml(b.message)}</p>
         <div class="grid2" style="margin-top:12px">
           <div class="tile"><div class="k">A full scan costs</div><div class="v">~${b.scanCost}</div><div class="s">${b.canScan ? 'Enough credits to run one' : '<b class="neg">Not enough: the 10 AM scan will be skipped</b>'}</div></div>
-          <div class="tile"><div class="k">Pace</div><div class="v">${b.perDay != null ? b.perDay + '/day' : '—'}</div><div class="s">${b.runwayDays != null ? 'About ' + b.runwayDays + ' days left at this pace' : 'Shown after the server has run 12+ hours'}</div></div>
+          <div class="tile"><div class="k">Pace</div><div class="v">${b.perDay != null ? b.perDay + '/day' : '—'}</div><div class="s">${b.runwayDays != null ? 'About ' + b.runwayDays + ' days left at this pace' : 'Shown once a full day is on record'}</div></div>
         </div>
+        ${creditUseHtml(d.creditUse)}
         <p class="note2">Thresholds and scan cost come from ODDS_CREDIT_WARN, ODDS_CREDIT_CRIT and ODDS_SCAN_COST in .env.</p></div>` : '';
     const checks = d.checks.map(c => `<div class="chk"><span class="dot ${c.level}"></span><div><b>${escapeHtml(c.label)}</b><span>${escapeHtml(c.detail)}</span></div></div>`).join('');
     const runBtn = [['pipeline', 'Daily pipeline'], ['grade', 'Grade picks'], ['backtest', 'Backtest'], ['calibration', 'Refit calibration'], ['backup', 'Backup now'], ['health', 'Re-check'], ['credits', 'Refresh credits'], ['closing-lines', 'Closing lines']].map(([k, l]) => `<button class="btn2" data-job="${k}">${l}</button>`).join(' ');

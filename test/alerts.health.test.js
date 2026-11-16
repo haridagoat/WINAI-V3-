@@ -101,3 +101,10 @@ test('health: failing tests are critical; a job that failed warns; a healthy sys
   assert.equal(evaluateHealth({ ...base, jobs: { grade: { ok: false, error: 'x' } } }).status, 'warn');
   assert.equal(evaluateHealth({ ...base, storage: { backend: 'json', note: 'fallback' } }).status, 'warn');
 });
+
+test('the pace comes from the saved daily record when there is one, even right after a restart', () => {
+  const now = Date.now();
+  const b = creditBudget({ remaining: 90, dailyAverage: 30, usage: { since: new Date(now - 60000).toISOString(), credits: 0 }, now });
+  assert.equal(b.perDay, 30); assert.equal(b.runwayDays, 3);
+  assert.equal(creditBudget({ remaining: 90, dailyAverage: 0, now }).perDay, null);
+});
