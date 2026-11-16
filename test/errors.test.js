@@ -53,3 +53,21 @@ test('groups only cover the window asked for, and sources are named', () => {
   assert.equal(r.log.groups({ sinceMs: 60e3 }).length, 0);
   assert.equal(r.log.groups().length, 2);
 });
+
+test('a failed AI call is sorted into "busy or not answering" (try again) and "unavailable" (not a retry), without the provider\'s own words', () => {
+  const upstream = status => Object.assign(new Error('Request failed'), { response: { status } });
+  assert.equal(E.aiFailure(upstream(429)).status, 503); assert.match(E.aiFailure(upstream(429)).message, /busy/);
+  assert.equal(E.aiFailure(upstream(529)).status, 503); assert.match(E.aiFailure(upstream(529)).message, /not answering/);
+  assert.equal(E.aiFailure(upstream(500)).status, 503);
+  assert.equal(E.aiFailure(Object.assign(new Error('timeout of 60000ms exceeded'), { code: 'ECONNABORTED' })).status, 503);
+  assert.equal(E.aiFailure(Object.assign(new Error('getaddrinfo ENOTFOUND api.anthropic.com'), { code: 'ENOTFOUND' })).status, 503);
+  assert.equal(E.aiFailure(new Error('The AI went quiet for 30 seconds')).status, 503);
+  assert.equal(E.aiFailure(new Error('The AI returned no text.')).status, 503);
+  assert.equal(E.aiFailure(new Error('x'), 'Overloaded').status, 503);
+  // refused or misconfigured: not worth retrying, and the billing detail is not repeated to the visitor
+  const billing = E.aiFailure(upstream(400), 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing');
+  assert.equal(billing.status, 502); assert.doesNotMatch(billing.message, /credit|billing|Plans/i);
+  assert.equal(E.aiFailure(upstream(401), 'invalid x-api-key sk-ant-api03-SECRETSECRET').status, 502);
+  assert.doesNotMatch(E.aiFailure(upstream(401), 'invalid x-api-key sk-ant-api03-SECRETSECRET').message, /sk-ant|x-api-key/);
+  assert.equal(E.aiFailure(null).status, 502);
+});

@@ -112,3 +112,20 @@ test2('the scan log keeps one row per prop per day, grades once, and counts what
   assert.equal(st.pruneScanProps('2026-12-01') >= 3, true);
   st.close();
 });
+
+test('a write that arrives while another process holds the database waits for it instead of failing with "database is locked"', async () => {
+  const { spawn } = require('node:child_process');
+  const dir = tmp(), file = path.join(dir, 'lock.db');
+  const store = createStore({ dbPath: file });
+  // A second process (a backup tool, or a second copy of the app) takes the write lock, keeps it for 400 ms, and lets go.
+  const holder = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', '-e', `
+    const { DatabaseSync } = require('node:sqlite'); const db = new DatabaseSync(${JSON.stringify(file)});
+    db.exec('BEGIN IMMEDIATE'); console.log('locked'); setTimeout(() => { db.exec('COMMIT'); process.exit(0); }, 400);`]);
+  await new Promise((resolve, reject) => { holder.stdout.on('data', d => /locked/.test(String(d)) && resolve()); holder.on('error', reject); setTimeout(() => reject(new Error('holder did not start')), 5000); });
+  const started = Date.now();
+  store.setMeta('k', 'v');                                 // without a busy timeout this throws at once
+  const waited = Date.now() - started;
+  assert.equal(store.getMeta('k'), 'v');
+  assert.ok(waited >= 250 && waited < 4000, `it should have waited for the other process (waited ${waited} ms)`);
+  store.close && store.close(); fs.rmSync(dir, { recursive: true, force: true });
+});

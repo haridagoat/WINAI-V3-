@@ -4189,7 +4189,6 @@ async function fillMissingProps(league) {
 // others are the best available, not strong bets, and the page says so.
 const MIN_PICK_EV = () => modelParams.get().market.minEv ?? 0.03;
 function isRealPick(r) { return !!(r && r.realEdge && r.realEdge.expectedValue != null && r.realEdge.expectedValue >= MIN_PICK_EV() && r.direction); }
-const byValue = (a, b) => ((b.realEdge?.expectedValue ?? -9) - (a.realEdge?.expectedValue ?? -9)) || (b.confidence - a.confidence);
 
 function autoLogSlatePicks(league, results) {
   const withEdge = picksLib.flattenPicks(picksLib.topPicksPerGame(results));      // the top three in each game
@@ -4615,7 +4614,8 @@ app.post('/api/analyze', analyzeRateLimiter, (req, res, next) => {
     if (req.analysisTicket) store.releaseTicket(req.analysisTicket);          // a failed analysis is not spent
     console.error(`[Claude] Error ${errStatus}:`, errMsg);
     console.error('[Claude] Full error:', JSON.stringify(err.response?.data || {}, null, 2));
-    res.status(500).json({ error: errMsg, status: errStatus });
+    const fail = errorsLib.aiFailure(err, errMsg);          // the real reason stays in the log above; the visitor gets a plain one
+    res.status(fail.status).json({ error: fail.message, code: 'ai_unavailable' });
   }
 });
 
@@ -4670,7 +4670,7 @@ async function streamAnalysis(req, res, prompt) {
     }
     if (!spent && req.analysisTicket) store.releaseTicket(req.analysisTicket);      // nothing was delivered, so it is not spent
     console.error(`[Claude] Stream error ${err.response?.status || ''}:`, msg);
-    send({ error: msg }); res.end();
+    send({ error: errorsLib.aiFailure(err, msg).message, code: 'ai_unavailable' }); res.end();
   }
 }
 
@@ -5092,12 +5092,20 @@ rosterCache   = {};
 lastRosterFetch = {};
 console.log('[STARTUP] Roster cache cleared — fetching fresh rosters on first request');
 
-fetchTodaysGames().then(() => {
+fetchTodaysGames().catch(err => console.error('[Startup] schedule fetch failed:', err.message)).then(() => {
   const server = app.listen(PORT, () => {
     console.log('\n  WIN AI — NBA Props Engine');
     console.log(`  Running → http://localhost:${PORT}`);
     console.log('  ESPN rosters: LIVE (no key needed)');
     console.log('  Stat files: run python fetch_stats.py to refresh\n');
+  });
+  // If the port is taken, another copy of the app is almost certainly running. Carrying on would leave this one alive with no web server but with
+  // every scheduled job running (the scan, the top-ups, the closing-line capture), spending the same Odds credits and writing the same database twice.
+  // So stop, say why, and let the one that is already running keep going.
+  server.on('error', err => {
+    if (err && err.code === 'EADDRINUSE') console.error(`\n  Port ${PORT} is already in use, so another copy of WIN AI is probably running.\n  This copy is stopping so the two do not both run the scheduled jobs.\n  To run on another port: PORT=${Number(PORT) + 1} npm start\n`);
+    else console.error('[Fatal] the web server could not start:', err && err.message);
+    process.exit(1);
   });
   // A client gets 20 s to finish its headers and 2 minutes for the whole request: half-open connections cannot be held forever.
   server.headersTimeout = 20000; server.requestTimeout = 120000; server.keepAliveTimeout = 5000;
