@@ -17,6 +17,8 @@ import sys, json, os, time
 from collections import Counter
 import requests
 
+import season_blend
+
 try:
     from nba_api.stats.endpoints import shotchartdetail
     from nba_api.stats.static import players as nba_players, teams as nba_teams
@@ -329,10 +331,10 @@ def main():
     league = sys.argv[1].lower()
     mode = sys.argv[2]
     name = sys.argv[3]
-    season = sys.argv[4] if len(sys.argv) > 4 else '2025-26'
+    season = sys.argv[4] if len(sys.argv) > 4 else season_blend.current_nba_season()   # the server always passes one; this is for running it by hand
     # Normalize once, immediately, for every WNBA path (benchmark,
     # ShotChartDetail, resolve_wnba_player) — the caller (server.js) still
-    # defaults to the NBA-style '2025-26', and stats.nba.com silently
+    # defaults to the NBA-style 'YYYY-YY' season, and stats.nba.com silently
     # returns the prior completed season for that format on WNBA endpoints
     # instead of erroring (confirmed: it returns 2025 season shots dated
     # from May 2025, not the live 2026 season). This was previously only
