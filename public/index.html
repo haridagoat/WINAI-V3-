@@ -1306,6 +1306,8 @@
   .bd-who small{display:block;color:var(--muted);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .bd-lp{display:flex;flex-direction:column;gap:1px;font-variant-numeric:tabular-nums;min-width:0;}
   .bd-pt{font-family:var(--label);font-weight:700;font-size:11.5px;letter-spacing:.14em;color:var(--dim);}
+  .bd-flip{display:block;color:var(--muted2);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .td-card > .bd-flip{margin:-4px 0 8px;}
   .bd-mkt{display:block;color:var(--muted2);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .td-card > .bd-mkt{margin:-4px 0 8px;}
   .bd-nums{display:flex;align-items:baseline;gap:6px;white-space:nowrap;}
@@ -4528,6 +4530,10 @@ const lineSource = p => {
   const who = escapeHtml(p.book || 'one book');
   return `<small class="bd-mkt" title="Most books post ${escapeHtml(c)}. This number is from ${who}.">${who} · books ${escapeHtml(c)}</small>`;
 };
+// The call (OVER or UNDER) follows the model's projection. When the better PRICE is on the other side and has a real edge, say so, so the call and the
+// price are two things shown side by side instead of one contradicting the other.
+const priceNote = p => (p?.priceSide && p.direction && p.priceSide !== p.direction && p.priceEv != null && p.priceEv >= 0)
+  ? `<small class="bd-flip" title="The projection says ${escapeHtml(p.direction)}, but the better price, with a positive expected value, is on the ${escapeHtml(p.priceSide)} side.">price favors ${escapeHtml(p.priceSide.toLowerCase())} ${fmtEv(p.priceEv)}</small>` : '';
 const EV_PICK_MIN = 0.03;
 const isValuePick = p => (p?.realEdge?.expectedValue ?? -1) >= EV_PICK_MIN;
 const byValueDesc = (a, b) => ((b.realEdge?.expectedValue ?? -9) - (a.realEdge?.expectedValue ?? -9)) || (b.confidence - a.confidence);
@@ -4540,7 +4546,7 @@ function tdTopCard(p, i) {
     <span class="td-rk">#${i + 1}</span>
     <div class="td-tp-h">${pickAvatar(p.league, p.playerId, p.player)}<div><div class="td-tp-n">${escapeHtml(p.player)}${p.bestBet ? ' <span class="td-best">BEST BET</span>' : ''}</div><div class="td-tp-s">${escapeHtml(team)} vs ${escapeHtml(opp)}</div></div></div>
     <div class="td-call">${fb ? `<span class="td-big">≈ PROJ ${escapeHtml(p.projection)}</span>` : `<span class="td-big ${over ? 'pos' : 'neg'}">${escapeHtml(p.direction)} ${escapeHtml(p.line)}</span>`}<span class="td-pill">${PROP_LABEL[p.propType] || escapeHtml(String(p.propType).toUpperCase())}</span></div>
-    ${lineSource(p)}
+    ${lineSource(p)}${priceNote(p)}
     <div class="td-m"><div><span>${TD.projMode === 'blend' ? 'Market blend' : 'Projection'}</span><b>${escapeHtml(tdProj(p))}</b>${lineGap(p)}${modelNote(p)}</div>
       <div><span>Confidence</span><b>${fmtConf(conf)}</b><div class="td-cbar"><i style="width:${Math.max(0, Math.min(100, conf))}%"></i></div></div>
       <div><span>EV</span><b${hot || (ev != null && ev < 0) ? ' class="neg"' : ''} title="${hot ? 'Unusually large: more often the model being overconfident than free money, so no stake is suggested.' : ev != null && ev < 0 ? 'Below break-even at the best posted price' : 'Expected profit per $1 at the best posted price'}">${fmtEv(ev)}${hot ? ' ⚠' : ''}</b>${ev != null && ev < 0 ? '<small class="td-model">below break-even</small>' : ''}</div></div></div>`;
@@ -4626,8 +4632,8 @@ function tdBoardRow(p, times) {
   return `<div class="bd-row" role="listitem" data-pick="${idx}" tabindex="0" aria-label="${escapeHtml(`${p.player}, ${prop} ${p.direction} ${p.line}. Open the analysis.`)}">
     <div class="bd-who">${pickAvatar(p.league, p.playerId, p.player)}<div><b>${escapeHtml(p.player)}</b><small>${escapeHtml((p.awayTeam || '').split(' ').pop())} @ ${escapeHtml((p.homeTeam || '').split(' ').pop())}${when ? ' · ' + escapeHtml(when) : ''}</small></div></div>
     <div class="bd-lp"><span class="bd-pt">${prop}</span><span class="bd-nums"><b class="bd-line">${escapeHtml(p.line)}</b><i aria-hidden="true">→</i><span class="bd-proj" title="${TD.projMode === 'blend' ? 'Market-blend projection' : 'Our projection'}">${escapeHtml(tdProj(p))}</span></span>${lineSource(p)}${modelNote(p)}</div>
-    <div class="bd-edge">${edge == null ? '<b class="off">—</b>' : `<b class="${agree ? '' : 'off'}" title="${agree ? 'The projection leans the same way as the pick' : 'The projection leans the other way: the pick comes from the price, not the projection'}">${bdSigned(edge)}</b><span class="bd-eb" aria-hidden="true"><i style="${edge >= 0 ? 'left:50%' : 'right:50%'};width:${half.toFixed(1)}%"></i></span>`}</div>
-    <div class="bd-price"><b>${price != null ? bdOdds(price) : '—'}</b><small>${escapeHtml(p.book || '')}</small><small class="bd-ev ${ev != null && ev >= 0 ? 'pos' : 'neg'}" ${hot ? 'title="Unusually large: more often the model being overconfident than free money."' : ''}>EV ${fmtEv(ev)}${hot ? ' <span class="neg">⚠</span>' : ''}</small></div>
+    <div class="bd-edge">${edge == null ? '<b class="off">—</b>' : `<b class="${agree ? '' : 'off'}" title="${agree ? 'The projection is on the same side of the line as the call' : 'The market-blended projection is on the other side of the line. The call follows the model\'s own projection.'}">${bdSigned(edge)}</b><span class="bd-eb" aria-hidden="true"><i style="${edge >= 0 ? 'left:50%' : 'right:50%'};width:${half.toFixed(1)}%"></i></span>`}</div>
+    <div class="bd-price"><b>${price != null ? bdOdds(price) : '—'}</b><small>${escapeHtml(p.book || '')}</small><small class="bd-ev ${ev != null && ev >= 0 ? 'pos' : 'neg'}" ${hot ? 'title="Unusually large: more often the model being overconfident than free money."' : ''}>EV ${fmtEv(ev)}${hot ? ' <span class="neg">⚠</span>' : ''}${isValuePick(p) ? ' <span class="td-val" title="The price on this side has an expected value of 3% or more">VALUE</span>' : ''}</small>${priceNote(p)}</div>
     <div class="bd-side"><span class="td-pill ${over ? 'pos' : 'neg'}">${over ? '↑' : '↓'} ${escapeHtml(p.direction)}</span></div>
     <div class="bd-conf"><span class="td-bar" aria-hidden="true"><i style="width:${Math.max(0, Math.min(100, conf))}%"></i></span><span class="num" title="Strength: how reliable the numbers behind this are. It is not the chance of winning.">${fmtConf(conf)}</span></div>
     <button type="button" class="bd-add" data-add="${idx}" aria-pressed="${inList}" aria-label="${inList ? 'In your Prop List: ' : 'Add to your Prop List: '}${escapeHtml(`${p.player} ${prop} ${p.direction} ${p.line}`)}">${inList ? '✓' : '+'}</button>
@@ -4952,6 +4958,8 @@ function renderMarketValue(ctx, userLine) {
     notes.push(`You entered ${escapeHtml(String(userLine))}; the best posted line is ${lm.line}. Value below is measured at the posted line.`);
   if (blend && mp.marketBlendProjection != null)
     notes.push(`The projection above is the model's own (${mp.projection}). Blended with the ${blend.bookCount}-book consensus (${Math.round(blend.weight * 100)}% market) it is ${mp.marketBlendProjection}. On graded picks the posted line beat the model, so the win chance below leans on the market.`);
+  if (lm.priceSide && lm.priceSide !== side && lm.priceEv != null)
+    notes.unshift(`The call follows the projection (${side}). The better price is on the ${lm.priceSide} side (EV ${lm.priceEv >= 0 ? '+' : ''}${(lm.priceEv * 100).toFixed(1)}%), which is a price question and not a different call.`);
   notes.push('Model estimate, not a guarantee. Stake is quarter-Kelly, capped at 5% of bankroll.');
   return wrap({
     head: `<span class="mv-big" style="color:${evColor};">${ev >= 0 ? '+' : ''}${ev.toFixed(1)}%<small>EXPECTED VALUE PER $1 · ${side}</small></span>`,

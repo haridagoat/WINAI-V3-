@@ -76,7 +76,9 @@ test('the full assessment never produces a broken number, whatever the books loo
       assert.ok(side.prob > 0 && side.prob < 1 && Number.isFinite(side.ev) && side.ev >= -1 && side.ev <= 5, JSON.stringify(side));
       assert.ok(side.push >= 0 && side.push <= 0.9);
     }
-    const evs = [a.over, a.under].filter(Boolean).map(x => x.ev); assert.equal(a.best.ev, Math.max(...evs), 'the call is the better-value side');
+    const evs = [a.over, a.under].filter(Boolean).map(x => x.ev); assert.equal(a.value.ev, Math.max(...evs), 'value is the better-price side');
+    // the call is the side the projection leans (against the books' consensus), whatever the price says; with no lean it is the better price
+    assert.ok(a.best === a.over || a.best === a.under, 'the call is one of the two sides');
   }
   assert.ok(n > 2500);
 });

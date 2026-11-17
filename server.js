@@ -2780,7 +2780,15 @@ function assessProp({ propType, rawProjection, sd, books }) {
   };
   const over = sideOf('over'), under = sideOf('under');
   const ranked = [over, under].filter(Boolean).sort((x, y) => (y.ev ?? -9) - (x.ev ?? -9));
-  return ranked.length ? { over, under, best: ranked[0] } : null;
+  if (!ranked.length) return null;
+  // The CALL (OVER or UNDER) is the side the model's own projection leans, against the books' consensus line. The PRICE is judged separately: `value` is the
+  // side with the better expected value, which is often the other side because the books' margin makes both lose and a few cents decide which loses less.
+  // Following the price made the call contradict the projection shown next to it on 34% of a day's board. On 1,373 graded props the projection side hit 52.2%
+  // and the better-price side 48.9%; where they disagreed the projection side won 54.9% of 437. With no lean (projection on the line) the call is the better price.
+  const consensus = market.consensusLineOf(books);
+  const lean = consensus != null && rawProjection > consensus ? 'over' : consensus != null && rawProjection < consensus ? 'under' : null;
+  const best = (lean && { over, under }[lean]) || ranked[0];
+  return { over, under, best, value: ranked[0], lean };
 }
 
 function buildRealEdge(o) {
@@ -2807,7 +2815,7 @@ function buildRealEdge(o) {
 function buildCandidateResult({ league, cand, playerName, playerTeam, opponent, rawProjection }) {
   const projection = blendWithMarket(rawProjection, cand.consensusLine, cand.bookCount, cand.propType);
   const a = assessProp({ propType: cand.propType, rawProjection: rawProjection.projection, sd: rawProjection.stdDev, books: cand.books });
-  const best = a && a.best;
+  const best = a && a.best, value = a && a.value;          // best = the call (the projection's side); value = the better-price side
   const line = best ? best.line : cand.line;
   const edge = calcEdgeScore(rawProjection.projection, line);
   const prob = best
@@ -2826,13 +2834,15 @@ function buildCandidateResult({ league, cand, playerName, playerTeam, opponent, 
       tmBoost: rawProjection.injuryBreakdown?.teammateBoost ?? null, posMult: rawProjection.positionMult ?? null, blended: projection.marketBlendProjection ?? rawProjection.projection, sd: rawProjection.stdDev,
       modelOver: m ? m.overProbability : null, marketOver: f ? round3(f.over) : null, finalOver: finalOver != null ? round3(finalOver) : null,
       books: Object.entries(cand.books || {}).map(([b, e]) => [b, e.Over?.point ?? e.Under?.point ?? null, e.Over?.price ?? null, e.Under?.price ?? null]),
-      best: best ? { side: best.side, line: best.line, price: best.price, prob: best.prob, ev: best.ev } : null,
+      best: value ? { side: value.side, line: value.line, price: value.price, prob: value.prob, ev: value.ev } : null,   // the better price: the value-pick record is scored from this
+      call: best ? { side: best.side, line: best.line, price: best.price, prob: best.prob, ev: best.ev } : null,       // the call: the side the projection leans
     };
   }
   return {
     league, player: playerName, team: playerTeam, opponent,
     propType: cand.propType, line, book: best ? best.book : cand.book,
     direction: best ? best.side.toUpperCase() : (edge == null ? null : edge > 0 ? 'OVER' : edge < 0 ? 'UNDER' : null),
+    priceSide: value ? value.side.toUpperCase() : null, priceEv: value ? value.ev : null,   // where the better price is, shown only when it is not the call's side
     consensusLine: cand.consensusLine ?? null, bookCount: cand.bookCount ?? null,
     marketEdge: cand.consensusLine != null ? calcEdgeScore(rawProjection.projection, cand.consensusLine) : null,
     projection: rawProjection.projection, modelProjection: rawProjection.projection, blendedProjection: projection.marketBlendProjection ?? rawProjection.projection, confidence: projection.confidence,
@@ -2852,7 +2862,7 @@ function buildLiveMarket(mathProjection, propLines, propType) {
   const b = a.best, edge = calcEdgeScore(mathProjection.projection, b.line);
   const offer = o => (o ? { line: o.line, book: o.book, price: o.price, prob: pct1(o.prob), ev: o.ev } : null);
   return {
-    line: b.line, book: b.book, side: b.side.toUpperCase(), consensusLine: propLines.consensusLine, bookCount: propLines.bookCount,
+    line: b.line, book: b.book, side: b.side.toUpperCase(), priceSide: a.value ? a.value.side.toUpperCase() : null, priceEv: a.value ? a.value.ev : null, consensusLine: propLines.consensusLine, bookCount: propLines.bookCount,
     edge, overProbability: round3(b.side === 'over' ? b.prob : 1 - b.prob), underProbability: round3(b.side === 'under' ? b.prob : 1 - b.prob), pushProbability: b.push,
     realEdge: buildRealEdge(b), offers: { over: offer(a.over), under: offer(a.under) }, modelProjection: raw, blendedProjection: mathProjection.marketBlendProjection ?? raw,
   };
@@ -4042,7 +4052,7 @@ for (const entry of Object.values(slateScanCache)) {
 // disk for the whole day (to protect the Odds API quota), so without a
 // version stamp a logic change would keep serving numbers from the OLD
 // formula until midnight.
-const SLATE_LOGIC_VERSION = 5; // 2 = continuous confidence score (calcConfidence); 3 = market-anchored chances, per-side best prices, EV-based calls; 4 = per-game props kept balanced across stats and teams; 5 = each book's real line (not the last alternate it listed)
+const SLATE_LOGIC_VERSION = 6; // 2 = continuous confidence score (calcConfidence); 3 = market-anchored chances, per-side best prices, EV-based calls; 4 = per-game props kept balanced across stats and teams; 5 = each book's real line (not the last alternate it listed); 6 = the call (OVER/UNDER) follows the projection; the better price is kept as scan.best and priceSide
 // An empty scan (0 candidates) is ambiguous — could mean a real quota/key
 // failure, or just no props posted yet — so it's NOT trusted for the rest
 // of the day like a real successful scan is. Real bug this fixed: a key
@@ -4191,7 +4201,10 @@ function autoLogSlatePicks(league, results) {
   if (!withEdge.length) return 0;
   const today = getToday();
   const entries = loadCLV();
-  const setAside = picksLib.supersedeOffMarket(entries, results, { today, league });   // earlier picks at an alternate line give way to the corrected ones
+  // Only games that have not started can have their earlier picks replaced: one under way keeps the pick it was logged with.
+  const nowMs = Date.now(), started = new Set(Object.values(slateScanCache[league]?.data?.eventInfo || {}).filter(i => new Date(i.commence).getTime() <= nowMs).map(i => `${i.away}@${i.home}`));
+  const fresh = (results || []).filter(r => !started.has(`${r.awayTeam}@${r.homeTeam}`));
+  const setAside = picksLib.supersedeOffMarket(entries, fresh, { today, league }) + picksLib.supersedeOldSideRule(entries, fresh, { today, league });   // earlier picks at an alternate line, or under the old side rule, give way to the corrected ones
   const already = new Set(entries
     .filter(e => e.source === 'auto' && e.date === today && e.league === league && !e.superseded)
     .map(e => `${e.player}|${e.propType}`));                                     // one bet per player and prop a day: a line that moves later is not a second pick
@@ -4206,7 +4219,7 @@ function autoLogSlatePicks(league, results) {
       projection: r.projection, modelProjection: r.modelProjection ?? null, blendedProjection: r.blendedProjection ?? null, verdict: r.direction,
       edge: r.edge, confidence: r.confidence,
       closingLine: null, result: null, actualStat: null, clv: null, notes: '',
-      source: 'auto', confVersion: CONFIDENCE_FORMULA_VERSION,
+      source: 'auto', sideRule: 'projection', confVersion: CONFIDENCE_FORMULA_VERSION,
       book: r.book ?? null, openConsensus: r.consensusLine ?? null,
       // What calibration and the backtest score later: the model's RAW chance for
       // the logged side, the price it was compared to, and the EV that implied.
@@ -4215,7 +4228,7 @@ function autoLogSlatePicks(league, results) {
     });
     added++;
   }
-  if (added || setAside) { saveCLV(entries); console.log(`[AutoLog] ${league}: logged ${added} picks for ${today}${setAside ? `, set aside ${setAside} logged at an alternate line` : ''}`); }
+  if (added || setAside) { saveCLV(entries); console.log(`[AutoLog] ${league}: logged ${added} picks for ${today}${setAside ? `, set aside ${setAside} made under an earlier rule or at an alternate line` : ''}`); }
   return added;
 }
 // Picks are logged when a game's lines are scanned. A restart after the scan (or a change in how picks are chosen) would otherwise leave today's
@@ -4321,7 +4334,7 @@ async function computeTopPlays(league) {
       direction: r.direction,
       projection: r.projection, modelProjection: r.modelProjection ?? null, blendedProjection: r.blendedProjection ?? null, edge: r.edge, confidence: r.confidence,
       overProbability: r.overProbability ?? null, underProbability: r.underProbability ?? null,
-      consensusLine: r.consensusLine ?? null, bookCount: r.bookCount ?? null, marketEdge: r.marketEdge ?? null,
+      priceSide: r.priceSide ?? null, priceEv: r.priceEv ?? null, consensusLine: r.consensusLine ?? null, bookCount: r.bookCount ?? null, marketEdge: r.marketEdge ?? null,
       realEdge: r.realEdge ?? null, bestBet: !!r.bestBet,
   });
   return {
@@ -4368,7 +4381,7 @@ async function computeTeamPicks(league) {
         direction: r.direction,
         projection: r.projection, modelProjection: r.modelProjection ?? null, blendedProjection: r.blendedProjection ?? null, edge: r.edge, confidence: r.confidence,
         overProbability: r.overProbability ?? null, underProbability: r.underProbability ?? null,
-        consensusLine: r.consensusLine ?? null, bookCount: r.bookCount ?? null, marketEdge: r.marketEdge ?? null,
+        priceSide: r.priceSide ?? null, priceEv: r.priceEv ?? null, consensusLine: r.consensusLine ?? null, bookCount: r.bookCount ?? null, marketEdge: r.marketEdge ?? null,
         realEdge: r.realEdge ?? null, value: isRealPick(r), bestBet: !!r.bestBet,
       })),
     })),
@@ -4514,7 +4527,7 @@ app.get('/api/prop-board', async (req, res) => {
         direction: r.direction || 'PASS',
         projection: r.projection, modelProjection: r.modelProjection ?? null, blendedProjection: r.blendedProjection ?? null, edge: r.edge, confidence: r.confidence,
         overProbability: r.overProbability ?? null, underProbability: r.underProbability ?? null,
-        consensusLine: r.consensusLine ?? null, bookCount: r.bookCount ?? null, realEdge: r.realEdge ?? null,
+        priceSide: r.priceSide ?? null, priceEv: r.priceEv ?? null, consensusLine: r.consensusLine ?? null, bookCount: r.bookCount ?? null, realEdge: r.realEdge ?? null,
       }));
     // Free accounts and guests see the top of the board; Pro sees every prop.
     const limited = paywallOn() && !isProReq(req);

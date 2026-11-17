@@ -42,10 +42,41 @@ test('each side is priced at its own best number: lowest Over line, highest Unde
   assert.ok(a.over.marketProb > 0.5 && a.under.marketProb > 0.5, 'both sides are better than a coin flip at their own numbers');
 });
 
-test('the side with the better expected value is the call, not the sign of the gap', () => {
+test('the call is the side the projection leans; the better price is kept separately as value', () => {
   const books = { A: book(22.5, -105, -115), B: book(22.5, -125, 105) };
   const a = S.assessProp({ propType: 'points', rawProjection: 25, sd: 7, books });
-  assert.equal(a.best.side, a.over.ev >= a.under.ev ? 'over' : 'under');
+  assert.equal(a.lean, 'over'); assert.equal(a.best.side, 'over', 'a projection above the books\' line is an OVER call');
+  assert.equal(a.value.side, a.over.ev >= a.under.ev ? 'over' : 'under');
+  const down = S.assessProp({ propType: 'points', rawProjection: 20, sd: 7, books });
+  assert.equal(down.lean, 'under'); assert.equal(down.best.side, 'under');
+});
+
+test('Nov 17: a projection well above the line stays an OVER even when the under has the better price', () => {
+  // Three books at 36.5 and one at 37.5 whose under is priced kindly: shopping for the under's best number gives it the better expected value,
+  // but the model projects 41.6. The old rule called this UNDER, 5 points the wrong side of its own projection.
+  const books = { A: book(36.5, -125, -105), B: book(36.5, -125, -105), C: book(36.5, -125, -105), D: book(37.5, 110, -115) };
+  const a = S.assessProp({ propType: 'points', rawProjection: 41.6, sd: 8.5, books });
+  assert.equal(a.lean, 'over');
+  assert.equal(a.best.side, 'over', 'the call follows the projection');
+  assert.equal(a.value.side, 'under', 'while the better price is on the under');
+  assert.ok(a.best.ev < 0 && a.value.ev < 0, 'neither side has a price edge, and that is shown as it is');
+  assert.ok(a.best.ev < a.value.ev, 'the call gives up a little on price, which the page reports as EV and does not hide');
+  assert.ok(41.6 - a.best.line > 0, 'so the edge column and the call point the same way');
+});
+
+test('the call and the edge never point opposite ways, for any books and any projection', () => {
+  let seed = 11; const rnd = () => (seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296;
+  let n = 0;
+  for (let i = 0; i < 2000; i++) {
+    const line = 5 + Math.floor(rnd() * 40) + 0.5, nb = 2 + Math.floor(rnd() * 5), books = {};
+    for (let b = 0; b < nb; b++) { const pt = line + Math.round((rnd() - 0.5) * 2) * 0.5; const o = -(100 + Math.floor(rnd() * 40)), u = -(100 + Math.floor(rnd() * 40)); books['B' + b] = book(pt, o, u); }
+    const proj = line + (rnd() - 0.5) * 12; if (proj <= 0) continue;
+    const a = S.assessProp({ propType: 'points', rawProjection: proj, sd: 6, books }); if (!a || !a.lean) continue; n++;
+    const edge = proj - a.best.line;
+    assert.equal(a.best.side, a.lean);
+    assert.ok(a.lean === 'over' ? edge > 0 : edge < 0, `lean ${a.lean}, projection ${proj}, call line ${a.best.line}`);
+  }
+  assert.ok(n > 1500);
 });
 
 test('a whole-number line carries a push chance and EV is scaled by it', () => {

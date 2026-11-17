@@ -88,3 +88,18 @@ test('picks that are fine, graded, old, another league, a user\'s own, or only a
   assert.deepEqual(entries, before);
   assert.equal(P.supersedeOffMarket(null, results, { today, league: 'nba' }), 0);
 });
+
+// ── picks logged under the old side rule ──
+test('a pick logged under the old rule whose side differs from the projection\'s call today is set aside, and nothing else is', () => {
+  const today = '2026-11-17';
+  const mk = (o = {}) => ({ id: 1, source: 'auto', date: today, league: 'nba', player: 'Luka Doncic', propType: 'points', line: 36.5, verdict: 'UNDER', result: null, ...o });
+  const results = [{ player: 'Luka Doncic', propType: 'points', direction: 'OVER' }, { player: 'Same Side', propType: 'points', direction: 'UNDER' }];
+  const entries = [mk(), mk({ id: 2, player: 'Same Side' }), mk({ id: 3, sideRule: 'projection' }), mk({ id: 4, result: 'WIN' }), mk({ id: 5, date: '2026-11-16' }),
+    mk({ id: 6, league: 'wnba' }), mk({ id: 7, source: undefined }), mk({ id: 8, player: 'No Scan Row' })];
+  const before = entries.map(e => ({ ...e }));
+  assert.equal(P.supersedeOldSideRule(entries, results, { today, league: 'nba' }), 1);
+  assert.equal(entries[0].result, 'NO_BET'); assert.equal(entries[0].superseded, true); assert.match(entries[0].notes, /UNDER.*projection.*OVER/);
+  assert.deepEqual(entries.slice(1), before.slice(1), 'the same side, a new-rule pick, a graded pick, another day or league, a person\'s own save, and a pick with no scan row are untouched');
+  assert.equal(P.supersedeOldSideRule(entries, results, { today, league: 'nba' }), 0, 'a second pass changes nothing');
+  assert.equal(P.supersedeOldSideRule(null, results, { today, league: 'nba' }), 0);
+});
