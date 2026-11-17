@@ -81,3 +81,57 @@ test('expected value: break-even at the implied chance, and a push refund scales
   assert.equal(M.expectedValue(null, -110), null); assert.equal(M.expectedValue(0.6, 50), null);
   assert.ok(Math.abs(M.expectedValue(0.6, -110, 5) - M.expectedValue(0.6, -110, 0.9)) < 1e-9, 'a push chance is capped');
 });
+
+// ── a book's real line (mainLine) ──
+// Bovada's ladder for Luka Doncic's points on Nov 17 2026, as the feed returned it, and the single lines the other books posted.
+const BOVADA_LADDER = [[31.5, -275, 200], [32.5, -220, 165], [33.5, -185, 140], [34.5, -150, 115], [35.5, -130, 100], [36.5, -110, -120],
+  [37.5, 110, -145], [38.5, 125, -165], [39.5, 150, -200], [40.5, 170, -230], [41.5, 200, -275]]
+  .flatMap(([point, over, under]) => [{ name: 'Over', point, price: over }, { name: 'Under', point, price: under }]);
+
+test('a book that lists a ladder of lines gets the one priced closest to even, not the last one listed', () => {
+  const m = M.mainLine(BOVADA_LADDER);
+  assert.equal(m.Over.point, 36.5); assert.equal(m.Under.point, 36.5);
+  assert.equal(m.Over.price, -110); assert.equal(m.Under.price, -120);
+  // the same ladder in any order gives the same line
+  assert.equal(M.mainLine([...BOVADA_LADDER].reverse()).Over.point, 36.5);
+  assert.equal(M.mainLine([...BOVADA_LADDER].sort(() => 0.5 - Math.random())).Over.point, 36.5);
+});
+
+test('a book with one line keeps it, however lopsided the prices are', () => {
+  const m = M.mainLine([{ name: 'Over', point: 24.5, price: -150 }, { name: 'Under', point: 24.5, price: 120 }]);
+  assert.deepEqual(m, { Over: { point: 24.5, price: -150 }, Under: { point: 24.5, price: 120 } });
+});
+
+test('over and under always come from the same line', () => {
+  const m = M.mainLine([{ name: 'Over', point: 10.5, price: -105 }, { name: 'Under', point: 11.5, price: -105 }, { name: 'Over', point: 11.5, price: 120 }, { name: 'Under', point: 10.5, price: -125 }]);
+  assert.equal(m.Over.point, m.Under.point);
+  assert.equal(m.Over.point, 10.5);               // -105 / -125 is closer to even than +120 / -105
+});
+
+test('the median line across books is the real line once every book is reduced to its own', () => {
+  const others = [36.5, 36.5, 36.5, 36.5, 35.5];
+  const books = Object.fromEntries(others.map((p, i) => [`B${i}`, M.mainLine([{ name: 'Over', point: p, price: -110 }, { name: 'Under', point: p, price: -110 }])]));
+  books.Bovada = M.mainLine(BOVADA_LADDER);
+  assert.equal(M.consensusLineOf(books), 36.5);
+  // and the best offers are real numbers: no Under at 41.5
+  const best = M.bestOffers(books);
+  assert.ok(best.under.point <= 36.5 && best.over.point >= 35.5, `got over ${best.over.point}, under ${best.under.point}`);
+});
+
+test('one-sided and unusable feeds do not throw', () => {
+  assert.deepEqual(M.mainLine([{ name: 'Over', point: 5.5, price: -115 }]), { Over: { point: 5.5, price: -115 } });
+  assert.deepEqual(M.mainLine([{ name: 'Over', point: 5.5, price: -300 }, { name: 'Over', point: 6.5, price: -105 }]), { Over: { point: 6.5, price: -105 } });
+  for (const bad of [[], null, undefined, [{ name: 'Over', point: 'x', price: -110 }], [{ name: 'Push', point: 5.5, price: -110 }], [{ name: 'Over', point: 5.5 }]]) assert.deepEqual(M.mainLine(bad), {});
+});
+
+test('best offers: a book out of step with the rest is not the best line, but real line shopping inside a point still is', () => {
+  // Nov 17 2026, Jalen Brunson points: five books at 26.5 or 27.5, BetRivers still at 24.5
+  const books = { FD: book(26.5, -112, -118), DK: book(26.5, -110, -116), MGM: book(27.5, 100, -130), BO: book(26.5, -110, -118), BR: book(24.5, -127, 100), Bov: book(26.5, -110, -120) };
+  const all = M.bestOffers(books);
+  assert.equal(all.over.point, 24.5);                                      // without the limit the stale 24.5 wins the Over
+  const near = M.bestOffers(books, { maxGap: 1 });
+  assert.equal(near.over.point, 26.5); assert.notEqual(near.over.book, 'BR');
+  assert.equal(near.under.point, 27.5); assert.equal(near.under.book, 'MGM');   // 27.5 is a point from the books' 26.5: real shopping, kept
+  assert.deepEqual(M.bestOffers({}, { maxGap: 1 }), { over: null, under: null });
+  assert.equal(M.bestOffers({ A: book(20.5, -110, -110) }, { maxGap: 1 }).over.point, 20.5);   // a single book is its own consensus
+});

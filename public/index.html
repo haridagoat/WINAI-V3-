@@ -1304,6 +1304,8 @@
   .bd-who small{display:block;color:var(--muted);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .bd-lp{display:flex;flex-direction:column;gap:1px;font-variant-numeric:tabular-nums;min-width:0;}
   .bd-pt{font-family:var(--label);font-weight:700;font-size:11.5px;letter-spacing:.14em;color:var(--dim);}
+  .bd-mkt{display:block;color:var(--muted2);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .td-card > .bd-mkt{margin:-4px 0 8px;}
   .bd-nums{display:flex;align-items:baseline;gap:6px;white-space:nowrap;}
   .bd-line{font-weight:700;font-size:17px;} .bd-nums i{font-style:normal;color:var(--dim);} .bd-proj{color:var(--muted2);font-size:16px;}
   .bd-edge{display:flex;flex-direction:column;gap:5px;}
@@ -4513,6 +4515,14 @@ const modelNote = p => {
 };
 // How far the shown projection sits from the line, so an OVER whose model number is under the line is not a puzzle: the call follows the blend.
 const lineGap = p => { const v = tdProj(p); return p?.line != null && v != null && isFinite(v - p.line) ? `<small class="td-model" title="The shown projection minus the posted line">${v - p.line >= 0 ? '+' : '−'}${Math.abs(v - p.line).toFixed(1)} vs line</small>` : ''; };
+// When the number shown is not the one most books post (a half point or more away), say which book it is from and what the books' line is,
+// so a pick never shows a line that looks wrong next to the sportsbook someone has open.
+const lineSource = p => {
+  const c = p?.consensusLine;
+  if (p?.line == null || c == null || Math.abs(p.line - c) < 0.5) return '';
+  const who = escapeHtml(p.book || 'one book');
+  return `<small class="bd-mkt" title="Most books post ${escapeHtml(c)}. This number is from ${who}.">${who} · books ${escapeHtml(c)}</small>`;
+};
 const EV_PICK_MIN = 0.03;
 const isValuePick = p => (p?.realEdge?.expectedValue ?? -1) >= EV_PICK_MIN;
 const byValueDesc = (a, b) => ((b.realEdge?.expectedValue ?? -9) - (a.realEdge?.expectedValue ?? -9)) || (b.confidence - a.confidence);
@@ -4525,6 +4535,7 @@ function tdTopCard(p, i) {
     <span class="td-rk">#${i + 1}</span>
     <div class="td-tp-h">${pickAvatar(p.league, p.playerId, p.player)}<div><div class="td-tp-n">${escapeHtml(p.player)}${p.bestBet ? ' <span class="td-best">BEST BET</span>' : ''}</div><div class="td-tp-s">${escapeHtml(team)} vs ${escapeHtml(opp)}</div></div></div>
     <div class="td-call">${fb ? `<span class="td-big">≈ PROJ ${escapeHtml(p.projection)}</span>` : `<span class="td-big ${over ? 'pos' : 'neg'}">${escapeHtml(p.direction)} ${escapeHtml(p.line)}</span>`}<span class="td-pill">${PROP_LABEL[p.propType] || escapeHtml(String(p.propType).toUpperCase())}</span></div>
+    ${lineSource(p)}
     <div class="td-m"><div><span>${TD.projMode === 'blend' ? 'Market blend' : 'Projection'}</span><b>${escapeHtml(tdProj(p))}</b>${lineGap(p)}${modelNote(p)}</div>
       <div><span>Confidence</span><b>${fmtConf(conf)}</b><div class="td-cbar"><i style="width:${Math.max(0, Math.min(100, conf))}%"></i></div></div>
       <div><span>EV</span><b${hot || (ev != null && ev < 0) ? ' class="neg"' : ''} title="${hot ? 'Unusually large: more often the model being overconfident than free money, so no stake is suggested.' : ev != null && ev < 0 ? 'Below break-even at the best posted price' : 'Expected profit per $1 at the best posted price'}">${fmtEv(ev)}${hot ? ' ⚠' : ''}</b>${ev != null && ev < 0 ? '<small class="td-model">below break-even</small>' : ''}</div></div></div>`;
@@ -4598,7 +4609,7 @@ function tdBoardRow(p, times) {
   const inList = typeof betslip !== 'undefined' && betslip.some(b => b.player === p.player && b.propType === p.propType && b.line == p.line);
   return `<div class="bd-row" role="listitem" data-pick="${idx}" tabindex="0" aria-label="${escapeHtml(`${p.player}, ${prop} ${p.direction} ${p.line}. Open the analysis.`)}">
     <div class="bd-who">${pickAvatar(p.league, p.playerId, p.player)}<div><b>${escapeHtml(p.player)}</b><small>${escapeHtml((p.awayTeam || '').split(' ').pop())} @ ${escapeHtml((p.homeTeam || '').split(' ').pop())}${when ? ' · ' + escapeHtml(when) : ''}</small></div></div>
-    <div class="bd-lp"><span class="bd-pt">${prop}</span><span class="bd-nums"><b class="bd-line">${escapeHtml(p.line)}</b><i aria-hidden="true">→</i><span class="bd-proj" title="${TD.projMode === 'blend' ? 'Market-blend projection' : 'Our projection'}">${escapeHtml(tdProj(p))}</span></span>${modelNote(p)}</div>
+    <div class="bd-lp"><span class="bd-pt">${prop}</span><span class="bd-nums"><b class="bd-line">${escapeHtml(p.line)}</b><i aria-hidden="true">→</i><span class="bd-proj" title="${TD.projMode === 'blend' ? 'Market-blend projection' : 'Our projection'}">${escapeHtml(tdProj(p))}</span></span>${lineSource(p)}${modelNote(p)}</div>
     <div class="bd-edge">${edge == null ? '<b class="off">—</b>' : `<b class="${agree ? '' : 'off'}" title="${agree ? 'The projection leans the same way as the pick' : 'The projection leans the other way: the pick comes from the price, not the projection'}">${bdSigned(edge)}</b><span class="bd-eb" aria-hidden="true"><i style="${edge >= 0 ? 'left:50%' : 'right:50%'};width:${half.toFixed(1)}%"></i></span>`}</div>
     <div class="bd-price"><b>${price != null ? bdOdds(price) : '—'}</b><small>${escapeHtml(p.book || '')}</small><small class="bd-ev ${ev != null && ev >= 0 ? 'pos' : 'neg'}" ${hot ? 'title="Unusually large: more often the model being overconfident than free money."' : ''}>EV ${fmtEv(ev)}${hot ? ' <span class="neg">⚠</span>' : ''}</small></div>
     <div class="bd-side"><span class="td-pill ${over ? 'pos' : 'neg'}">${over ? '↑' : '↓'} ${escapeHtml(p.direction)}</span></div>

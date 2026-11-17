@@ -6,9 +6,8 @@ const { createStore } = require('../lib/db');
 
 const play = (n, conf = 70) => ({ player: n, team: 'T', opponent: 'O', propType: 'points', line: 20.5, direction: 'OVER', confidence: conf, realEdge: { expectedValue: 0.04 } });
 const data = (names, extra = {}) => ({ league: 'nba', scanned: 90, evaluated: 80, topPlays: names.map(n => play(n)), ...extra });
-function setup() {
-  const store = createStore({ dbPath: ':memory:', log: () => {} });
-  const f = extract({ functions: ['frozenTopPlays', 'freezeTopPlays', 'parseMeta'], consts: ['TOP3_KEY'], globals: { store, getToday: () => '2026-11-10', console } });
+function setup(version = 5, store = createStore({ dbPath: ':memory:', log: () => {} })) {
+  const f = extract({ functions: ['frozenTopPlays', 'freezeTopPlays', 'parseMeta'], consts: ['TOP3_KEY'], globals: { store, getToday: () => '2026-11-10', SLATE_LOGIC_VERSION: version, console } });
   return { f, store };
 }
 
@@ -36,4 +35,15 @@ test('every locked day is kept in a history, one entry per league and day', () =
   f.freezeTopPlays('nba', data(['A', 'B', 'C']), '2026-11-09'); f.freezeTopPlays('nba', data(['X', 'Y', 'Z']), '2026-11-10'); f.freezeTopPlays('nba', data(['P', 'Q', 'R']), '2026-11-10');
   const h = JSON.parse(store.getMeta('top3:history'));
   assert.equal(h.length, 2); assert.deepEqual(h[0].plays.map(p => p.player), ['P', 'Q', 'R']); assert.equal(h[0].plays[0].confidence, 70);
+});
+
+test('a lock made before a change in how lines are read is not served: the day is worked out again', () => {
+  const { f: old, store } = setup(4);
+  old.freezeTopPlays('nba', data(['Wrong1', 'Wrong2', 'Wrong3']));
+  assert.deepEqual(old.frozenTopPlays('nba').topPlays.map(p => p.player), ['Wrong1', 'Wrong2', 'Wrong3']);
+  const { f: now } = setup(5, store);                                      // same database, the new scan logic
+  assert.equal(now.frozenTopPlays('nba'), null, 'the old lock is not kept');
+  now.freezeTopPlays('nba', data(['Right1', 'Right2', 'Right3']));
+  assert.deepEqual(now.frozenTopPlays('nba').topPlays.map(p => p.player), ['Right1', 'Right2', 'Right3']);
+  assert.equal(JSON.parse(store.getMeta('top3:history')).length, 1, 'and the history still holds one entry for the day');
 });

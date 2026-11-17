@@ -58,3 +58,33 @@ test('the headline Top 3 is the most confident props on the whole slate, one per
   assert.deepEqual(mostConfident([row('X', 0.1, { confidence: 90, direction: null }), row('Y', undefined, { confidence: 95 }), row('Z', 0.0, { confidence: 50 })]).map(p => p.player), ['Z'], 'unpriced or sideless rows are not picks');
   assert.deepEqual(mostConfident([row('F', 0.05, { confidence: 60 }), row('G', 0.01, { confidence: 60 })]).map(p => p.player), ['F', 'G'], 'equal confidence goes to the higher EV');
 });
+
+// ── picks logged at a line that was only one book's alternate ──
+const P = require('../lib/picks');
+test('a pick logged today at an alternate line is set aside once the scan shows the books\' real line', () => {
+  const today = '2026-11-17';
+  const mk = (o = {}) => ({ id: 1, source: 'auto', date: today, league: 'nba', player: 'Luka Doncic', propType: 'points', line: 41.5, result: null, ...o });
+  const results = [{ player: 'Luka Doncic', propType: 'points', line: 36.5, consensusLine: 36.5 }];
+  const entries = [mk(), mk({ id: 2, player: 'Someone Else' })];
+  assert.equal(P.supersedeOffMarket(entries, results, { today, league: 'nba' }), 1);
+  assert.equal(entries[0].result, 'NO_BET'); assert.equal(entries[0].superseded, true); assert.match(entries[0].notes, /41\.5.*36\.5/);
+  assert.equal(entries[1].result, null);                                  // no scan row for him: left alone
+  assert.equal(P.supersedeOffMarket(entries, results, { today, league: 'nba' }), 0);   // a second pass changes nothing
+});
+
+test('picks that are fine, graded, old, another league, a user\'s own, or only a little off are never touched', () => {
+  const today = '2026-11-17', results = [{ player: 'A', propType: 'points', line: 24.5, consensusLine: 25.5 }];
+  const base = { source: 'auto', date: today, league: 'nba', player: 'A', propType: 'points', line: 24.5, result: null };
+  const cases = [
+    { ...base, line: 24.5 },                              // same line as the scan's best: fine
+    { ...base, line: 25 },                                // within a point and a half of the books' line
+    { ...base, line: 30.5, result: 'WIN' },               // already graded
+    { ...base, line: 30.5, date: '2026-11-16' },          // not today's
+    { ...base, line: 30.5, league: 'wnba' },              // another league
+    { ...base, line: 30.5, source: undefined },           // saved by a person, not the system
+  ];
+  const entries = cases.map(c => ({ ...c })), before = cases.map(c => ({ ...c }));
+  assert.equal(P.supersedeOffMarket(entries, results, { today, league: 'nba' }), 0);
+  assert.deepEqual(entries, before);
+  assert.equal(P.supersedeOffMarket(null, results, { today, league: 'nba' }), 0);
+});

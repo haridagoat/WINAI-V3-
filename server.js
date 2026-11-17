@@ -23,6 +23,7 @@ const { evaluateHealth, creditBudget, envNum } = require('./lib/health');
 const { eventsDueForFill, eventInfoFrom, balanceCandidates } = require('./lib/slatefill');
 const { createLaneQueue } = require('./lib/lanequeue');
 const market = require('./lib/market');
+const mainLineOf = market.mainLine;   // not `market.mainLine` at the call sites: several functions have a local called `market`
 const evaluateLib = require('./lib/evaluate');
 const { buildGradingReport, top3Result } = require('./lib/report');
 const picksLib = require('./lib/picks');
@@ -1967,14 +1968,10 @@ async function fetchPropLines(playerName, propType, opts = {}) {
       try {
         const bookmakers = await getEventOdds('basketball_nba', event.id, market, PROP_LINES_TTL);
         for (const bm of bookmakers) {
-          for (const mkt of (bm.markets || [])) {
-            for (const o of (mkt.outcomes || [])) {
-              if (matchesOutcomeName(o.description, playerName)) {
-                if (!lines[bm.title]) lines[bm.title] = {};
-                lines[bm.title][o.name] = { point: o.point, price: o.price };
-              }
-            }
-          }
+          const mine = [];
+          for (const mkt of (bm.markets || [])) for (const o of (mkt.outcomes || [])) if (matchesOutcomeName(o.description, playerName)) mine.push(o);
+          const m = mainLineOf(mine);   // one line per book: its real one, not the last alternate it listed
+          if (m.Over || m.Under) lines[bm.title] = m;
         }
       } catch (_) {}
     }));
@@ -2636,14 +2633,10 @@ async function fetchWNBAPropLines(playerName, propType, opts = {}) {
       try {
         const bookmakers = await getEventOdds('basketball_wnba', event.id, market, PROP_LINES_TTL);
         for (const bm of bookmakers) {
-          for (const mkt of (bm.markets || [])) {
-            for (const o of (mkt.outcomes || [])) {
-              if (matchesOutcomeName(o.description, playerName)) {
-                if (!lines[bm.title]) lines[bm.title] = {};
-                lines[bm.title][o.name] = { point: o.point, price: o.price };
-              }
-            }
-          }
+          const mine = [];
+          for (const mkt of (bm.markets || [])) for (const o of (mkt.outcomes || [])) if (matchesOutcomeName(o.description, playerName)) mine.push(o);
+          const m = mainLineOf(mine);   // one line per book: its real one, not the last alternate it listed
+          if (m.Over || m.Under) lines[bm.title] = m;
         }
       } catch (_) {}
     }));
@@ -2771,7 +2764,7 @@ function assessProp({ propType, rawProjection, sd, books }) {
   const mp = modelParams.get().market;
   const wProb = modelParams.forProp(mp.weightModelProb, propType, 0.05);
   const calOn = !!(calibrationModel && calibrationModel.active);
-  const offers = market.bestOffers(books);
+  const offers = market.bestOffers(books, { maxGap: 1 });   // line shopping stays within a point of what the books agree on
   const sideOf = name => {
     const o = offers[name];
     if (!o) return null;
@@ -3868,13 +3861,16 @@ async function fetchSlateCandidates(sportKey, { onlyIds = null, report = null } 
             if (!o.description || (o.name !== 'Over' && o.name !== 'Under')) continue;
             const key = `${o.description}|${propType}`;
             if (!seen[key]) seen[key] = {};
-            if (!seen[key][bm.title]) seen[key][bm.title] = {};
-            seen[key][bm.title][o.name] = { point: o.point, price: o.price };
+            if (!seen[key][bm.title]) seen[key][bm.title] = [];
+            seen[key][bm.title].push(o);   // a book may list several lines for one player; mainLineOf picks its real one below
           }
         }
       }
-      for (const [key, books] of Object.entries(seen)) {
+      for (const [key, rawBooks] of Object.entries(seen)) {
         const [player, propType] = key.split('|');
+        const books = {};
+        for (const [title, outs] of Object.entries(rawBooks)) { const m = mainLineOf(outs); if (m.Over || m.Under) books[title] = m; }
+        if (!Object.keys(books).length) continue;
         const overPoints = Object.values(books).map(b => b.Over?.point).filter(p => p != null).sort((a, b) => a - b);
         if (!overPoints.length) continue;
         // Softest (lowest) Over line — the best real number available for
@@ -4046,7 +4042,7 @@ for (const entry of Object.values(slateScanCache)) {
 // disk for the whole day (to protect the Odds API quota), so without a
 // version stamp a logic change would keep serving numbers from the OLD
 // formula until midnight.
-const SLATE_LOGIC_VERSION = 4; // 2 = continuous confidence score (calcConfidence); 3 = market-anchored chances, per-side best prices, EV-based calls; 4 = per-game props kept balanced across stats and teams
+const SLATE_LOGIC_VERSION = 5; // 2 = continuous confidence score (calcConfidence); 3 = market-anchored chances, per-side best prices, EV-based calls; 4 = per-game props kept balanced across stats and teams; 5 = each book's real line (not the last alternate it listed)
 // An empty scan (0 candidates) is ambiguous — could mean a real quota/key
 // failure, or just no props posted yet — so it's NOT trusted for the rest
 // of the day like a real successful scan is. Real bug this fixed: a key
@@ -4195,8 +4191,9 @@ function autoLogSlatePicks(league, results) {
   if (!withEdge.length) return 0;
   const today = getToday();
   const entries = loadCLV();
+  const setAside = picksLib.supersedeOffMarket(entries, results, { today, league });   // earlier picks at an alternate line give way to the corrected ones
   const already = new Set(entries
-    .filter(e => e.source === 'auto' && e.date === today && e.league === league)
+    .filter(e => e.source === 'auto' && e.date === today && e.league === league && !e.superseded)
     .map(e => `${e.player}|${e.propType}`));                                     // one bet per player and prop a day: a line that moves later is not a second pick
   let added = 0;
   for (const r of withEdge) {
@@ -4218,7 +4215,7 @@ function autoLogSlatePicks(league, results) {
     });
     added++;
   }
-  if (added) { saveCLV(entries); console.log(`[AutoLog] ${league}: logged ${added} picks for ${today}`); }
+  if (added || setAside) { saveCLV(entries); console.log(`[AutoLog] ${league}: logged ${added} picks for ${today}${setAside ? `, set aside ${setAside} logged at an alternate line` : ''}`); }
   return added;
 }
 // Picks are logged when a game's lines are scanned. A restart after the scan (or a change in how picks are chosen) would otherwise leave today's
@@ -4336,12 +4333,12 @@ async function computeTopPlays(league) {
 // clears). The saved days also stay in a short history, so the picks as they were shown can be graded later.
 const TOP3_KEY = lg => `top3:${lg}`;
 function frozenTopPlays(league, today = getToday()) {
-  try { const f = JSON.parse(store.getMeta(TOP3_KEY(league)) || 'null'); return f && f.dateKey === today && f.data?.topPlays?.length ? f.data : null; } catch (_) { return null; }
+  try { const f = JSON.parse(store.getMeta(TOP3_KEY(league)) || 'null'); return f && f.dateKey === today && f.v === SLATE_LOGIC_VERSION && f.data?.topPlays?.length ? f.data : null; } catch (_) { return null; }   // a lock from before a change in how lines are read is not kept
 }
 function freezeTopPlays(league, data, today = getToday()) {
   if (!data || data.fallback || (data.topPlays || []).length < 3) return false;      // not enough yet (a partial scan): keep recomputing until there are three
   try {
-    store.setMeta(TOP3_KEY(league), JSON.stringify({ dateKey: today, frozenAt: new Date().toISOString(), data }));
+    store.setMeta(TOP3_KEY(league), JSON.stringify({ dateKey: today, v: SLATE_LOGIC_VERSION, frozenAt: new Date().toISOString(), data }));
     const hist = parseMeta('top3:history', []).filter(h => !(h.date === today && h.league === league));
     hist.unshift({ date: today, league, frozenAt: new Date().toISOString(), plays: data.topPlays.map(p => ({ player: p.player, team: p.team, opponent: p.opponent, propType: p.propType, line: p.line, direction: p.direction, confidence: p.confidence, ev: p.realEdge?.expectedValue ?? null })) });
     store.setMeta('top3:history', JSON.stringify(hist.slice(0, 120)));
@@ -5799,15 +5796,13 @@ async function captureClosingLines() {
           const market = PROP_MARKET_BY_TYPE[e.propType];
           const lines = {};
           for (const bm of (oddsRes.data.bookmakers || [])) {
+            const mine = [];
             for (const mkt of (bm.markets || [])) {
               if (mkt.key !== market) continue;
-              for (const o of (mkt.outcomes || [])) {
-                if (matchesOutcomeName(o.description, e.player) && (o.name === 'Over' || o.name === 'Under')) {
-                  if (!lines[bm.title]) lines[bm.title] = {};
-                  lines[bm.title][o.name] = { point: o.point, price: o.price };
-                }
-              }
+              for (const o of (mkt.outcomes || [])) if (matchesOutcomeName(o.description, e.player) && (o.name === 'Over' || o.name === 'Under')) mine.push(o);
             }
+            const m = mainLineOf(mine);
+            if (m.Over || m.Under) lines[bm.title] = m;
           }
           const c = consensusFromLines(lines);
           addPatch(e.id, c.consensusLine != null
