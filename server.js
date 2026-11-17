@@ -4313,10 +4313,8 @@ async function computeTopPlays(league) {
   // The three most confident props on the whole slate, one per player, whatever their expected value (ordering is by confidence, ties to the higher EV).
   // A Top 3 pick that is not one of its game's three best by value is not a best bet candidate (bestBet stays false), since the best-bet rules pick from the game picks.
   // Once the first complete scan of the day has produced three, they are frozen for the rest of the day (see freezeTopPlays): lines move and games get topped up, but the list on the page does not.
-  return {
-    league, generatedAt: new Date().toISOString(),
-    scanned: candidates.length, evaluated: results.length,
-    topPlays: picksLib.mostConfident(results, 3).map(r => ({
+  const ranked = picksLib.mostConfident(results, 10);
+  const toPlay = r => ({
       player: r.player, playerId: lookupPlayerId(league, r.player), team: r.team, opponent: r.opponent,
       homeTeam: r.homeTeam ?? null, awayTeam: r.awayTeam ?? null,
       propType: r.propType, line: r.line, book: r.book,
@@ -4325,7 +4323,12 @@ async function computeTopPlays(league) {
       overProbability: r.overProbability ?? null, underProbability: r.underProbability ?? null,
       consensusLine: r.consensusLine ?? null, bookCount: r.bookCount ?? null, marketEdge: r.marketEdge ?? null,
       realEdge: r.realEdge ?? null, bestBet: !!r.bestBet,
-    })),
+  });
+  return {
+    league, generatedAt: new Date().toISOString(),
+    scanned: candidates.length, evaluated: results.length,
+    topPlays: ranked.slice(0, 3).map(toPlay),
+    topTen: ranked.map(toPlay),                         // the same list carried to ten: the headline Top 3 is its first three, and all ten are locked and graded
   };
 }
 
@@ -4333,16 +4336,16 @@ async function computeTopPlays(league) {
 // clears). The saved days also stay in a short history, so the picks as they were shown can be graded later.
 const TOP3_KEY = lg => `top3:${lg}`;
 function frozenTopPlays(league, today = getToday()) {
-  try { const f = JSON.parse(store.getMeta(TOP3_KEY(league)) || 'null'); return f && f.dateKey === today && f.v === SLATE_LOGIC_VERSION && f.data?.topPlays?.length ? f.data : null; } catch (_) { return null; }   // a lock from before a change in how lines are read is not kept
+  try { const f = JSON.parse(store.getMeta(TOP3_KEY(league)) || 'null'); return f && f.dateKey === today && f.v === SLATE_LOGIC_VERSION && f.fmt === 2 && f.data?.topPlays?.length ? f.data : null; } catch (_) { return null; }   // a lock from before a change in how lines are read, or saved before the Top 10 existed (fmt 1), is not kept: it is rebuilt once from the saved scan
 }
 function freezeTopPlays(league, data, today = getToday()) {
   if (!data || data.fallback || (data.topPlays || []).length < 3) return false;      // not enough yet (a partial scan): keep recomputing until there are three
   try {
-    store.setMeta(TOP3_KEY(league), JSON.stringify({ dateKey: today, v: SLATE_LOGIC_VERSION, frozenAt: new Date().toISOString(), data }));
+    store.setMeta(TOP3_KEY(league), JSON.stringify({ dateKey: today, v: SLATE_LOGIC_VERSION, fmt: 2, frozenAt: new Date().toISOString(), data }));
     const hist = parseMeta('top3:history', []).filter(h => !(h.date === today && h.league === league));
-    hist.unshift({ date: today, league, frozenAt: new Date().toISOString(), plays: data.topPlays.map(p => ({ player: p.player, team: p.team, opponent: p.opponent, propType: p.propType, line: p.line, direction: p.direction, confidence: p.confidence, ev: p.realEdge?.expectedValue ?? null })) });
+    hist.unshift({ date: today, league, frozenAt: new Date().toISOString(), plays: (data.topTen && data.topTen.length ? data.topTen : data.topPlays).map((p, i) => ({ rank: i + 1, player: p.player, team: p.team, opponent: p.opponent, propType: p.propType, line: p.line, direction: p.direction, confidence: p.confidence, ev: p.realEdge?.expectedValue ?? null })) });
     store.setMeta('top3:history', JSON.stringify(hist.slice(0, 120)));
-    try { store.addEvent('top3', 'info', `Top 3 for ${league.toUpperCase()} locked for ${today}: ${data.topPlays.map(p => `${p.player} ${p.direction} ${p.line} ${p.propType} (conf ${Math.round(p.confidence)})`).join('; ')}`); } catch (_) {}
+    try { store.addEvent('top3', 'info', `Top 3 for ${league.toUpperCase()} locked for ${today}: ${data.topPlays.map(p => `${p.player} ${p.direction} ${p.line} ${p.propType} (conf ${Math.round(p.confidence)})`).join('; ')}${(data.topTen || []).length > 3 ? `; ${data.topTen.length - 3} more tracked in the Top 10` : ''}`); } catch (_) {}
     return true;
   } catch (e) { console.error('[TopPlays] could not save the day\'s top 3:', e.message); return false; }
 }
@@ -6296,7 +6299,7 @@ function collectReportInputs(date) {
   const pickCounts = { waiting: all.filter(e => e.result == null && !e.gradeNote).length, setAside: all.filter(e => e.result == null && e.gradeNote).length };
   const scan = {}; for (const lg of ['nba', 'wnba']) scan[lg] = { counts: store.scanCounts(lg), graded: store.gradedScanProps(lg) };
   const closing = { total: all.length, auto: all.filter(e => e.closingLine != null && e.closingCapture === 'auto').length, scan: all.filter(e => e.closingLine != null && e.closingCapture === 'scan').length, missed: all.filter(e => e.closingLine == null && e.closingCapture === 'missed').length };
-  const top3 = []; for (const h of parseMeta('top3:history', [])) for (const p of h.plays || []) top3.push({ date: h.date, league: h.league, player: p.player, propType: p.propType, line: p.line, direction: p.direction, confidence: p.confidence, ev: p.ev, actual: store.scanPropActual(h.date, h.league, p.player, p.propType) });
+  const top3 = []; for (const h of parseMeta('top3:history', [])) (h.plays || []).forEach((p, i) => top3.push({ rank: p.rank ?? i + 1, date: h.date, league: h.league, player: p.player, propType: p.propType, line: p.line, direction: p.direction, confidence: p.confidence, ev: p.ev, actual: store.scanPropActual(h.date, h.league, p.player, p.propType) }));
   const b = currentCreditBudget();
   return { date, picks, allPicks, pickCounts, scan, top3, closing, bias: biasTable, calibration: calibrationModel ? { active: calibrationModel.active, reason: calibrationModel.reason } : null, credits: b.known ? b.remaining : null };
 }

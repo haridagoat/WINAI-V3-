@@ -124,3 +124,20 @@ test('with no locked Top 3 yet the report says so and nothing breaks', () => {
   const r = buildGradingReport({ date: '2026-11-11', picks: [pick('2026-11-11', 'WIN')] });
   assert.equal(r.data.top3.days, 0); assert.equal(r.data.top3.startedOn, null); assert.match(r.text, /none locked yet/);
 });
+
+test('the Top 10 is scored from the same locked list: ranks 1 to 3 are the Top 3, ranks 4 to 10 are extra, and old plays without a rank stay in the Top 3', () => {
+  const day = '2026-11-12';
+  const ten = Array.from({ length: 10 }, (_, i) => t3(day, `P${i + 1}`, 'OVER', 10.5, i % 2 ? 8 : 14, { rank: i + 1 }));   // odd ranks win, even ranks lose
+  const old = t3('2026-11-11', 'Old1', 'OVER', 10.5, 14);                                                                    // locked before ranks existed
+  const r = buildGradingReport({ date: day, picks: [], top3: [old, ...ten] });
+  assert.equal(r.data.top3.toDate.n, 4, 'the Top 3 is ranks 1 to 3 plus the old day: 4 graded');
+  assert.deepEqual([r.data.top3.toDate.wins, r.data.top3.toDate.losses], [3, 1]);
+  assert.equal(r.data.top10.toDate.n, 11, 'the Top 10 is all ten plus the old day');
+  assert.deepEqual([r.data.top10.toDate.wins, r.data.top10.toDate.losses], [6, 5]);
+  assert.equal(r.data.top10.day.n, 10); assert.equal(r.data.top3.day.n, 3);
+  assert.deepEqual(r.data.top10.list.map(p => p.rank), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  assert.match(r.text, /TOP 10 \(the ten most confident picks of the day/); assert.match(r.text, /✓ #1 P1 OVER 10.5/); assert.match(r.text, /✗ #10 P10 OVER 10.5/);
+  // waiting picks (no stat yet) are counted as waiting in both, and never as a loss
+  const w = buildGradingReport({ date: day, picks: [], top3: [t3(day, 'W1', 'OVER', 10.5, null, { rank: 5 })] });
+  assert.equal(w.data.top10.waiting, 1); assert.equal(w.data.top3.waiting, 0); assert.equal(w.data.top10.toDate.n, 0);
+});

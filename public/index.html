@@ -1278,6 +1278,8 @@
   .td-srch input:focus{outline:none;}
   .td-srch input::-webkit-search-cancel-button{display:none;}
   /* Prop board: a filter bar that stays pinned under the header while the rows scroll, then one row per prop */
+  .td-ten-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:12px 2px 8px;}
+  .td-ten{padding:6px 8px;margin-bottom:6px;}
   .bd-meta{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:2px 10px 8px;}
   .bd-count{color:var(--muted);font-size:14px;font-variant-numeric:tabular-nums;white-space:nowrap;}
   .bd-sort{display:inline-flex;align-items:center;gap:8px;color:var(--muted);font-family:var(--label);font-weight:700;font-size:12px;letter-spacing:.14em;text-transform:uppercase;}
@@ -4389,7 +4391,7 @@ let _todayPicks = []; // flat list so onclick can reference by index (player nam
 // ── TODAY PAGE: top picks, tonight's games with their lines, a searchable prop board, and a
 // side column (closing-line check, injuries, Prop List, recently viewed). Every number is real:
 // the same day-locked slate scan the NBA / WNBA pages use, so opening this costs no extra credits.
-const TD = { league: 'both', prop: 'all', q: '', sort: 'conf', minConf: 0, side: 'both', all: false, data: null, projMode: (() => { try { return localStorage.getItem('winai_projmode') === 'blend' ? 'blend' : 'model'; } catch (_) { return 'model'; } })(), fresh: null, freshAt: 0 };
+const TD = { league: 'both', prop: 'all', q: '', sort: 'conf', minConf: 0, side: 'both', ten: false, all: false, data: null, projMode: (() => { try { return localStorage.getItem('winai_projmode') === 'blend' ? 'blend' : 'model'; } catch (_) { return 'model'; } })(), fresh: null, freshAt: 0 };
 // Expected value as a signed percent. One decimal under 10% (so -0.3% does not read as "-0%"), none above; a value that rounds to zero is just 0.0%.
 function fmtEv(ev) {
   if (ev == null || !isFinite(ev)) return '—';
@@ -4455,16 +4457,19 @@ async function renderTodayPage() {
     const [nbaTeam, wnbaTeam] = await Promise.all([get('/api/team-picks?league=nba', { games: [] }), get('/api/team-picks?league=wnba', { games: [] })]);
     if (window._tdToken !== token) return;
     const fallback = fallbackOf(nbaTeam, wnbaTeam);
-    const fbPlays = [], lockedTops = [];
+    const fbPlays = [], lockedTops = [], lockedMore = [];
     // The headline Top 3 is the day's three most confident picks, locked by the server until tomorrow: the same list on every visit.
     await Promise.all(['nba', 'wnba'].filter(lg => games.some(g => g.league === lg)).map(async lg => {
       const tp = await get(`/api/top-plays?league=${lg}`, { fallbackPlays: [], topPlays: [] });
       if (fallback[lg]) (tp.fallbackPlays || []).forEach(p => fbPlays.push({ ...p, league: lg }));
-      else (tp.topPlays || []).forEach(p => lockedTops.push({ ...p, league: lg, value: isValuePick(p) }));
+      else {
+        (tp.topPlays || []).forEach(p => lockedTops.push({ ...p, league: lg, value: isValuePick(p) }));
+        (tp.topTen || []).slice(3).forEach(p => lockedMore.push({ ...p, league: lg, value: isValuePick(p) }));   // ranks 4 to 10, locked and graded along with the Top 3
+      }
     }));
     if (window._tdToken !== token) return;
-    TD.data = { ...TD.data, fallback, fbPlays, lockedTops, teamPicks: { nba: nbaTeam.games || [], wnba: wnbaTeam.games || [] }, loadingPicks: false };
-    TD.conf = uniqueConfs([...TD.data.props, ...fbPlays, ...lockedTops]);
+    TD.data = { ...TD.data, fallback, fbPlays, lockedTops, lockedMore, teamPicks: { nba: nbaTeam.games || [], wnba: wnbaTeam.games || [] }, loadingPicks: false };
+    TD.conf = uniqueConfs([...TD.data.props, ...fbPlays, ...lockedTops, ...lockedMore]);
     paintToday();
     tdLoadLines(games);
     tdLoadInjuries(games);
@@ -4551,6 +4556,17 @@ function tdPickRow(p) {
     <span class="td-pill ${over ? 'pos' : 'neg'}">${escapeHtml(p.direction)} ${escapeHtml(p.line)} ${PROP_LABEL[p.propType] || escapeHtml(String(p.propType).toUpperCase())}</span>
     <span class="td-gp-c">${p.realEdge?.finalProb != null ? Math.round(p.realEdge.finalProb) + '%' : ''}</span>
     <span class="td-gp-ev ${ev >= 0 ? 'pos' : 'neg'}">${evTxt}</span>${p.value ? '<span class="td-val">VALUE</span>' : ''}${p.bestBet ? '<span class="td-best" title="Passes the best-bet rules: confidence 65+, positive expected value, one of the best 6 today. Tracked separately in the admin Grading tab.">BEST BET</span>' : ''}
+  </div>`;
+}
+// Ranks 4 to 10 of the day's locked list: who, side and number, strength, and EV. The same row style as a game's top picks.
+function tdTenRow(p, rank) {
+  const ev = p.realEdge?.expectedValue, over = p.direction === 'OVER', idx = tdOpenIdx(p), price = p.realEdge?.price;
+  return `<div class="td-gp" data-pick="${idx}" role="button" tabindex="0">
+    <span class="td-rk">#${rank}</span>
+    <div class="td-gp-n"><b>${escapeHtml(p.player)}</b><small>${escapeHtml(p.book || '')}${price != null ? ' ' + bdOdds(price) : ''}${p.consensusLine != null && Math.abs(p.line - p.consensusLine) >= 0.5 ? ' · books ' + escapeHtml(p.consensusLine) : ''}</small></div>
+    <span class="td-pill ${over ? 'pos' : 'neg'}">${escapeHtml(p.direction)} ${escapeHtml(p.line)} ${PROP_LABEL[p.propType] || escapeHtml(String(p.propType).toUpperCase())}</span>
+    <span class="td-gp-c" title="Strength: how reliable the numbers behind this are. It is not the chance of winning.">${fmtConf(tdShown(p))}</span>
+    <span class="td-gp-ev ${ev >= 0 ? 'pos' : 'neg'}">${fmtEv(ev)}</span>
   </div>`;
 }
 // The schedule and the odds feed do not always spell a team the same way ("LA Clippers" and "Los Angeles Clippers"), so a game is matched by its
@@ -4661,7 +4677,11 @@ function paintToday() {
   const empty = !nGames
     ? `<section><div class="td-card"><div class="td-empty"><b>No games today</b>${L === 'both' ? 'Nothing is on the NBA or WNBA schedule for today.' : 'Nothing is on the ' + L.toUpperCase() + ' schedule for today.'} Open Daily Matchups to look at a future game.</div></div></section>` : '';
   const topBelow = locked.length && locked.every(x => (x.realEdge?.expectedValue ?? -1) < 0) ? '<p class="td-note td-valnote">None of today\'s most confident picks clear break-even at the best price. They are the most confident, not the best value.</p>' : '';
-  const topSec = !topList.length && D.loadingPicks ? `<section><div class="td-card"><div class="td-empty" style="padding:22px 12px"><b>Working out today's picks</b>The games are below. Picks appear here as soon as they are ready, which can take a minute or two after a restart.</div></div></section>` : topList.length ? `<section><div class="td-sh"><h2>Top picks</h2><span class="td-hint">${locked.length ? 'the three most confident today · locked until tomorrow' : tops.length ? 'one per player · ranked by expected value' : 'model projections only: no live lines'}</span></div>${topBelow}<div class="td-tops">${topList.map(tdTopCard).join('')}</div></section>` : '';
+  // Ranks 4 to 10 of the same locked list, behind a button: the Top 3 stay the headline, and all ten are graded.
+  const cmpConf = (a, b) => (b.confidence - a.confidence) || byValueDesc(a, b);
+  const rest = locked.length ? [...locked, ...(D.lockedMore || []).filter(inL)].sort(cmpConf).slice(0, 10).slice(3) : [];
+  const tenSec = rest.length ? `<div class="td-ten-bar"><button type="button" class="td-link" id="td-ten-btn" aria-expanded="${TD.ten}" aria-controls="td-ten">${TD.ten ? 'Hide ranks 4 to ' + (rest.length + 3) : 'Show the top ' + (rest.length + 3)}</button><span class="td-note">all ${rest.length + 3} are locked for the day and graded</span></div>${TD.ten ? `<div class="td-card td-ten" id="td-ten" role="group" aria-label="Top ${rest.length + 3} picks, ranks 4 to ${rest.length + 3}">${rest.map((p, i) => tdTenRow(p, i + 4)).join('')}</div>` : ''}` : '';
+  const topSec = !topList.length && D.loadingPicks ? `<section><div class="td-card"><div class="td-empty" style="padding:22px 12px"><b>Working out today's picks</b>The games are below. Picks appear here as soon as they are ready, which can take a minute or two after a restart.</div></div></section>` : topList.length ? `<section><div class="td-sh"><h2>Top picks</h2><span class="td-hint">${locked.length ? 'the most confident today · locked until tomorrow' : tops.length ? 'one per player · ranked by expected value' : 'model projections only: no live lines'}</span></div>${topBelow}<div class="td-tops">${topList.map(tdTopCard).join('')}</div>${tenSec}</section>` : '';
   const gameSec = nGames ? `<section><div class="td-sh"><h2>Tonight's games</h2><span class="td-hint">${nGames} game${nGames === 1 ? '' : 's'}</span></div><div class="td-games">${games.map(tdGameCard).join('')}</div></section>` : '';
   const board = tdBoardHtml();
   const boardSec = (scanned || nGames) ? `<section class="td-card td-board">
@@ -4736,6 +4756,7 @@ function tdRepaintBoard() {
 function tdBindBoard() {
   const root = document.getElementById('today-root');
   root.onclick = e => {
+    if (e.target.closest('#td-ten-btn')) { TD.ten = !TD.ten; return paintToday(); }
     const add = e.target.closest('[data-add]'); if (add) return tdQuickAdd(+add.dataset.add, add);
     const cf = e.target.closest('[data-conf]'); if (cf) { TD.minConf = +cf.dataset.conf; return tdRepaintBoard(); }
     const sd = e.target.closest('[data-side]'); if (sd) { TD.side = sd.dataset.side; return tdRepaintBoard(); }

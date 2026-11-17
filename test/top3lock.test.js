@@ -47,3 +47,29 @@ test('a lock made before a change in how lines are read is not served: the day i
   assert.deepEqual(now.frozenTopPlays('nba').topPlays.map(p => p.player), ['Right1', 'Right2', 'Right3']);
   assert.equal(JSON.parse(store.getMeta('top3:history')).length, 1, 'and the history still holds one entry for the day');
 });
+
+test('all ten plays are kept in the history with their ranks, while the page still gets the Top 3 first', () => {
+  const { f, store } = setup();
+  const names = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+  const d = data(names.slice(0, 3), { topTen: names.map((n, i) => play(n, 90 - i)) });
+  assert.equal(f.freezeTopPlays('nba', d), true);
+  const h = JSON.parse(store.getMeta('top3:history'));
+  assert.equal(h[0].plays.length, 10); assert.deepEqual(h[0].plays.map(p => p.rank), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  assert.deepEqual(h[0].plays.map(p => p.player), names);
+  assert.equal(f.frozenTopPlays('nba').topTen.length, 10);
+  assert.equal(f.frozenTopPlays('nba').topPlays.length, 3);
+  // a lock that only has the Top 3 (older code) still works and keeps three ranked plays
+  const { f: g, store: s2 } = setup();
+  assert.equal(g.freezeTopPlays('nba', data(['X', 'Y', 'Z'])), true);
+  assert.deepEqual(JSON.parse(s2.getMeta('top3:history'))[0].plays.map(p => p.rank), [1, 2, 3]);
+});
+
+test('a lock saved before the Top 10 existed is rebuilt once, so today gets its ten', () => {
+  const { f, store } = setup();
+  store.setMeta('top3:nba', JSON.stringify({ dateKey: '2026-11-10', v: 5, frozenAt: 'x', data: data(['A', 'B', 'C']) }));   // the old format: no fmt, only three plays
+  assert.equal(f.frozenTopPlays('nba'), null, 'an old-format lock is not served');
+  const d = data(['A', 'B', 'C'], { topTen: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'].map(n => play(n)) });
+  assert.equal(f.freezeTopPlays('nba', d), true);
+  assert.equal(f.frozenTopPlays('nba').topTen.length, 10, 'the rebuilt lock carries all ten');
+  assert.equal(JSON.parse(store.getMeta('top3:history')).length, 1, 'and the day still has one history entry');
+});
