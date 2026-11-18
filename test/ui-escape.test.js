@@ -68,3 +68,28 @@ test('a game on the page is matched to its props by team nickname, so "LA Clippe
   assert.equal(ctx.f({ league: 'nba', awayTeam: undefined, homeTeam: null }, game), false);
   assert.ok(!/p\.awayTeam === g\.away && p\.homeTeam === g\.home/.test(html), 'games are not matched by exact team spelling');
 });
+
+test('the play-type card: lean, soft-D share, best edge and watch come out as designed, and unranked types stay out', () => {
+  const vm = require('node:vm');
+  const start = html.indexOf('function ptSummary(');
+  assert.ok(start > 0, 'ptSummary not found');
+  let i = html.indexOf('{', start), depth = 0;
+  for (; i < html.length; i++) { if (html[i] === '{') depth++; else if (html[i] === '}' && --depth === 0) break; }
+  const ctx = {}; vm.createContext(ctx); vm.runInContext(`${html.slice(start, i + 1)}\nthis.f = ptSummary;`, ctx);
+  // Tyrese Maxey against Orlando, from the Synergy files (rank 1 = toughest defense)
+  const pt = { iso: { POSS_PCT: .1112, PPP: .8943, PTS: 2.69 }, transition: { POSS_PCT: .24105, PPP: 1.3255, PTS: 7.455 }, postUp: { POSS_PCT: .015, PPP: 1.115, PTS: .4 },
+    spotUp: { POSS_PCT: .1726, PPP: 1.37485, PTS: 5.825 }, cut: { POSS_PCT: .031, PPP: 1.4, PTS: 1.1 }, handoff: { POSS_PCT: .0977, PPP: 1.0998, PTS: 2.94 },
+    offScreen: { POSS_PCT: .047, PPP: 1.193, PTS: 1.5 }, prBall: { POSS_PCT: .15, PPP: 1, PTS: 3 } };
+  const rk = { iso: 9, transition: 21, postUp: 29, spotUp: 26, cut: 5, handoff: 18, offScreen: 22 };
+  const def = Object.fromEntries(Object.entries(rk).map(([k, r]) => [k, { rank: r, rankOf: 30 }]));
+  const s = ctx.f(pt, def);
+  assert.equal(s.lean, 'FAVORABLE');
+  assert.equal(s.wtd.toFixed(1), '19.5');
+  assert.equal(s.softPct, 83);
+  assert.equal(s.best.key, 'spotUp');
+  assert.equal(s.watch.key, 'iso', 'a low-volume play type (cut, 3.1%) is never the headline watch');
+  assert.equal(s.rows.length, 7);
+  assert.equal(s.unranked.map(u => u.key).join(), 'prBall', 'pick and roll has no defensive rank, so it is listed as unranked, not guessed');
+  assert.equal(ctx.f(pt, {}), null, 'no defensive ranks at all: no card');
+  assert.equal(ctx.f({}, def), null);
+});

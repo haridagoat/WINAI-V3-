@@ -492,28 +492,90 @@
   /* Play-type breakdown — how a player gets their points, and where the
      opponent ranks defending each type. Same column layout for the header
      and every row so numbers line up. */
-  .pt2{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;font-variant-numeric:tabular-nums;}
-  .pt2-sub{font-size:11.5px;color:var(--muted);line-height:1.5;margin-bottom:14px;}
-  .pt2-colheads,.pt2-row{display:grid;grid-template-columns:118px minmax(60px,1fr) 56px 62px 56px 100px;gap:10px;align-items:center;}
-  .pt2-colheads{font-family:var(--label);font-size:11px;letter-spacing:1px;color:var(--muted);text-transform:uppercase;padding:0 2px 8px;border-bottom:1px solid var(--border);}
-  .pt2-colheads span:nth-child(3),.pt2-colheads span:nth-child(4),.pt2-colheads span:nth-child(5){text-align:right;}
-  .pt2-rows{display:flex;flex-direction:column;}
-  .pt2-row{padding:9px 2px;border-bottom:1px solid var(--border);}
-  .pt2-row:last-child{border-bottom:none;}
-  .pt2-label{font-size:11.5px;color:var(--text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .pt2-bar-track{height:6px;background:var(--surface2);border-radius:3px;overflow:hidden;}
-  .pt2-bar-fill{height:100%;background:var(--gold);border-radius:3px;}
-  .pt2-freq{font-size:12px;color:var(--gold);font-weight:600;text-align:right;}
-  .pt2-pts,.pt2-ppp{font-size:11px;color:var(--muted2);text-align:right;}
-  .pt2-rank{font-size:11px;letter-spacing:0.3px;padding:3px 8px;border-radius:20px;background:var(--surface2);color:var(--muted2);white-space:nowrap;justify-self:end;}
-  .pt2-rank.up{color:var(--green);background:rgba(76,180,126,0.1);}
-  .pt2-rank.dn{color:var(--red);background:rgba(255,93,93,0.1);}
-  .pt2-rank.na{color:var(--muted);font-style:italic;}
-  @media(max-width:640px){
-    .pt2-colheads,.pt2-row{grid-template-columns:90px minmax(40px,1fr) 44px;}
-    .pt2-pts,.pt2-ppp,.pt2-colheads span:nth-child(4),.pt2-colheads span:nth-child(5){display:none;}
-    .pt2-rank{grid-column:1/-1;justify-self:start;margin-top:4px;}
+  /* HOW THEY SCORE: a player's offense by play type against the opponent's rank defending each one */
+  .pt3-chip{font-family:var(--label);font-weight:600;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);border:1px solid var(--border2);border-radius:999px;padding:3px 10px;margin-left:10px;vertical-align:middle}
+  .pt3{container-type:inline-size;--pt-tough:#f0866a;--pt-mid:#9aa6a1;--pt-soft:#4fd29b;background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px;font-variant-numeric:tabular-nums;display:flex;flex-direction:column;gap:18px}
+  .pt3 *{min-width:0}
+  .pt3-head{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;flex-wrap:wrap}
+  .pt3-eyebrow{font-family:var(--label);font-weight:600;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+  .pt3-title{font-family:var(--display);font-weight:700;font-size:26px;letter-spacing:.02em;line-height:1.1}
+  .pt3-title i{font-style:normal;color:var(--muted);font-size:.8em;margin:0 2px}
+  .pt3-sub{font-size:13px;color:var(--muted2);margin-top:6px;line-height:1.45;max-width:46ch}
+  .pt3-legend{width:240px;max-width:100%}
+  .pt3-legend>span{display:block;font-family:var(--label);font-weight:600;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+  .pt3-grad{height:5px;border-radius:3px;background:linear-gradient(90deg,var(--pt-tough),var(--pt-mid) 50%,var(--pt-soft))}
+  .pt3-legend div:last-child{display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);margin-top:6px}
+  .pt3-tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+  .pt3-tile{background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px 16px}
+  .pt3-tile .k{font-family:var(--label);font-weight:600;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  .pt3-tile .v{font-family:var(--display);font-weight:800;font-size:34px;line-height:1.05;letter-spacing:.02em;margin:6px 0 4px;text-transform:uppercase}
+  .pt3-tile .s{font-size:12.5px;color:var(--muted2);line-height:1.35}
+  .pt3-tile .s b{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:500;color:var(--text)}
+  .pt3-rows{display:flex;flex-direction:column}
+  .pt3-hd,.pt3-row{display:grid;grid-template-columns:150px minmax(90px,1fr) 56px 56px 56px minmax(150px,230px);gap:14px;align-items:center}
+  .pt3-hd{font-family:var(--label);font-weight:600;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);padding:0 2px 10px;border-bottom:1px solid var(--border)}
+  .pt3-hd span:nth-child(n+3):nth-child(-n+5){text-align:right}
+  .pt3-row{padding:14px 2px;border-bottom:1px solid var(--border)}
+  .pt3-name{font-weight:600;font-size:15px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .pt3-lowtag{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);border:1px solid var(--border2);border-radius:999px;padding:1px 7px;font-weight:400}
+  .pt3-share{display:contents}
+  .pt3-bar{height:7px;background:var(--surface3);border-radius:4px;overflow:hidden}
+  .pt3-bar i{display:block;height:100%;background:var(--text);border-radius:4px}
+  .pt3-pct,.pt3-n{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13.5px;text-align:right}
+  .pt3-n:before{content:attr(data-l);display:none}
+  .pt3-rk{display:flex;align-items:center;gap:12px;justify-content:flex-end}
+  .pt3-track{position:relative;flex:1;height:5px;border-radius:3px;background:var(--surface3)}
+  .pt3-track:before{content:"";position:absolute;left:50%;top:-4px;bottom:-4px;width:1px;background:var(--border2)}
+  .pt3-track i{position:absolute;top:50%;width:11px;height:11px;margin:-5.5px 0 0 -5.5px;border-radius:50%;background:currentColor}
+  .pt3-rk b{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14px;font-weight:600;min-width:38px;text-align:right}
+  .pt3-rk b.na{color:var(--muted);font-weight:400}
+  .pt3-low{display:contents}
+  .pt3-lowhead{display:none}
+  .pt3-row.low .pt3-name,.pt3-row.low .pt3-pct,.pt3-row.low .pt3-n{color:var(--muted)}
+  .pt3-row.low .pt3-bar i{background:var(--dim)}
+  .pt3-mix{display:flex;flex-direction:column;gap:8px}
+  .pt3-mixhd{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:13px;color:var(--muted2)}
+  .pt3-mixhd b{color:var(--text);font-weight:600}
+  .pt3-mixbar{display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--surface3)}
+  .pt3-mixbar i{display:block;height:100%;border-right:2px solid var(--surface)}
+  .pt3-mixbar i.nf{background:repeating-linear-gradient(135deg,var(--surface3) 0 4px,#3a3a40 4px 7px);border-right:0}
+  .pt3-foot{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted);line-height:1.45}
+  @container (max-width:760px){
+    .pt3-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .pt3-legend{width:100%}
   }
+  @container (max-width:600px){
+    .pt3{padding:14px;gap:16px}
+    .pt3-title{font-size:23px}
+    .pt3-tile .v{font-size:31px}
+    .pt3-hd{display:none}
+    .pt3-rows{gap:12px}
+    .pt3-row{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:16px}
+    .pt3-name{grid-column:1/3;font-size:17px}
+    .pt3-share{display:contents}
+    .pt3-pct{grid-column:3;grid-row:1;font-size:15px}
+    .pt3-pct b{font-weight:600}
+    .pt3-bar{grid-column:1/-1;grid-row:2;height:8px}
+    .pt3-n,.pt3-rk{display:flex;flex-direction:column;align-items:flex-start;gap:3px;text-align:left;font-size:19px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+    .pt3-n:before{display:block;font-family:var(--label);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+    .pt3-rk:before{content:attr(data-l);font-family:var(--label);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:400}
+    .pt3-track{display:none}
+    .pt3-rk b{font-size:19px;text-align:left;min-width:0}
+    .pt3-rk b:before{content:"\25CF\00a0";font-size:.6em;vertical-align:.15em}
+    .pt3-rk b.na:before{content:""}
+    .pt3-lowtag{display:none}
+    .pt3-low{display:block;background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px 16px}
+    .pt3-lowhead{display:block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+    .pt3-row.low{display:grid;grid-template-columns:minmax(0,1fr) 54px 48px 56px;gap:8px;background:none;border:0;border-radius:0;padding:7px 0}
+    .pt3-row.low .pt3-name{grid-column:auto;font-size:14.5px;font-weight:600;color:var(--text)}
+    .pt3-row.low .pt3-pct{grid-column:auto;grid-row:auto;font-size:13.5px}
+    .pt3-row.low .pt3-bar,.pt3-row.low .pt3-n.pts,.pt3-row.low .pt3-rk:before,.pt3-row.low .pt3-n:before{display:none}
+    .pt3-row.low .pt3-n,.pt3-row.low .pt3-rk{flex-direction:row;font-size:13.5px;align-items:center}
+    .pt3-row.low .pt3-rk b{font-size:13.5px;text-align:right}
+    .pt3-row.low .pt3-rk b:before{content:""}
+    .pt3-row.low .pt3-rk{justify-content:flex-end}
+  }
+  @container (max-width:340px){ .pt3-tiles{grid-template-columns:minmax(0,1fr)} }
 
   /* TODAY / HOME PAGE */
 
@@ -5430,44 +5492,104 @@ const PT_LABELS = {
   prRoll: 'P&R Roll Man', postUp: 'Post-Up', spotUp: 'Spot-Up',
   cut: 'Cut', handoff: 'Handoff', offScreen: 'Off-Screen', putbacks: 'Putbacks',
 };
-function ptRankTone(d) {
-  if (!d || d.rank == null || !d.rankOf) return '';
-  return d.rank > d.rankOf - 5 ? 'up' : d.rank <= 5 ? 'dn' : '';
+// One number per play type that the opponent's defense is ranked on. Pure, so it can be tested.
+// Rank 1 = toughest defense, so a HIGH rank is good for the offense. Types with no defensive file
+// (pick-and-roll, putbacks, and cuts when nba.com's feed fails) have no rank and stay out.
+function ptSummary(pt, def, lowCut) {
+  lowCut = lowCut == null ? 0.05 : lowCut;
+  const rows = [], unranked = [];
+  for (const k of Object.keys(pt || {})) {
+    const p = pt[k], share = Number(p && p.POSS_PCT);
+    if (!(share > 0)) continue;
+    const d = def && def[k];
+    if (!d || !(d.rank > 0) || !(d.rankOf > 1)) { unranked.push({ key: k, share }); continue; }
+    rows.push({ key: k, share, pts: Number.isFinite(Number(p.PTS)) ? Number(p.PTS) : 0, ppp: Number(p.PPP), rank: d.rank, of: d.rankOf, low: share < lowCut });
+  }
+  rows.sort((a, b) => b.share - a.share);
+  if (!rows.length) return null;
+  const of = Math.max(...rows.map(r => r.of)), mid = (of + 1) / 2;
+  const shown = rows.reduce((s, r) => s + r.share, 0);
+  const wtd = rows.reduce((s, r) => s + r.share * r.rank, 0) / shown;
+  const ptsAll = rows.reduce((s, r) => s + r.pts, 0);
+  const ptsSoft = rows.filter(r => r.rank > of / 2).reduce((s, r) => s + r.pts, 0);
+  const big = rows.filter(r => !r.low);
+  const best = big.reduce((a, r) => (!a || r.rank > a.rank ? r : a), null);
+  const watch = big.reduce((a, r) => (!a || r.rank < a.rank ? r : a), null);
+  return {
+    rows, unranked, of, mid, shown, wtd,
+    lean: wtd >= mid + 2 ? 'FAVORABLE' : wtd <= mid - 2 ? 'TOUGH' : 'NEUTRAL',
+    ptsAll, ptsSoft, softPct: ptsAll > 0 ? Math.round(ptsSoft / ptsAll * 100) : null,
+    best: best && best.rank > mid ? best : null,
+    watch: watch && watch.rank < mid ? watch : null,
+  };
+}
+// Rank to a colour on the legend's scale: tough (salmon) through neutral to soft (green).
+function ptColor(rank, of) {
+  const t = of > 1 ? Math.min(1, Math.max(0, (rank - 1) / (of - 1))) : 0.5;
+  return t < 0.5
+    ? `color-mix(in srgb, var(--pt-mid) ${Math.round(t * 200)}%, var(--pt-tough))`
+    : `color-mix(in srgb, var(--pt-soft) ${Math.round((t - 0.5) * 200)}%, var(--pt-mid))`;
 }
 function renderPlaytypeBreakdown(ctx, playerName, oppName, league) {
-  const pt = ctx?.playerPlaytypes || {};
-  const keys = Object.keys(pt).filter(k => pt[k]?.POSS_PCT != null);
-  if (!keys.length) {
+  const head = `<div class="section-divider">How They Score — Play Type <span class="pt3-chip">NBA · Synergy</span></div>`;
+  const pt = ctx?.playerPlaytypes || {}, def = ctx?.oppDefPlaytypes || {};
+  const sm = ptSummary(pt, def);
+  if (!sm) {
     return league === 'wnba' || !ctx
       ? '' // no WNBA source at all — say nothing rather than an empty box every time
-      : `<div class="section-divider">How They Score — Play Type</div><div class="top-plays-empty">No play-type data available for ${escapeHtml(playerName || 'this player')} yet.</div>`;
+      : `${head}<div class="top-plays-empty">${Object.keys(pt).length ? `No play-type defensive ranks for ${escapeHtml(oppName || 'this opponent')} yet.` : `No play-type data available for ${escapeHtml(playerName || 'this player')} yet.`}</div>`;
   }
-  keys.sort((a, b) => pt[b].POSS_PCT - pt[a].POSS_PCT);
-  const def = ctx?.oppDefPlaytypes || {};
-  const maxPct = Math.max(...keys.map(k => pt[k].POSS_PCT));
-  const rows = keys.map(k => {
-    const p = pt[k], d = def[k];
-    const pct = (p.POSS_PCT * 100).toFixed(1);
-    const barPct = maxPct > 0 ? (p.POSS_PCT / maxPct * 100) : 0;
-    const tone = ptRankTone(d);
-    const rankHtml = d
-      ? `<span class="pt2-rank ${tone}">DEF ${scOrdinal(d.rank)} of ${d.rankOf}</span>`
-      : `<span class="pt2-rank na">no data</span>`;
-    return `<div class="pt2-row">
-      <div class="pt2-label">${PT_LABELS[k] || k}</div>
-      <div class="pt2-bar-track"><div class="pt2-bar-fill" style="width:${barPct}%"></div></div>
-      <div class="pt2-freq">${pct}%</div>
-      <div class="pt2-pts">${p.PTS ?? '—'} pts/g</div>
-      <div class="pt2-ppp">${p.PPP ?? '—'} PPP</div>
-      ${rankHtml}
+  const abbr = escapeHtml(String((Object.values(def).find(d => d && d.TEAM_ABBREVIATION) || {}).TEAM_ABBREVIATION || 'Opp').slice(0, 4));
+  const f1 = v => (Number.isFinite(v) ? v.toFixed(1) : '—'), f2 = v => (Number.isFinite(v) ? v.toFixed(2) : '—');
+  const pct1 = v => (v * 100).toFixed(1) + '%';
+  const barMax = Math.max(...sm.rows.map(r => r.share)) * 1.22; // the longest bar stops short of the end, as in the design
+  const leanCol = sm.lean === 'FAVORABLE' ? 'var(--green)' : sm.lean === 'TOUGH' ? 'var(--pt-tough)' : 'var(--muted2)';
+  const tag = (r, pre) => r ? { v: escapeHtml((PT_LABELS[r.key] || r.key).replace(/^P&R /, 'P&R ')).toUpperCase(), c: ptColor(r.rank, r.of), s: `<b>${f2(r.ppp)}</b> PPP · ${abbr} ${scOrdinal(r.rank)}` } : { v: '—', c: 'var(--muted)', s: pre };
+  const best = tag(sm.best, 'No soft spot in his main play types'), watch = tag(sm.watch, 'No tough spot in his main play types');
+  const tile = (k, v, c, s) => `<div class="pt3-tile"><div class="k">${k}</div><div class="v" style="color:${c}">${v}</div><div class="s">${s}</div></div>`;
+  const tiles = [
+    tile('Matchup lean', sm.lean, leanCol, `Volume-weighted ${abbr} rank <b>${f1(sm.wtd)}</b> of ${sm.of}`),
+    tile('Pts vs soft D', sm.softPct == null ? '—' : sm.softPct + '%', 'var(--text)', `<b>${f1(sm.ptsSoft)}</b> of <b>${f1(sm.ptsAll)}</b> tracked pts/g`),
+    tile('Best edge', best.v, best.c, best.s),
+    tile('Watch', watch.v, watch.c, watch.s),
+  ].join('');
+  const rowHtml = r => `<div class="pt3-row${r.low ? ' low' : ''}">
+      <div class="pt3-name">${escapeHtml(PT_LABELS[r.key] || r.key)}${r.low ? '<span class="pt3-lowtag">Low vol</span>' : ''}</div>
+      <div class="pt3-share"><div class="pt3-bar"><i style="width:${(r.share / barMax * 100).toFixed(1)}%"></i></div><div class="pt3-pct"><b>${pct1(r.share)}</b>${''}</div></div>
+      <div class="pt3-n pts" data-l="PTS/G">${f1(r.pts)}</div>
+      <div class="pt3-n" data-l="PPP">${f2(r.ppp)}</div>
+      <div class="pt3-rk" data-l="${abbr} D" style="color:${ptColor(r.rank, r.of)}"><span class="pt3-track"><i style="left:${((r.rank - 1) / (r.of - 1) * 100).toFixed(1)}%"></i></span><b>${scOrdinal(r.rank)}</b></div>
     </div>`;
-  }).join('');
+  const main = sm.rows.filter(r => !r.low), low = sm.rows.filter(r => r.low);
+  const lowShare = low.reduce((s, r) => s + r.share, 0);
+  const rowsHtml = main.map(rowHtml).join('')
+    + (low.length ? `<div class="pt3-low"><div class="pt3-lowhead">Low volume · ${(lowShare * 100).toFixed(1)}% of poss</div>${low.map(rowHtml).join('')}</div>` : '');
+  const mix = sm.rows.map(r => `<i title="${escapeHtml(PT_LABELS[r.key] || r.key)} ${pct1(r.share)}" style="width:${(r.share * 100).toFixed(2)}%;background:${ptColor(r.rank, r.of)}"></i>`).join('');
+  const notIn = Math.max(0, 1 - sm.shown);
+  const unr = sm.unranked.length
+    ? `Not ranked: ${sm.unranked.sort((a, b) => b.share - a.share).map(u => `${escapeHtml(PT_LABELS[u.key] || u.key)} ${pct1(u.share)}`).join(', ')} (no defensive rank in the feed).`
+    : '';
   return `
-    <div class="section-divider">How They Score — Play Type <span style="font-size:11px;color:var(--muted);font-weight:normal;">NBA only (Synergy)</span></div>
-    <div class="pt2">
-      <div class="pt2-sub">${escapeHtml(playerName || 'Player')}'s share of offense by play type, vs. where ${escapeHtml(oppName || 'the opponent')} ranks league-wide defending each one (1st = toughest).</div>
-      <div class="pt2-colheads"><span>Type</span><span></span><span>% of poss.</span><span>Pts/g</span><span>PPP</span><span>Opp. rank</span></div>
-      <div class="pt2-rows">${rows}</div>
+    ${head}
+    <div class="pt3">
+      <div class="pt3-head">
+        <div>
+          <div class="pt3-eyebrow">Matchup</div>
+          <div class="pt3-title">${escapeHtml(playerName || 'Player')} <i>vs</i> ${escapeHtml(oppName || 'the opponent')} defense</div>
+          <div class="pt3-sub">How he scores, and where ${escapeHtml(oppName || 'the opponent')} ranks league-wide defending each play type.</div>
+        </div>
+        <div class="pt3-legend"><span>${abbr} D rank</span><div class="pt3-grad"></div><div><span>1 · Tough</span><span>${sm.of} · Soft</span></div></div>
+      </div>
+      <div class="pt3-tiles">${tiles}</div>
+      <div class="pt3-rows">
+        <div class="pt3-hd"><span>Play type</span><span>Share of possessions</span><span></span><span>Pts/g</span><span>PPP</span><span style="text-align:right">${abbr} D rank</span></div>
+        ${rowsHtml}
+      </div>
+      <div class="pt3-mix">
+        <div class="pt3-mixhd"><span>His whole offense, coloured by ${abbr}'s rank defending each type</span><span>Shown <b>${pct1(sm.shown)}</b> · Not in feed <b>${pct1(notIn)}</b></span></div>
+        <div class="pt3-mixbar">${mix}${notIn > 0.001 ? `<i class="nf" style="width:${(notIn * 100).toFixed(2)}%"></i>` : ''}</div>
+      </div>
+      <div class="pt3-foot"><span>Source: Synergy via NBA.com. PPP = points per possession.${unr ? ' ' + unr : ''}</span><span>Rank 1 = toughest defense</span></div>
     </div>`;
 }
 
