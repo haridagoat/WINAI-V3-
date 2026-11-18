@@ -1306,6 +1306,22 @@
   .bd-who small{display:block;color:var(--muted);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .bd-lp{display:flex;flex-direction:column;gap:1px;font-variant-numeric:tabular-nums;min-width:0;}
   .bd-pt{font-family:var(--label);font-weight:700;font-size:11.5px;letter-spacing:.14em;color:var(--dim);}
+  .bd-bk{background:none;border:0;padding:2px 0;color:var(--muted2);font-size:12px;text-decoration:underline;text-underline-offset:2px;cursor:pointer;text-align:left;min-height:24px;justify-self:start;}
+  .bd-bk:hover{color:var(--text);}
+  .bd-bk:focus-visible{outline:2px solid var(--muted2);outline-offset:2px;}
+  .bd-books{grid-column:1 / -1;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 12px 8px;margin-top:4px;cursor:default;}
+  .bk-head{display:flex;justify-content:space-between;gap:4px 12px;flex-wrap:wrap;margin-bottom:6px;font-size:13px;color:var(--muted);}
+  .bk-head b{color:var(--text);font-weight:600;}
+  .bk-scroll{overflow-x:auto;}
+  .bk-t{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:14px;}
+  .bk-t th{font-family:var(--label);font-weight:700;font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);text-align:left;padding:4px 6px;border-bottom:1px solid var(--border2);}
+  .bk-t td{padding:6px;border-top:1px solid var(--border);white-space:nowrap;}
+  .bk-t .r{text-align:right;}
+  .bk-t tr.sel td{background:var(--surface3);}
+  .bk-t tr.sel td:first-child{box-shadow:inset 3px 0 0 var(--viz);}
+  .bk-tag{font-family:var(--label);font-weight:700;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;padding:1px 6px;border-radius:5px;border:1px solid var(--border2);color:var(--muted2);margin-left:8px;}
+  .bk-note{margin:8px 0 0;color:var(--dim);font-size:12px;}
+  @container (max-width:420px){ .bk-tag{display:block;margin:3px 0 0;width:max-content;} .bk-t td{white-space:normal;} }
   .bd-flip{display:block;color:var(--muted2);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .td-card > .bd-flip{margin:-4px 0 8px;}
   .bd-mkt{display:block;color:var(--muted2);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
@@ -1338,6 +1354,11 @@
     .bd-lp{grid-area:lp;} .bd-edge{grid-area:edge;} .bd-price{grid-area:price;} .bd-conf{grid-area:conf;flex-direction:column;align-items:flex-start;gap:4px;}
     .bd-lp .td-model{display:none;}
     .bd-conf .td-bar{width:100%;max-width:46px;height:5px;order:2;}
+  }
+  /* a very narrow board (a small phone): the edge moves to a line of its own so the line and projection are never squeezed against it */
+  @container (max-width:340px){
+    .bd-row{grid-template-columns:minmax(0,1fr) auto auto minmax(46px,auto);grid-template-areas:"who who side add" "lp lp price conf" "edge edge edge edge";}
+    .bd-edge{flex-direction:row;align-items:center;gap:10px;} .bd-edge .bd-eb{flex:1;max-width:140px;}
   }
   @media (max-width:760px){ header{position:static;} }   /* a pinned header would take a fifth of a phone screen; the filter bar pins at the top instead */
   .td-bar{display:inline-block;width:64px;height:7px;background:var(--surface3);border-radius:4px;vertical-align:middle;margin-right:8px;overflow:hidden;}
@@ -1791,7 +1812,7 @@ setInterval(() => { if (!document.hidden) loadTodaysGames(); }, 5 * 60 * 1000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) loadTodaysGames(); });
 
 async function loadTodaysGames() {
-  const [nba, wnba] = await Promise.allSettled([apiGet('/api/today'), apiGet('/api/wnba/today')]);
+  const [nba, wnba] = await Promise.allSettled([scheduleOf('nba'), scheduleOf('wnba')]);
   if (nba.status === 'fulfilled') GP.nba = nba.value.games || []; else console.error('NBA games load error:', nba.reason?.message);
   if (wnba.status === 'fulfilled') GP.wnba = wnba.value.games || []; else console.error('WNBA games load error:', wnba.reason?.message);
   GP.err = null;
@@ -3550,8 +3571,7 @@ function fmtDayLabel(d) { return d.toLocaleDateString('en-US', { month: 'short',
 function initMatchupDayPicker() {
   matchupWindowStart = new Date();
   matchupSelectedDate = new Date();
-  renderDayStrip();
-  loadScheduleForDate(toDateStr(matchupSelectedDate));
+  renderDayStrip();   // the day's games are fetched when the Games tab is first opened (see switchTab), not at startup
 }
 
 function renderDayStrip() {
@@ -3582,6 +3602,7 @@ function selectMatchupDay(dateStr) {
 }
 
 async function loadScheduleForDate(dateStr) {
+  window._matchupScheduleLoaded = true;
   const strip = document.getElementById('schedule-strip');
   strip.innerHTML = skelChips(4, 'Loading the schedule');
   try {
@@ -3644,8 +3665,8 @@ setInterval(() => { if (!document.hidden) checkDataFeedStatus(); }, 5 * 60 * 100
 async function setDefaultMatchupLeague() {
   try {
     const [nbaToday, wnbaToday] = await Promise.all([
-      apiGet('/api/today').catch(() => ({ games: [] })),
-      apiGet('/api/wnba/today').catch(() => ({ games: [] })),
+      scheduleOf('nba').catch(() => ({ games: [] })),
+      scheduleOf('wnba').catch(() => ({ games: [] })),
     ]);
     const nbaHasGames = (nbaToday.games || []).length > 0;
     const wnbaHasGames = (wnbaToday.games || []).length > 0;
@@ -4226,6 +4247,16 @@ async function apiFetch(url, init, timeoutMs, fallbackLabel) {
   } finally { clearTimeout(timer); }
 }
 function apiGet(url, headers, timeoutMs) { return apiFetch(url, headers ? { headers } : undefined, timeoutMs, 'Server error'); }
+// The schedule is read by the games pill, the Today page and the matchup picker, often within the same second (it was fetched 8 times to open the page).
+// Reads within 20 seconds share one answer. Kept on window so it can be used before the rest of the script has run.
+function scheduleOf(league) {
+  const c = (window._schedCache = window._schedCache || {}), k = league === 'wnba' ? 'wnba' : 'nba', hit = c[k];
+  if (hit && Date.now() - hit.t < 20000) return hit.p;
+  const p = apiGet(k === 'wnba' ? '/api/wnba/today' : '/api/today');
+  c[k] = { t: Date.now(), p };
+  p.catch(() => { if (c[k] && c[k].p === p) delete c[k]; });
+  return p;
+}
 function apiPost(url, body, headers, timeoutMs) {
   return apiFetch(url, { method:'POST', headers:{'Content-Type':'application/json', ...(headers || {})}, body:JSON.stringify(body) }, timeoutMs, 'Error');
 }
@@ -4374,6 +4405,7 @@ function switchTab(name) {
   document.getElementById('panel-'+name)?.classList.add('active');
   if (name==='betslip') loadBetslip();
   if (name==='history') renderHistory();
+  if (name==='matchups' && !window._matchupScheduleLoaded) loadScheduleForDate(toDateStr(matchupSelectedDate));
   if (name==='analyzer') renderTopPlays('nba');
   if (name==='wnba') renderTopPlays('wnba');
   if (name==='today') renderTodayPage();
@@ -4411,7 +4443,7 @@ async function renderTodayPage() {
   if (!TD.data) root.innerHTML = skelCards(3, "Loading today's slate");
   try {
     let scheduleFailures = 0;
-    const get = (u, d) => apiGet(u).catch(() => { if (/^\/api\/(wnba\/)?today$/.test(u)) scheduleFailures++; return d; });
+    const get = (u, d) => (u === '/api/today' ? scheduleOf('nba') : u === '/api/wnba/today' ? scheduleOf('wnba') : apiGet(u)).catch(() => { if (/^\/api\/(wnba\/)?today$/.test(u)) scheduleFailures++; return d; });
     // Stage 0: the games alone. They come straight from the schedule, so the page never waits on anything slower.
     const [nbaS, wnbaS] = await Promise.all([get('/api/today', { games: [] }), get('/api/wnba/today', { games: [] })]);
     if (window._tdToken !== token) return;
@@ -4621,6 +4653,36 @@ function tdBoardRows() {
   return rows;
 }
 
+// Every book's number for one prop, so a line can be checked against the sportsbook someone has open. Rows come from the scan: [book, line, over price, under price].
+// "Best" counts only lines within a point of the books' consensus, the same rule the pick uses, so one out-of-step book is not called the best.
+function tdBooksHtml(p) {
+  const rows = (p.books || []).filter(b => b && b[1] != null).map(([book, line, over, under]) => ({ book, line, over, under }));
+  if (rows.length < 2) return '';
+  const cons = p.consensusLine, near = r => cons == null || Math.abs(r.line - cons) <= 1;
+  const dec = a => (a == null ? 0 : a > 0 ? 1 + a / 100 : 1 + 100 / Math.abs(a));
+  let bo = null, bu = null;
+  for (const r of rows.filter(near)) {
+    if (r.over != null && (!bo || r.line < bo.line || (r.line === bo.line && dec(r.over) > dec(bo.over)))) bo = r;
+    if (r.under != null && (!bu || r.line > bu.line || (r.line === bu.line && dec(r.under) > dec(bu.under)))) bu = r;
+  }
+  rows.sort((a, b) => a.line - b.line || String(a.book).localeCompare(String(b.book)));
+  const when = tdAgo(TD.fresh?.lines?.[p.league]);
+  const prop = PROP_LABEL[p.propType] || String(p.propType).toUpperCase();
+  const tags = r => [r === bo ? 'best over' : '', r === bu ? 'best under' : ''].filter(Boolean).map(t => `<span class="bk-tag">${t}</span>`).join('');
+  const body = rows.map(r => `<tr${r.book === p.book && r.line === p.line ? ' class="sel"' : ''}><td>${escapeHtml(r.book)}${tags(r)}</td><td class="r"><b>${escapeHtml(r.line)}</b></td><td class="r">${r.over != null ? bdOdds(r.over) : '—'}</td><td class="r">${r.under != null ? bdOdds(r.under) : '—'}</td></tr>`).join('');
+  return `<div class="bd-books" role="region" aria-label="${escapeHtml(`All books for ${p.player} ${prop}`)}">
+    <div class="bk-head"><b>${rows.length} books · ${prop}</b><span>${cons != null ? 'books\' line ' + escapeHtml(cons) : ''}${when ? ' · lines ' + escapeHtml(when) : ''}</span></div>
+    <div class="bk-scroll"><table class="bk-t"><thead><tr><th scope="col">Book</th><th scope="col" class="r">Line</th><th scope="col" class="r">Over</th><th scope="col" class="r">Under</th></tr></thead><tbody>${body}</tbody></table></div>
+    <p class="bk-note">American odds. The highlighted row is the number shown on the row above.</p></div>`;
+}
+function tdToggleBooks(btn) {
+  const row = btn.closest('.bd-row'), p = _todayPicks[+btn.dataset.books]; if (!row || !p) return;
+  const open = row.querySelector('.bd-books');
+  if (open) { open.remove(); btn.setAttribute('aria-expanded', 'false'); return; }
+  row.insertAdjacentHTML('beforeend', tdBooksHtml(p));
+  btn.setAttribute('aria-expanded', row.querySelector('.bd-books') ? 'true' : 'false');
+}
+
 // One prop as one row: who and when, the line and what we project, the gap between them, the best price (with EV under it), the side, strength, and a + to save it.
 function tdBoardRow(p, times) {
   const over = p.direction === 'OVER', ev = p.realEdge?.expectedValue, hot = ev != null && ev * 100 >= EV_TRUST_LIMIT, conf = tdShown(p), idx = tdOpenIdx(p);
@@ -4633,7 +4695,7 @@ function tdBoardRow(p, times) {
     <div class="bd-who">${pickAvatar(p.league, p.playerId, p.player)}<div><b>${escapeHtml(p.player)}</b><small>${escapeHtml((p.awayTeam || '').split(' ').pop())} @ ${escapeHtml((p.homeTeam || '').split(' ').pop())}${when ? ' · ' + escapeHtml(when) : ''}</small></div></div>
     <div class="bd-lp"><span class="bd-pt">${prop}</span><span class="bd-nums"><b class="bd-line">${escapeHtml(p.line)}</b><i aria-hidden="true">→</i><span class="bd-proj" title="${TD.projMode === 'blend' ? 'Market-blend projection' : 'Our projection'}">${escapeHtml(tdProj(p))}</span></span>${lineSource(p)}${modelNote(p)}</div>
     <div class="bd-edge">${edge == null ? '<b class="off">—</b>' : `<b class="${agree ? '' : 'off'}" title="${agree ? 'The projection is on the same side of the line as the call' : 'The market-blended projection is on the other side of the line. The call follows the model\'s own projection.'}">${bdSigned(edge)}</b><span class="bd-eb" aria-hidden="true"><i style="${edge >= 0 ? 'left:50%' : 'right:50%'};width:${half.toFixed(1)}%"></i></span>`}</div>
-    <div class="bd-price"><b>${price != null ? bdOdds(price) : '—'}</b><small>${escapeHtml(p.book || '')}</small><small class="bd-ev ${ev != null && ev >= 0 ? 'pos' : 'neg'}" ${hot ? 'title="Unusually large: more often the model being overconfident than free money."' : ''}>EV ${fmtEv(ev)}${hot ? ' <span class="neg">⚠</span>' : ''}${isValuePick(p) ? ' <span class="td-val" title="The price on this side has an expected value of 3% or more">VALUE</span>' : ''}</small>${priceNote(p)}</div>
+    <div class="bd-price"><b>${price != null ? bdOdds(price) : '—'}</b><small>${escapeHtml(p.book || '')}</small><small class="bd-ev ${ev != null && ev >= 0 ? 'pos' : 'neg'}" ${hot ? 'title="Unusually large: more often the model being overconfident than free money."' : ''}>EV ${fmtEv(ev)}${hot ? ' <span class="neg">⚠</span>' : ''}${isValuePick(p) ? ' <span class="td-val" title="The price on this side has an expected value of 3% or more">VALUE</span>' : ''}</small>${priceNote(p)}${p.books && p.books.length > 1 ? `<button type="button" class="bd-bk" data-books="${idx}" aria-expanded="false">all ${p.books.length} books</button>` : ''}</div>
     <div class="bd-side"><span class="td-pill ${over ? 'pos' : 'neg'}">${over ? '↑' : '↓'} ${escapeHtml(p.direction)}</span></div>
     <div class="bd-conf"><span class="td-bar" aria-hidden="true"><i style="width:${Math.max(0, Math.min(100, conf))}%"></i></span><span class="num" title="Strength: how reliable the numbers behind this are. It is not the chance of winning.">${fmtConf(conf)}</span></div>
     <button type="button" class="bd-add" data-add="${idx}" aria-pressed="${inList}" aria-label="${inList ? 'In your Prop List: ' : 'Add to your Prop List: '}${escapeHtml(`${p.player} ${prop} ${p.direction} ${p.line}`)}">${inList ? '✓' : '+'}</button>
@@ -4762,6 +4824,8 @@ function tdRepaintBoard() {
 function tdBindBoard() {
   const root = document.getElementById('today-root');
   root.onclick = e => {
+    const bkb = e.target.closest('[data-books]'); if (bkb) return tdToggleBooks(bkb);
+    if (e.target.closest('.bd-books')) return;                       // a click inside the books table is not a click on the row
     if (e.target.closest('#td-ten-btn')) { TD.ten = !TD.ten; return paintToday(); }
     const add = e.target.closest('[data-add]'); if (add) return tdQuickAdd(+add.dataset.add, add);
     const cf = e.target.closest('[data-conf]'); if (cf) { TD.minConf = +cf.dataset.conf; return tdRepaintBoard(); }
@@ -4792,33 +4856,47 @@ function tdCached(url, ttl = 60000) {
   p.catch(() => _tdCache.delete(url));
   return p;
 }
+// Spread, total and moneyline for every game and the injuries for every team, from ONE request per league (it was one per game plus one per team: 24 for a
+// 12-game night). The answer is kept for a minute, so the page redrawing itself several times asks once.
+function tdExtras(games) {
+  const leagues = [...new Set(games.map(g => g.league))];
+  return Promise.all(leagues.map(lg => tdCached(`/api/slate-extras?league=${lg}`).catch(() => null))).then(parts => {
+    const out = { lines: {}, injuries: {} };
+    leagues.forEach((lg, i) => {
+      const r = parts[i]; if (!r) return;
+      for (const [k, v] of Object.entries(r.lines || {})) out.lines[`${lg}|${k}`] = v;
+      for (const [t, list] of Object.entries(r.injuries || {})) out.injuries[`${lg}|${t}`] = list;
+    });
+    return out;
+  });
+}
 async function tdLoadLines(games) {
   const token = window._tdToken;
-  await Promise.all(games.map(async g => {
+  const ex = await tdExtras(games);
+  if (window._tdToken !== token) return;
+  for (const g of games) {
     try {
-      const o = await tdCached(`/api/game-odds?league=${g.league}&team1=${encodeURIComponent(g.away)}&team2=${encodeURIComponent(g.home)}`);
-      if (window._tdToken !== token || !o?.available) return;
+      const o = ex.lines[`${g.league}|${g.away}|${g.home}`];
+      if (!o?.available) continue;
       const el = document.querySelector(`[data-lines="${CSS.escape(`${g.league}|${g.away}@${g.home}`)}"]`);
-      if (!el) return;
+      if (!el) continue;
       const homeFav = o.spread?.home != null && parseFloat(o.spread.home) < 0;
       const fav = homeFav ? o.home : o.away, sp = homeFav ? o.spread.home : o.spread.away;
       const chip = (k, v) => `<div class="td-mchip"><span>${k}</span><b>${v}</b></div>`;
       el.innerHTML = (sp != null ? chip(escapeHtml((fav?.name || '').split(' ').pop()), String(sp).replace('-', '−')) : '') + (o.total != null ? chip('Total', o.total) : '') +
         (o.moneyline?.home != null ? chip(escapeHtml((o.home?.name || '').split(' ').pop()) + ' ML', String(o.moneyline.home).replace('-', '−')) : '');
     } catch (_) { /* a game with no posted line just shows none */ }
-  }));
+  }
 }
 
-// who is hurt on tonight's teams, from the ESPN rosters the matchup page already uses
+// who is hurt on tonight's teams, from the ESPN rosters
 async function tdLoadInjuries(games) {
   const token = window._tdToken, box = document.getElementById('td-inj');
   if (!box) return;
   const teams = [];
   for (const g of games) for (const t of [g.away, g.home]) if (!teams.some(x => x.t === t)) teams.push({ t, lg: g.league });
-  const out = await Promise.all(teams.slice(0, 12).map(async ({ t, lg }) => {
-    try { const r = await tdCached(`${lg === 'wnba' ? '/api/wnba/roster' : '/api/roster'}?team=${encodeURIComponent(t)}`); return { t, list: r?.injured || [] }; }
-    catch (_) { return { t, list: [] }; }
-  }));
+  const ex = await tdExtras(games);
+  const out = teams.slice(0, 24).map(({ t, lg }) => ({ t, list: ex.injuries[`${lg}|${t}`] || [] }));
   if (window._tdToken !== token) return;
   const hurt = out.filter(x => x.list.length);
   box.innerHTML = '<h3 style="margin-bottom:6px">Injury watch</h3>' + (hurt.length

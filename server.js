@@ -30,6 +30,7 @@ const picksLib = require('./lib/picks');
 const modelParams = require('./lib/params');
 const dvpLib = require('./lib/dvp');
 const bestBets = require('./lib/bestbets');
+const slateExtras = require('./lib/slateextras');
 const biasLib = require('./lib/bias');
 modelParams.load();
 const { AsyncLocalStorage } = require('node:async_hooks');
@@ -3225,6 +3226,21 @@ app.get('/api/game-odds', async (req, res) => {
   }
 });
 
+// Everything the Today page adds around its games in ONE request (it used to be one per game and one per team): each game's spread, total and
+// moneyline, and who is hurt on each team. The server reads today's schedule itself, so the browser sends nothing but the league: a request that named
+// every game would run into the 200-character limit on query values, and would let the browser choose which teams the server looks up.
+app.get('/api/slate-extras', async (req, res) => {
+  const league = req.query.league === 'wnba' ? 'wnba' : 'nba';
+  try {
+    let games;
+    if (league === 'wnba') games = (await fetchWNBASchedule()).map(g => [g.away, g.home]);
+    else { await ensureTodaysGames(); games = todaysGames.map(g => [g.visitor_team.full_name, g.home_team.full_name]); }
+    res.json({ league, ...(await slateExtras.buildSlateExtras({ games, fetchOdds: (a, h) => fetchGameOdds(league, a, h), fetchRoster: t => (league === 'wnba' ? fetchWNBARoster(t) : fetchESPNRoster(t)) })) });
+  } catch (err) {
+    res.status(500).json({ error: 'Could not load the extras for these games.' });
+  }
+});
+
 // Real, data-driven "top targets" for a matchup — ranked by opportunity
 // (real USG_PCT) and recent form (real L3-vs-L10 hot/cold trend), not
 // Claude's free-text guessing. Split into its own endpoint (rather than
@@ -4561,6 +4577,7 @@ app.get('/api/prop-board', async (req, res) => {
         projection: r.projection, modelProjection: r.modelProjection ?? null, blendedProjection: r.blendedProjection ?? null, edge: r.edge, confidence: r.confidence,
         overProbability: r.overProbability ?? null, underProbability: r.underProbability ?? null,
         priceSide: r.priceSide ?? null, priceEv: r.priceEv ?? null, consensusLine: r.consensusLine ?? null, bookCount: r.bookCount ?? null, realEdge: r.realEdge ?? null,
+        books: r.scan?.books ?? null,                       // [book, line, over price, under price] for every book, so the page can show them all
       }));
     // Free accounts and guests see the top of the board; Pro sees every prop.
     const limited = paywallOn() && !isProReq(req);
