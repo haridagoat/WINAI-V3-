@@ -1280,6 +1280,21 @@
   /* Prop board: a filter bar that stays pinned under the header while the rows scroll, then one row per prop */
   .td-ten-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:12px 2px 8px;}
   .td-ten{padding:6px 8px;margin-bottom:6px;}
+  /* The free plan: what is locked is dummy text behind a blur (the server never sends the real thing) with an unlock button on top */
+  .lk{position:relative;}
+  .lk-fake{filter:blur(7px);opacity:.88;pointer-events:none;user-select:none;}
+  .lk-over{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;text-align:center;padding:14px;background:linear-gradient(180deg,rgba(10,10,11,.10),rgba(10,10,11,.55));border-radius:inherit;}
+  .lk-board{justify-content:flex-start;padding-top:min(18vh,170px);background:linear-gradient(180deg,rgba(10,10,11,.2),rgba(10,10,11,.7) 40%,rgba(10,10,11,.45));}
+  .lk-box{display:flex;flex-direction:column;align-items:center;gap:9px;background:rgba(17,17,19,.92);border:1px solid var(--border2);border-radius:14px;padding:22px 26px;max-width:420px;box-shadow:0 18px 50px rgba(0,0,0,.55);}
+  .lk-ic{width:24px;height:24px;stroke:var(--text);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+  .lk-t{font-family:var(--display);font-weight:800;font-size:24px;letter-spacing:.06em;text-transform:uppercase;} .lk-card .lk-t{font-size:20px;}
+  .lk-s{color:var(--muted2);font-size:14.5px;max-width:36ch;}
+  .lk-btn{background:#e6e6ea;color:#0a0a0b;border:1px solid #e6e6ea;border-radius:9px;padding:10px 20px;min-height:44px;font-family:var(--label);font-weight:700;font-size:13px;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;}
+  .lk-link{background:none;border:0;color:var(--muted2);font-size:13.5px;text-decoration:underline;text-underline-offset:3px;cursor:pointer;min-height:36px;}
+  .lk-two{display:grid;grid-template-columns:1fr 1fr;gap:12px;} @media (max-width:900px){.lk-two{grid-template-columns:1fr;}}
+  .up-strip{display:flex;gap:12px 20px;align-items:center;justify-content:space-between;flex-wrap:wrap;background:var(--surface);border:1px solid var(--border2);border-left:3px solid var(--viz);border-radius:12px;padding:12px 16px;margin:2px 0 18px;font-size:14.5px;color:var(--muted2);} .up-strip b{color:var(--text);}
+  #pv-banner{position:sticky;top:0;z-index:950;background:#e6e6ea;color:#0a0a0b;display:flex;gap:12px;align-items:center;justify-content:center;flex-wrap:wrap;padding:7px 14px;font-family:var(--label);font-weight:700;font-size:13px;letter-spacing:.08em;text-transform:uppercase;}
+  #pv-banner button{background:#0a0a0b;color:#e6e6ea;border:0;border-radius:7px;padding:6px 12px;font:inherit;cursor:pointer;min-height:32px;}
   .bd-meta{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:2px 10px 8px;}
   .bd-count{color:var(--muted);font-size:14px;font-variant-numeric:tabular-nums;white-space:nowrap;}
   .bd-sort{display:inline-flex;align-items:center;gap:8px;color:var(--muted);font-family:var(--label);font-weight:700;font-size:12px;letter-spacing:.14em;text-transform:uppercase;}
@@ -1661,6 +1676,17 @@
 <footer><p class="rg-foot">WIN AI is analytics, not betting advice. Must be 21+. If gambling is a problem, call <a href="tel:18004262537">1-800-GAMBLER</a>.</p></footer>
 
 <script>
+// Owner preview of the free plan: ?plan=free turns it on for this browser and ?plan=pro turns it off. While it is on, every request carries a header that makes the
+// server answer as it would for a free account (and the page shows a banner). It only ever takes things away from the browser that sends it.
+const PREVIEW_FREE = (() => {
+  try {
+    const u = new URL(location.href), q = u.searchParams.get('plan');
+    if (q === 'free') localStorage.setItem('winai_preview_free', '1'); else if (q === 'pro') localStorage.removeItem('winai_preview_free');
+    if (q) { u.searchParams.delete('plan'); history.replaceState(null, '', u.pathname + u.search + u.hash); }
+    return localStorage.getItem('winai_preview_free') === '1';
+  } catch (_) { return false; }
+})();
+const previewHeaders = () => (PREVIEW_FREE ? { 'x-preview-plan': 'free' } : {});
 // Tells the owner when the page breaks for someone: a short, scrubbed message, at most 3 per page load.
 (function () {
   let sent = 0;
@@ -4080,6 +4106,7 @@ async function analyzeMatchup() {
   if (!t1 || !t2 || t1 === t2) { notify('Pick two different teams.', document.getElementById(!t1 ? 'matchup-team1' : 'matchup-team2')); return; }
 
   const div = document.getElementById('matchup-result');
+  if (AUTH.loaded && AUTH.paywall && AUTH.plan !== 'pro') { div.innerHTML = matchupLockedHtml(); return; }   // matchup analysis is Pro: nothing is fetched
   div.innerHTML = `
     <div class="sk sk-matchup-title"></div>
     <div class="sk sk-matchup-bar"></div>
@@ -4110,6 +4137,7 @@ async function analyzeMatchup() {
       apiGet(`/api/position-category-defense?league=${league}&team=${encodeURIComponent(t2)}`).catch(() => ({ available: false })),
     ]);
   } catch (err) {
+    if (err.status === 401 || err.status === 402) { div.innerHTML = matchupLockedHtml(); return; }   // the server says it is a Pro feature
     div.innerHTML = `<div style="color:var(--red);font-family:var(--body);font-size:12px;padding:20px;">ERROR: ${escapeHtml(err.message)}</div>`;
     return;
   }
@@ -4238,7 +4266,7 @@ async function apiFetch(url, init, timeoutMs, fallbackLabel) {
   let timedOut = false;
   const timer = setTimeout(() => { timedOut = true; ctl.abort(); }, timeoutMs || API_TIMEOUT_MS);
   try {
-    const res = await fetch(url, { ...(init || {}), signal: ctl.signal });
+    const res = await fetch(url, { ...(init || {}), headers: { ...previewHeaders(), ...((init && init.headers) || {}) }, signal: ctl.signal });
     if (!res.ok) { const e = await res.json().catch(()=>({error:'Unknown'})); const err = new Error(e.error || `${fallbackLabel} ${res.status}`); err.code = e.code; err.status = res.status; throw err; }
     return await res.json();
   } catch (err) {
@@ -4385,6 +4413,11 @@ function paintNav(page) {
   });
 }
 
+if (PREVIEW_FREE) {
+  const b = document.createElement('div'); b.id = 'pv-banner'; b.setAttribute('role', 'status');
+  b.innerHTML = 'Previewing the free plan. Only you see this. <button type="button" id="pv-exit">Exit preview</button>';
+  document.body.prepend(b); document.getElementById('pv-exit').onclick = () => { location.href = location.pathname + '?plan=pro'; };
+}
 paintNav('today');   // the page that is showing when the site opens
 // The board's filter bar pins just below the header while the header itself is pinned (on a phone it is not, so the bar pins at the very top).
 (function pinOffset() {
@@ -4455,7 +4488,7 @@ async function renderTodayPage() {
     }
     const games = [...(nbaS.games || []).map(g => ({ ...g, league: 'nba' })), ...(wnbaS.games || []).map(g => ({ ...g, league: 'wnba' }))];
     if (!TD.data || TD.data.games.length !== games.length) {
-      TD.data = { games, props: [], limited: false, boardTotal: 0, fallback: { nba: false, wnba: false }, fbPlays: [], clv: null, teamPicks: { nba: [], wnba: [] }, loadingPicks: games.length > 0, loadingBoard: games.length > 0 };
+      TD.data = { games, props: [], locked: false, boardTotal: 0, boardTotals: {}, fallback: { nba: false, wnba: false }, fbPlays: [], clv: null, teamPicks: { nba: [], wnba: [] }, loadingPicks: games.length > 0, loadingBoard: games.length > 0 };
       TD.conf = uniqueConfs([]);
       paintToday();
       tdLoadLines(games);
@@ -4468,18 +4501,19 @@ async function renderTodayPage() {
     ]);
     if (window._tdToken !== token) return;
     const props = [...(nbaB.props || []).map(p => ({ ...p, league: 'nba' })), ...(wnbaB.props || []).map(p => ({ ...p, league: 'wnba' }))];
-    const limited = !!(nbaB.limited || wnbaB.limited), boardTotal = (nbaB.total ?? (nbaB.props || []).length) + (wnbaB.total ?? (wnbaB.props || []).length);
+    // On the free plan the server sends no rows, only how many there are (locked): the page draws a blurred placeholder.
+    const locked = !!(nbaB.locked || wnbaB.locked), boardTotals = { nba: nbaB.total ?? (nbaB.props || []).length, wnba: wnbaB.total ?? (wnbaB.props || []).length }, boardTotal = boardTotals.nba + boardTotals.wnba;
     // No posted lines (Odds API down or out of credits): the server falls back to model-only picks.
     // They get their own honest template: never dressed up as a real line-based pick.
     // only meaningful for a league that actually has games today
     const hasG = lg => games.some(g => g.league === lg);
-    const liveProps = lg => (TD.data?.props || props).some(p => p.league === lg);   // the board can fill in while the picks are still being worked out
+    const liveProps = lg => (locked ? (boardTotals[lg] || 0) > 0 : (TD.data?.props || props).some(p => p.league === lg));   // the board can fill in while the picks are still being worked out
     const fallbackOf = (teamNba, teamWnba) => ({
       nba: hasG('nba') && (!!(teamNba && teamNba.fallback) || !liveProps('nba')),
       wnba: hasG('wnba') && (!!(teamWnba && teamWnba.fallback) || !liveProps('wnba')),
     });
     const stage1Fb = fallbackOf(null, null);
-    TD.data = { games, props, limited, boardTotal, fallback: stage1Fb, fbPlays: [], clv, teamPicks: { nba: [], wnba: [] }, loadingPicks: games.length > 0, loadingBoard: !!(nbaB.scanning || wnbaB.scanning) && !props.length, scanning: !!(nbaB.scanning || wnbaB.scanning) };
+    TD.data = { games, props, locked, boardTotal, boardTotals, fallback: stage1Fb, fbPlays: [], clv, teamPicks: { nba: [], wnba: [] }, loadingPicks: games.length > 0, loadingBoard: !!(nbaB.scanning || wnbaB.scanning) && !props.length, scanning: !!(nbaB.scanning || wnbaB.scanning) };
     TD.conf = uniqueConfs([...props]);
     paintToday();
     tdLoadLines(games);
@@ -4495,9 +4529,10 @@ async function renderTodayPage() {
     // The headline Top 3 is the day's three most confident picks, locked by the server until tomorrow: the same list on every visit.
     await Promise.all(['nba', 'wnba'].filter(lg => games.some(g => g.league === lg)).map(async lg => {
       const tp = await get(`/api/top-plays?league=${lg}`, { fallbackPlays: [], topPlays: [] });
-      if (fallback[lg]) (tp.fallbackPlays || []).forEach(p => fbPlays.push({ ...p, league: lg }));
+      // A locked pick arrives as { locked: true, rank } with nothing else; its negative rank keeps the slots in order, after the real pick.
+      if (fallback[lg]) (tp.fallbackPlays || []).forEach(p => fbPlays.push(p.locked ? { ...p, league: lg, confidence: -p.rank } : { ...p, league: lg }));
       else {
-        (tp.topPlays || []).forEach(p => lockedTops.push({ ...p, league: lg, value: isValuePick(p) }));
+        (tp.topPlays || []).forEach(p => lockedTops.push(p.locked ? { ...p, league: lg, confidence: -p.rank } : { ...p, league: lg, value: isValuePick(p) }));
         (tp.topTen || []).slice(3).forEach(p => lockedMore.push({ ...p, league: lg, value: isValuePick(p) }));   // ranks 4 to 10, locked and graded along with the Top 3
       }
     }));
@@ -4517,7 +4552,7 @@ async function renderTodayPage() {
 function tdScheduleBoardRefresh(token) {
   clearTimeout(window._tdBoardTimer);
   const D = TD.data;
-  if (!D || !D.games.length) return;
+  if (!D || !D.games.length || D.locked) return;
   const now = Date.now();
   const missing = D.games.some(g => Date.parse(g.status) > now && !D.props.some(p => tdSameGame(p, g)));
   if (!D.scanning && !missing) return;
@@ -4607,6 +4642,47 @@ function tdTenRow(p, rank) {
     <span class="td-gp-ev ${ev >= 0 ? 'pos' : 'neg'}">${fmtEv(ev)}</span>
   </div>`;
 }
+// ── The free plan ──
+// What a free account may not see is never sent by the server (lib/plangate.js). These draw the placeholders: dummy text behind a blur, with an unlock button.
+const LOCK_IC = '<svg class="lk-ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
+const lkBtn = (feature, label) => `<button type="button" class="lk-btn" data-unlock="${feature}">${label || (AUTH.user ? 'Unlock with Pro' : 'Sign up to unlock')}</button>`;
+function unlockPro(feature) { if (!AUTH.user) return openSignin('unlock', null, 'signup'); openUpgrade(feature); }
+document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-unlock]'); if (b) { e.preventDefault(); unlockPro(b.dataset.unlock); } });
+function tdUpStrip() {
+  return `<div class="up-strip"><div><b>You're on the free plan.</b> <span>Pro unlocks the other top picks, every game's picks, the full prop board and matchup analysis, and removes the one-analysis-a-day limit.</span></div>${lkBtn('general', AUTH.user ? 'See Pro' : 'Sign up free')}</div>`;
+}
+function tdLockedTop(p, i) {
+  const d = [['Another Player', 'OVER 24.5', 'pos', 'PTS', '71.4', '+2.1', 82, '−2.0%'], ['Third Player', 'UNDER 6.5', 'neg', 'REB', '68.9', '−1.2', 74, '−3.1%']][i % 2];
+  return `<div class="td-card td-tp lk" role="group" aria-label="Pick ${i + 1} is part of Pro"><div class="lk-fake" aria-hidden="true"><span class="td-rk">#${i + 1}</span>
+    <div class="td-tp-h"><div class="pk-av ph">XX</div><div><div class="td-tp-n">${d[0]}</div><div class="td-tp-s">Team vs Team</div></div></div>
+    <div class="td-call"><span class="td-big ${d[2]}">${d[1]}</span><span class="td-pill">${d[3]}</span></div>
+    <div class="td-m"><div><span>Projection</span><b>${d[4]}</b><small class="td-model">${d[5]} vs line</small></div><div><span>Confidence</span><b>${d[6]}.0</b><div class="td-cbar"><i style="width:${d[6]}%"></i></div></div><div><span>EV</span><b class="neg">${d[7]}</b></div></div></div>
+    <div class="lk-over lk-card">${LOCK_IC}<div class="lk-t">Pick #${i + 1}</div><div class="lk-s">Free accounts see the top pick of the day.</div>${lkBtn('top_picks')}</div></div>`;
+}
+// A pretend board row: the real row layout with made-up numbers, so the blurred board looks like the real one and carries no real data.
+const TD_DUMMY_ROWS = [['Player Name', 'PTS', '24.5', '25.8', '+1.3', 18, '−110', '−2.1%', 'OVER', 78.4], ['Another Player', 'REB', '7.5', '6.9', '−0.6', 9, '−115', '−3.4%', 'UNDER', 76.2], ['Third Player', 'AST', '6.5', '7.4', '+0.9', 14, '−105', '−1.0%', 'OVER', 74.9],
+  ['Fourth Player', 'PTS', '31.5', '33.0', '+1.5', 20, '−120', '−4.2%', 'OVER', 73.1], ['Fifth Player', 'PTS', '18.5', '17.9', '−0.6', 9, '−108', '−1.9%', 'UNDER', 71.8], ['Sixth Player', 'REB', '9.5', '10.6', '+1.1', 16, '+100', '+0.4%', 'OVER', 70.2],
+  ['Seventh Player', 'AST', '4.5', '4.0', '−0.5', 8, '−112', '−2.6%', 'UNDER', 68.5], ['Eighth Player', 'PTS', '22.5', '24.1', '+1.6', 22, '−118', '−3.9%', 'OVER', 67.0]];
+function tdDummyRow([n, pt, line, proj, edge, w, price, ev, side, conf]) {
+  return `<div class="bd-row"><div class="bd-who"><div class="pk-av ph">${n[0]}${n.split(' ').pop()[0]}</div><div><b>${n}</b><small>Team @ Team · 7:30 PM ET</small></div></div><div class="bd-lp"><span class="bd-pt">${pt}</span><span class="bd-nums"><b class="bd-line">${line}</b><i>→</i><span class="bd-proj">${proj}</span></span></div><div class="bd-edge"><b>${edge}</b><span class="bd-eb"><i style="left:50%;width:${w}%"></i></span></div><div class="bd-price"><b>${price}</b><small>Sportsbook</small><small class="bd-ev neg">EV ${ev}</small></div><div class="bd-side"><span class="td-pill ${side === 'OVER' ? 'pos' : 'neg'}">${side === 'OVER' ? '↑' : '↓'} ${side}</span></div><div class="bd-conf"><span class="td-bar"><i style="width:${conf}%"></i></span><span class="num">${conf.toFixed(1)}</span></div><span class="bd-add" style="opacity:.6">+</span></div>`;
+}
+function tdLockedPicks() {
+  const rows = [['Player Name', 'Sportsbook −110', 'pos', 'OVER 24.5 PTS', '52%', 'pos', '+1.2%'], ['Another Player', 'Sportsbook −115', 'neg', 'UNDER 6.5 REB', '48%', 'neg', '−0.8%'], ['Third Player', 'Sportsbook +100', 'pos', 'OVER 7.5 AST', '55%', 'pos', '+3.1%']]
+    .map(([n, b, c, call, ch, ec, ev], i) => `<div class="td-gp"><span class="td-rk">#${i + 1}</span><div class="td-gp-n"><b>${n}</b><small>${b}</small></div><span class="td-pill ${c}">${call}</span><span class="td-gp-c">${ch}</span><span class="td-gp-ev ${ec}">${ev}</span></div>`).join('');
+  return `<div class="lk" style="border-radius:10px"><div class="lk-fake" aria-hidden="true"><div class="td-gps">${rows}</div></div><div class="lk-over">${LOCK_IC}<div class="lk-s">This game's top 3 picks</div>${lkBtn('game_picks')}</div></div>`;
+}
+function tdLockedBoard(total, nGames) {
+  const bar = `<div class="bd-meta"><span class="bd-count">${total} props</span></div><div class="bd-bar"><div class="td-chips"><button class="td-chip" aria-pressed="true">All</button><button class="td-chip">PTS</button><button class="td-chip">REB</button><button class="td-chip">AST</button></div></div>`;
+  return `<section class="td-card td-board"><div class="td-sh" style="padding:0 10px"><h2>Prop board</h2></div>
+    <div class="lk"><div class="lk-fake" aria-hidden="true">${bar}<div class="bd"><div class="bd-head"><span>Player</span><span>Line → projection</span><span>Edge</span><span>Best price</span><span>Side</span><span>Strength</span><span></span></div><div>${TD_DUMMY_ROWS.map(tdDummyRow).join('')}</div></div></div>
+    <div class="lk-over lk-board"><div class="lk-box">${LOCK_IC}<div class="lk-t">The full prop board</div><div class="lk-s">${total} props${nGames ? ` across ${nGames} game${nGames === 1 ? '' : 's'}` : ''}: every line, every book, sorted and filtered your way.</div>${lkBtn('prop_board')}${AUTH.user ? '' : '<button type="button" class="lk-link" onclick="openSignin(\'signin\')">Already a member? Sign in</button>'}</div></div></div></section>`;
+}
+function matchupLockedHtml() {
+  const card = (t, rows) => `<div class="td-card" style="margin-bottom:12px"><h3 style="margin-bottom:8px">${t}</h3>${rows.map(([l, v, w]) => `<div class="td-ij"><span>${l}</span><span class="num">${v}</span></div><div class="td-bar" style="display:block;width:100%;margin:2px 0 8px"><i style="width:${w}%"></i></div>`).join('')}</div>`;
+  const col = card('Offense', [['Pace', '100.2', 72], ['Offensive rating', '116.4', 64], ['3-point rate', '41%', 55]]) + card('Defense by position', [['Guards', '48.3 pts', 40], ['Forwards', '41.0 pts', 66], ['Centers', '24.0 pts', 82]]) + card('Written breakdown', [['Team 1 offense', '—', 70], ['Team 2 defense', '—', 52], ['Blowout risk', 'LOW', 30]]);
+  return `<div class="lk" style="border-radius:12px;min-height:520px"><div class="lk-fake" aria-hidden="true"><div class="lk-two">${col}${col}</div></div>
+    <div class="lk-over lk-board"><div class="lk-box">${LOCK_IC}<div class="lk-t">Matchup analysis</div><div class="lk-s">Offense and defense by position, shot zones, who to target, blowout risk and the written breakdown for every game.</div>${lkBtn('matchups')}</div></div></div>`;
+}
 // The schedule and the odds feed do not always spell a team the same way ("LA Clippers" and "Los Angeles Clippers"), so a game is matched by its
 // two team nicknames, the last word of each name, which is unique within a league.
 const tdLast = n => String(n || '').trim().toLowerCase().split(/\s+/).pop();
@@ -4616,7 +4692,8 @@ function tdGameCard(g) {
   const pk = TD.data.props.filter(p => tdSameGame(p, g));
   const picks = pk.filter(p => p.gameRank).sort((a, b) => a.gameRank - b.gameRank);
   let pickSec;
-  if (TD.data.loadingBoard) pickSec = '<div class="td-gp-empty">working out the picks…</div>';
+  if (TD.data.locked) pickSec = tdLockedPicks();
+  else if (TD.data.loadingBoard) pickSec = '<div class="td-gp-empty">working out the picks…</div>';
   else if (picks.length) {
     pickSec = `<div class="td-gps" aria-label="Top 3 picks in this game">${picks.map(tdPickRow).join('')}</div>`;
   }
@@ -4629,7 +4706,7 @@ function tdGameCard(g) {
     <div class="td-gm-t"><div class="td-teams">${logo(aL)}<span>${escapeHtml(g.away.split(' ').pop())}</span><em>@</em>${logo(hL)}<span>${escapeHtml(g.home.split(' ').pop())}</span></div><span class="td-hint">${escapeHtml(g.gameTime || g.status || 'TBD')}</span></div>
     <div class="td-lines" data-lines="${escapeHtml(key)}"></div>
     ${pickSec}
-    <div class="td-gm-f"><span>${TD.data.loadingBoard ? '' : `<b>${pk.length}</b> props priced`}</span><button type="button" class="td-link" data-matchup="${escapeHtml(g.away)}|${escapeHtml(g.home)}|${g.league}">Matchup</button></div></div>`;
+    <div class="td-gm-f"><span>${TD.data.loadingBoard || TD.data.locked ? '' : `<b>${pk.length}</b> props priced`}</span><button type="button" class="td-link" data-matchup="${escapeHtml(g.away)}|${escapeHtml(g.home)}|${g.league}">Matchup</button></div></div>`;
 }
 
 // What the board can be sorted by (the menu in the filter bar). Each has the label, what to sort on, and which way is "first".
@@ -4739,20 +4816,21 @@ function paintToday() {
   const fbTops = D.fbPlays.filter(inL).slice(0, 3);
   const topList = tops.length ? tops : fbTops;
   const dateTxt = new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-  const scanned = D.props.filter(inL).length;
+  const scanned = D.locked ? (L === 'both' ? (D.boardTotals.nba || 0) + (D.boardTotals.wnba || 0) : (D.boardTotals[L] || 0)) : D.props.filter(inL).length;
+  const gatedTop = topList.some(p => p.locked);                // the free plan: one real pick and empty slots
   const nGames = games.length, anyFb = ['nba', 'wnba'].some(lg => D.fallback[lg] && (L === 'both' || L === lg));
 
   const empty = !nGames
     ? `<section><div class="td-card"><div class="td-empty"><b>No games today</b>${L === 'both' ? 'Nothing is on the NBA or WNBA schedule for today.' : 'Nothing is on the ' + L.toUpperCase() + ' schedule for today.'} Open Daily Matchups to look at a future game.</div></div></section>` : '';
-  const topBelow = locked.length && locked.every(x => (x.realEdge?.expectedValue ?? -1) < 0) ? '<p class="td-note td-valnote">None of today\'s most confident picks clear break-even at the best price. They are the most confident, not the best value.</p>' : '';
+  const realTops = locked.filter(x => !x.locked), topBelow = realTops.length && realTops.every(x => (x.realEdge?.expectedValue ?? -1) < 0) ? '<p class="td-note td-valnote">None of today\'s most confident picks clear break-even at the best price. They are the most confident, not the best value.</p>' : '';
   // Ranks 4 to 10 of the same locked list, behind a button: the Top 3 stay the headline, and all ten are graded.
   const cmpConf = (a, b) => (b.confidence - a.confidence) || byValueDesc(a, b);
   const rest = locked.length ? [...locked, ...(D.lockedMore || []).filter(inL)].sort(cmpConf).slice(0, 10).slice(3) : [];
-  const tenSec = rest.length ? `<div class="td-ten-bar"><button type="button" class="td-link" id="td-ten-btn" aria-expanded="${TD.ten}" aria-controls="td-ten">${TD.ten ? 'Hide ranks 4 to ' + (rest.length + 3) : 'Show the top ' + (rest.length + 3)}</button><span class="td-note">all ${rest.length + 3} are locked for the day and graded</span></div>${TD.ten ? `<div class="td-card td-ten" id="td-ten" role="group" aria-label="Top ${rest.length + 3} picks, ranks 4 to ${rest.length + 3}">${rest.map((p, i) => tdTenRow(p, i + 4)).join('')}</div>` : ''}` : '';
-  const topSec = !topList.length && D.loadingPicks ? `<section><div class="td-card"><div class="td-empty" style="padding:22px 12px"><b>Working out today's picks</b>The games are below. Picks appear here as soon as they are ready, which can take a minute or two after a restart.</div></div></section>` : topList.length ? `<section><div class="td-sh"><h2>Top picks</h2><span class="td-hint">${locked.length ? 'the most confident today · locked until tomorrow' : tops.length ? 'one per player · ranked by expected value' : 'model projections only: no live lines'}</span></div>${topBelow}<div class="td-tops">${topList.map(tdTopCard).join('')}</div>${tenSec}</section>` : '';
+  const tenSec = gatedTop ? '<div class="td-ten-bar"><span class="td-note">Ranks 4 to 10 of the day\'s list are Pro too.</span></div>' : rest.length ? `<div class="td-ten-bar"><button type="button" class="td-link" id="td-ten-btn" aria-expanded="${TD.ten}" aria-controls="td-ten">${TD.ten ? 'Hide ranks 4 to ' + (rest.length + 3) : 'Show the top ' + (rest.length + 3)}</button><span class="td-note">all ${rest.length + 3} are locked for the day and graded</span></div>${TD.ten ? `<div class="td-card td-ten" id="td-ten" role="group" aria-label="Top ${rest.length + 3} picks, ranks 4 to ${rest.length + 3}">${rest.map((p, i) => tdTenRow(p, i + 4)).join('')}</div>` : ''}` : '';
+  const topSec = !topList.length && D.loadingPicks ? `<section><div class="td-card"><div class="td-empty" style="padding:22px 12px"><b>Working out today's picks</b>The games are below. Picks appear here as soon as they are ready, which can take a minute or two after a restart.</div></div></section>` : topList.length ? `<section><div class="td-sh"><h2>Top picks</h2><span class="td-hint">${gatedTop ? '1 of ' + topList.length + ' shown · the rest are Pro' : locked.length ? 'the most confident today · locked until tomorrow' : tops.length ? 'one per player · ranked by expected value' : 'model projections only: no live lines'}</span></div>${topBelow}<div class="td-tops">${topList.map((p, i) => (p.locked ? tdLockedTop(p, i) : tdTopCard(p, i))).join('')}</div>${tenSec}</section>` : '';
   const gameSec = nGames ? `<section><div class="td-sh"><h2>Tonight's games</h2><span class="td-hint">${nGames} game${nGames === 1 ? '' : 's'}</span></div><div class="td-games">${games.map(tdGameCard).join('')}</div></section>` : '';
-  const board = tdBoardHtml();
-  const boardSec = (scanned || nGames) ? `<section class="td-card td-board">
+  const board = D.locked ? { total: scanned, html: '' } : tdBoardHtml();
+  const boardSec = D.locked && (scanned || nGames) ? tdLockedBoard(scanned, nGames) : (scanned || nGames) ? `<section class="td-card td-board">
       <div class="td-sh" style="padding:0 10px"><h2>Prop board</h2><div class="td-srch"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M13 13l4.5 4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><input type="search" id="td-q" placeholder="Search a player or team" autocomplete="off" aria-label="Search the prop board" value="${escapeHtml(TD.q)}"></div></div>
       ${tdBarHtml(board.total)}
       <div class="bd"><div class="bd-head" aria-hidden="true"><span>Player</span><span>Line → projection</span><span>Edge</span><span>Best price</span><span>Side</span><span>Strength</span><span></span></div><div id="bd-list" role="list" aria-label="Prop board">${board.html}</div></div>
@@ -4776,6 +4854,7 @@ function paintToday() {
       <div class="td-ctl"><div class="td-seg" id="td-seg" role="group" aria-label="League">${[['nba', 'NBA'], ['wnba', 'WNBA'], ['both', 'Both']].map(([v, l]) => `<button type="button" data-lg="${v}" aria-pressed="${L === v}">${l}</button>`).join('')}</div>
         <div class="td-seg" id="td-proj" role="group" aria-label="Projection shown" title="Which projection to show. The win chance and EV always come from the market blend.">${[['model', 'Model'], ['blend', 'Blend']].map(([v, l]) => `<button type="button" data-pm="${v}" aria-pressed="${TD.projMode === v}">${l}</button>`).join('')}</div></div></div>
     <div class="td-fresh" id="td-fresh" role="status"></div>
+    ${D.locked || gatedTop ? tdUpStrip() : ''}
     ${anyFb ? '<div class="td-banner">No live sportsbook lines right now. Picks below are model projections only, not line-based picks.</div>' : ''}
     <div class="td-body">${empty}${topSec}${gameSec}
       <div class="td-cols"><div class="td-main">${boardSec}</div><aside class="td-side">${injCard}${slipCard}${recentCard}</aside></div>
@@ -4806,7 +4885,6 @@ function tdPaintFresh() {
 // the board re-renders on its own so typing in the search box never loses focus
 // The free plan shows the top of the board; the button then leads to the upgrade sheet instead of expanding.
 function tdMoreState(total) {
-  if (TD.data?.limited && !TD.q) return { hidden: false, text: `See all ${TD.data.boardTotal} props with Pro` };
   return { hidden: !!TD.q || total <= 10, text: TD.all ? 'Show top 10' : 'Show all ' + total };
 }
 function tdRepaintBoard() {
@@ -4833,7 +4911,7 @@ function tdBindBoard() {
     const lg = e.target.closest('[data-lg]'); if (lg) { TD.league = lg.dataset.lg; return paintToday(); }
     const pm = e.target.closest('[data-pm]'); if (pm) { TD.projMode = pm.dataset.pm; try { localStorage.setItem('winai_projmode', TD.projMode); } catch (_) {} return paintToday(); }
     const chip = e.target.closest('[data-prop]'); if (chip) { TD.prop = chip.dataset.prop; return tdRepaintBoard(); }
-    if (e.target.closest('#td-more')) { if (TD.data?.limited) return openUpgrade('prop_board'); TD.all = !TD.all; return tdRepaintBoard(); }
+    if (e.target.closest('#td-more')) { TD.all = !TD.all; return tdRepaintBoard(); }
     const mu = e.target.closest('[data-matchup]'); if (mu) { const [a, h, l] = mu.dataset.matchup.split('|'); return prefillMatchup(a, h, l); }
     const go = e.target.closest('[data-go]'); if (go) return switchTab(go.dataset.go);
     const hi = e.target.closest('[data-hist]'); if (hi) return loadHistory(+hi.dataset.hist);
@@ -5097,7 +5175,7 @@ async function renderTopPlays(league='nba') {
     const data = await apiGet(`/api/top-plays?league=${league}`);
     if (data.fallback && data.fallbackPlays?.length) {
       box.innerHTML = `<div class="top-plays-empty" style="text-align:left;color:var(--gold);opacity:0.85;margin-bottom:8px;">No live odds available right now — showing the model's top projected performers instead (no edge/line to call OVER or UNDER against).</div>` +
-        (() => { const sc = uniqueConfs(data.fallbackPlays); return data.fallbackPlays.map((p, i) => topPlayCard(p, i, league, sc.get(p) ?? p.confidence, true)).join(''); })();
+        (() => { const sc = uniqueConfs(data.fallbackPlays); return data.fallbackPlays.map((p, i) => (p.locked ? tdLockedTop(p, i) : topPlayCard(p, i, league, sc.get(p) ?? p.confidence, true))).join(''); })();
       return;
     }
     if (!data.topPlays?.length) {
@@ -5105,7 +5183,7 @@ async function renderTopPlays(league='nba') {
       return;
     }
     const shownTop = uniqueConfs(data.topPlays);
-    box.innerHTML = data.topPlays.map((p, i) => topPlayCard(p, i, league, shownTop.get(p) ?? p.confidence, false)).join('');
+    box.innerHTML = data.topPlays.map((p, i) => (p.locked ? tdLockedTop(p, i) : topPlayCard(p, i, league, shownTop.get(p) ?? p.confidence, false))).join('');
     announce(`${data.topPlays.length} top ${league.toUpperCase()} plays loaded`);
   } catch (err) {
     box.innerHTML = errorBox(err, 'renderTopPlays', league, "Tonight's top plays");
@@ -5698,7 +5776,7 @@ function acctToast(msg) {
 }
 
 // The Today page's side card and others depend on who is signed in, so they follow every sign-in and sign-out.
-function repaintForAuth() { if (typeof TD !== 'undefined' && TD.data && document.getElementById('panel-today')?.classList.contains('active')) paintToday(); }
+function repaintForAuth() { if (typeof TD !== 'undefined' && TD.data && document.getElementById('panel-today')?.classList.contains('active')) { TD.data = null; renderTodayPage(); } }   // signing in, out or going Pro changes what the server sends
 function paintAccount() {
   repaintForAuth();
   const el = document.getElementById('acct-slot'); if (!el) return;
@@ -5887,14 +5965,17 @@ function renderSignin() {
       <button type="button" class="acct-alt" onclick="siGo('login')">Back to sign in</button>`;
   } else if (SI.step === 'upgrade') {
     const P = _plans || {}, price = P.price?.label;
-    const head = { analyzer: 'Run unlimited analyses', prop_list: 'Save props to your Prop List', prop_board: 'See every prop on the board', general: 'Go Pro' }[SI.upFeature] || 'Go Pro';
+    const head = { analyzer: 'Run unlimited analyses', prop_list: 'Save props to your Prop List', prop_board: 'See every prop on the board', top_picks: 'See all the top picks', game_picks: 'See every game\'s picks', matchups: 'Unlock matchup analysis', general: 'Go Pro' }[SI.upFeature] || 'Go Pro';
     body = `<h2>${escapeHtml(head)}</h2>
       <p>${escapeHtml(SI.upMsg || 'WIN AI Pro unlocks the full toolkit.')}</p>
       <ul class="up-list">
         <li>Prop analyzer: up to ${P.proDailyAnalyses || 100} full analyses a day (free accounts get ${P.freeDailyAnalyses ?? 1})</li>
         <li>Prop List: save up to ${P.maxProps || 300} props and have them graded for you</li>
-        <li>The full Prop Board, every prop and not only the top ones</li>
+        <li>All the top picks and the day's Top 10, and every game's top 3 picks</li>
+        <li>The full Prop Board, every prop with every book's line</li>
+        <li>Matchup analysis for every game</li>
         <li>New Pro tools as they ship</li></ul>
+      ${_plans && !_plans.paywall ? '<div class="err">Payments are not switched on yet, so checkout is not available.</div>' : ''}
       ${price ? `<div class="up-price">${escapeHtml(price.split(' / ')[0])}<small>per ${escapeHtml(price.split(' / ')[1] || 'month')}</small></div>` : ''}
       ${SI.err ? `<div class="err">${escapeHtml(SI.err)}${SI.needConfirm ? '<button type="button" class="si-link" style="display:block;margin-top:8px;color:#ffd0d0" onclick="acctResendConfirm()">Send the confirmation email again</button>' : ''}</div>` : ''}
       <button type="button" class="acct-go" onclick="upCheckout()">${SI.busy ? 'Opening checkout…' : 'Continue to checkout'}</button>
@@ -6038,7 +6119,7 @@ function siStartCreatedTimers() {
   paint(); SI.tick = setInterval(paint, 1000);
   SI.poll = setInterval(async () => {
     if (!SI.open || SI.step !== 'created') return siStopTimers();
-    try { const j = await fetch('/api/auth/me', { cache: 'no-store' }).then(r => r.json()); if (j.user?.emailVerified) { siStopTimers(); applyMe(j); paintAccount(); renderSignin(); } } catch (_) {}
+    try { const j = await fetch('/api/auth/me', { cache: 'no-store', headers: previewHeaders() }).then(r => r.json()); if (j.user?.emailVerified) { siStopTimers(); applyMe(j); paintAccount(); renderSignin(); } } catch (_) {}
   }, 3000);
 }
 
@@ -6251,7 +6332,7 @@ function applyMe(j) {
   AUTH.rg = j.rg || null; AUTH.paywall = !!j.paywall; AUTH.plan = j.plan || null; AUTH.billing = j.billing || null; AUTH.quota = j.quota || null;
 }
 async function refreshMe() {
-  try { applyMe(await fetch('/api/auth/me', { cache: 'no-store' }).then(r => r.json())); } catch (_) {}
+  try { applyMe(await fetch('/api/auth/me', { cache: 'no-store', headers: previewHeaders() }).then(r => r.json())); } catch (_) {}
   paintAccount(); paintQuota(); rgStartReminders();
   if (document.getElementById('panel-betslip')?.classList.contains('active')) renderBetslip();
 }
@@ -6268,7 +6349,7 @@ async function handleReturn() {
 }
 async function loadAuth() {
   try {
-    applyMe(await fetch('/api/auth/me', { cache: 'no-store' }).then(r => r.json()));
+    applyMe(await fetch('/api/auth/me', { cache: 'no-store', headers: previewHeaders() }).then(r => r.json()));
   } catch (_) { /* stay a guest */ }
   captureGoogleReturn();
   AUTH.loaded = true; _authResolve(); paintAccount(); paintQuota(); rgStartReminders();

@@ -31,6 +31,7 @@ const modelParams = require('./lib/params');
 const dvpLib = require('./lib/dvp');
 const bestBets = require('./lib/bestbets');
 const slateExtras = require('./lib/slateextras');
+const planGate = require('./lib/plangate');
 const biasLib = require('./lib/bias');
 modelParams.load();
 const { AsyncLocalStorage } = require('node:async_hooks');
@@ -1026,7 +1027,7 @@ async function computeLeaguePositionCategoryRanks(league) {
   return data;
 }
 
-app.get('/api/position-category-defense', async (req, res) => {
+app.get('/api/position-category-defense', requirePro('matchups'), async (req, res) => {
   const league = req.query.league === 'wnba' ? 'wnba' : 'nba';
   const team = req.query.team;
   if (!team) return res.status(400).json({ error: 'team required' });
@@ -3186,7 +3187,7 @@ app.get('/api/schedule', async (req, res) => {
 // Real team-vs-team comparison for the Daily Matchups dashboard: season
 // record/rank/pace/ratings (stats.nba.com via fetch_stats.py) + real last-5
 // and head-to-head results (ESPN box scores). No fabricated fields.
-app.get('/api/team-compare', async (req, res) => {
+app.get('/api/team-compare', requirePro('matchups'), async (req, res) => {
   const { team1, team2 } = req.query;
   const league = req.query.league === 'wnba' ? 'wnba' : 'nba';
   if (!team1 || !team2) return res.status(400).json({ error: 'team1 and team2 required' });
@@ -3247,7 +3248,7 @@ app.get('/api/slate-extras', async (req, res) => {
 // folded into /api/team-compare) since it fans out to several per-player
 // stat fetches — on NBA those go through the slow, serialized nba_api
 // bridge, so this shouldn't block the fast team-level dashboard parts.
-app.get('/api/matchup-targets', async (req, res) => {
+app.get('/api/matchup-targets', requirePro('matchups'), async (req, res) => {
   const { team1, team2 } = req.query;
   const league = req.query.league === 'wnba' ? 'wnba' : 'nba';
   if (!team1 || !team2) return res.status(400).json({ error: 'team1 and team2 required' });
@@ -4526,13 +4527,14 @@ app.get('/api/freshness', (req, res) => {
     injuries: rosters.length ? new Date(Math.max(...rosters)).toISOString() : null, inSeason: { nba: datachecks.inSeason('nba', new Date()), wnba: datachecks.inSeason('wnba', new Date()) } });
 });
 app.get('/api/top-plays', async (req, res) => {
+  const send = d => res.json(planGated(req) ? planGate.lockedTopPlays(d) : d);          // a free account is sent the first pick and empty slots, never the rest
   const league  = (req.query.league || 'nba').toLowerCase() === 'wnba' ? 'wnba' : 'nba';
   const today   = getToday();
   const frozen  = frozenTopPlays(league, today);
-  if (frozen) return res.json({ ...frozen, cached: true, frozen: true });            // today's list is locked until tomorrow
+  if (frozen) return send({ ...frozen, cached: true, frozen: true });            // today's list is locked until tomorrow
   const cached  = topPlaysCache[league];
   if (isCacheStillFresh(cached, today)) {
-    return res.json({ ...cached.data, cached: true });
+    return send({ ...cached.data, cached: true });
   }
   const hasOddsKey = !!(process.env.ODDS_API_KEY && !process.env.ODDS_API_KEY.includes('your_'));
   let data = null, scanFailed = false;
@@ -4550,14 +4552,14 @@ app.get('/api/top-plays', async (req, res) => {
       const fb = await computeFallbackProjected(league);
       const fallbackData = { league, generatedAt: fb.generatedAt, scanned: 0, evaluated: fb.top3.length, topPlays: [], fallback: true, fallbackPlays: fb.top3 };
       topPlaysCache[league] = { data: fallbackData, dateKey: today, ts: Date.now() };
-      return res.json({ ...fallbackData, cached: false });
+      return send({ ...fallbackData, cached: false });
     } catch (err) {
       return res.status(500).json({ error: (hasOddsKey ? '' : 'No odds key configured. ') + 'Fallback projection also failed: ' + err.message });
     }
   }
   topPlaysCache[league] = { data, dateKey: today };
   const locked = freezeTopPlays(league, data, today);
-  res.json({ ...data, cached: false, ...(locked ? { frozen: true } : {}) });
+  send({ ...data, cached: false, ...(locked ? { frozen: true } : {}) });
 });
 
 // Every scanned prop for the Today page's prop board: the same day-locked slate scan the top picks
@@ -4579,26 +4581,22 @@ app.get('/api/prop-board', async (req, res) => {
         priceSide: r.priceSide ?? null, priceEv: r.priceEv ?? null, consensusLine: r.consensusLine ?? null, bookCount: r.bookCount ?? null, realEdge: r.realEdge ?? null,
         books: r.scan?.books ?? null,                       // [book, line, over price, under price] for every book, so the page can show them all
       }));
-    // Free accounts and guests see the top of the board; Pro sees every prop.
-    const limited = paywallOn() && !isProReq(req);
-    res.json({ league, date: getToday(), scanned: (candidates || []).length, props: limited ? freeWithPicks(all) : all, ...(partial ? { scanning: true } : {}), ...(limited ? { limited: true, total: all.length } : {}) });
+    // The free plan sees no rows at all, only how many there are: the page draws a blurred placeholder, so nothing real is sent.
+    if (planGated(req)) return res.json(planGate.lockedBoard(all, { league, date: getToday(), scanned: (candidates || []).length, ...(partial ? { scanning: true } : {}) }));
+    res.json({ league, date: getToday(), scanned: (candidates || []).length, props: all, ...(partial ? { scanning: true } : {}) });
   } catch (err) {
     res.json({ league, date: getToday(), scanned: 0, props: [], error: err.message });
   }
 });
 
-// Free accounts see the top of the board, and always every game's top three picks: those are the heart of the free page.
-function freeWithPicks(all) {
-  const keep = new Set(billingLib.freeBoard(all).map(p => `${p.player}|${p.propType}|${p.line}`));
-  return all.filter(p => p.gameRank || keep.has(`${p.player}|${p.propType}|${p.line}`));
-}
 const teamPicksCache = {}; // league -> { data, dateKey, ts } — same freshness rule as topPlaysCache
 app.get('/api/team-picks', async (req, res) => {
+  const send = d => res.json(planGated(req) ? planGate.lockedTeamPicks(d) : d);          // a free account sees the games and slots, never who the picks are
   const league = (req.query.league || 'nba').toLowerCase() === 'wnba' ? 'wnba' : 'nba';
   const today  = getToday();
   const cached = teamPicksCache[league];
   if (isCacheStillFresh(cached, today)) {
-    return res.json({ ...cached.data, cached: true });
+    return send({ ...cached.data, cached: true });
   }
   const hasOddsKey = !!(process.env.ODDS_API_KEY && !process.env.ODDS_API_KEY.includes('your_'));
   let data = null, scanFailed = false;
@@ -4616,13 +4614,13 @@ app.get('/api/team-picks', async (req, res) => {
       const fb = await computeFallbackProjected(league);
       const fallbackData = { league, generatedAt: fb.generatedAt, fallback: true, games: fb.games };
       teamPicksCache[league] = { data: fallbackData, dateKey: today, ts: Date.now() };
-      return res.json({ ...fallbackData, cached: false });
+      return send({ ...fallbackData, cached: false });
     } catch (err) {
       return res.status(500).json({ error: (hasOddsKey ? '' : 'No odds key configured. ') + 'Fallback projection also failed: ' + err.message });
     }
   }
   teamPicksCache[league] = { data, dateKey: today };
-  res.json({ ...data, cached: false });
+  send({ ...data, cached: false });
 });
 
 // ─────────────────────────────────────────────────────
@@ -4641,7 +4639,7 @@ const TEAM_PROMPT_START = 'You are WIN AI. Write a short scouting read of';
 app.post('/api/analyze', analyzeRateLimiter, (req, res, next) => {
   const kind = req.body?.kind === 'team' ? 'team' : 'prop';
   req.analyzeKind = kind;
-  return kind === 'prop' ? analysisGate('ai')(req, res, next) : next();
+  return kind === 'prop' ? analysisGate('ai')(req, res, next) : requirePro('matchups')(req, res, next);   // the written matchup breakdown is Pro
 }, async (req, res) => {
   const { prompt } = req.body;
   if (!prompt || typeof prompt !== 'string') return res.status(400).json({ error: 'prompt required' });
@@ -5389,7 +5387,8 @@ function requireUser(req, res, next) {
 
 app.get('/api/auth/me', (req, res) => {
   res.set('Cache-Control', 'no-store');
-  const on = paywallOn(), info = req.user ? planFor(req) : null;
+  const on = gateOn(req), info = req.user ? planFor(req) : null;
+  if (info && previewFree(req)) { info.plan = 'free'; info.owner = false; }          // the owner's preview of the free plan
   res.json({
     enabled: authStatus().enabled, methods: { password: authStatus().methods.password, mail: authStatus().mailReady, confirm: CONFIRM_REQUIRED, google: authStatus().methods.google },
     user: req.user ? { email: req.user.email, name: req.user.name || null, emailVerified: !!req.user.email_verified_at } : null, maxProps: USER_MAX_PROPS,
@@ -5572,12 +5571,17 @@ const planFor = req => {
   if (req.user && auth.isAdminEmail(req.user.email)) { info.plan = 'pro'; info.owner = true; }   // the owner always has everything
   return info;
 };
-const isProReq = req => isAdmin(req) || (!!req.user && planFor(req).plan === 'pro');
-const FEATURE_NAME = { prop_list: 'The Prop List', analyzer: 'The prop analyzer', prop_board: 'The full Prop Board' };
+// "Preview the free plan": a request carrying this header is shown exactly what a free account sees, whether or not the paywall is on. It can only take
+// things away from the browser that sends it, so anyone may use it; the page sends it when its owner turns the preview on (?plan=free).
+const previewFree = req => String(req.get('x-preview-plan') || '').toLowerCase() === 'free';
+const isProReq = req => !previewFree(req) && (isAdmin(req) || (!!req.user && planFor(req).plan === 'pro'));
+const gateOn = req => paywallOn() || previewFree(req);                 // the free/Pro rules apply to this request
+const planGated = req => gateOn(req) && !isProReq(req);                // and this visitor is on the free side of them
+const FEATURE_NAME = { prop_list: 'The Prop List', analyzer: 'The prop analyzer', prop_board: 'The full Prop Board', matchups: 'Matchup analysis', top_picks: 'The top picks' };
 function requirePro(feature) {
   return (req, res, next) => {
-    if (!paywallOn() || isProReq(req)) return next();
-    if (!req.user) return res.status(401).json({ error: 'Sign in to continue.', code: 'auth_required' });
+    if (!planGated(req)) return next();
+    if (!req.user && !previewFree(req)) return res.status(401).json({ error: 'Sign in to continue.', code: 'auth_required' });
     return res.status(402).json({ error: `${FEATURE_NAME[feature] || 'This'} is a Pro feature.`, code: 'pro_required', feature });
   };
 }
@@ -5589,7 +5593,7 @@ const TICKET_TTL_MS = 5 * 60 * 1000, TICKET_CTX_MAX = 4, TICKET_AI_MAX = 2;
 const TICKET_SHAPE = /^[A-Za-z0-9_-]{43}$/;
 const analysisStartLimiter = security.createRateLimiter({ windowMs: 60 * 1000, max: 20, message: 'Too many analyses started. Wait a moment.' });
 app.post('/api/analysis/start', analysisStartLimiter, (req, res) => {
-  const planGate = paywallOn() && !isAdmin(req);
+  const planGate = gateOn(req) && !isAdmin(req);
   const eff = req.user ? rg.effective(rgRow(req.user)) : null;
   const rgOn = !!eff && (eff.dailyLimit != null || eff.restricted || !!eff.pending);
   if (!planGate && !rgOn) return res.json({ ticket: null, unlimited: true });
@@ -5619,7 +5623,7 @@ function analysisGate(use) {
     const eff = req.user ? rg.effective(rgRow(req.user)) : null;
     if (eff?.restricted) return res.status(403).json(rgBreakBody(eff));
     const rgOn = !!eff && (eff.dailyLimit != null || !!eff.pending);
-    if (!(paywallOn() && !isAdmin(req)) && !rgOn) return next();
+    if (!(gateOn(req) && !isAdmin(req)) && !rgOn) return next();
     if (!req.user) return res.status(401).json({ error: 'Sign in to run an analysis.', code: 'auth_required' });
     const t = String(req.get('x-analysis-ticket') || '');
     const row = TICKET_SHAPE.test(t) ? store.getTicket(sha(t)) : null;

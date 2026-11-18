@@ -139,9 +139,15 @@ server. The server only learns the result from a signed webhook, and it never tr
 
 | Free (guests and free accounts) | Pro |
 |---|---|
-| Today, Daily Matchups, team pages, search, the top 3 picks, the full track record, export and delete my data | The prop analyzer, up to `PRO_DAILY_ANALYSES` a day (default 100) |
-| The top of the Prop Board | The full Prop Board |
-| 1 prop analysis a day, free account required (`FREE_DAILY_ANALYSES`) | The Prop List (save props, auto-grading, up to 300) |
+| Today's games, schedule, spreads, totals and injuries; team pages; search; the track record; export and delete my data | Everything free has, unblurred |
+| The **#1 pick** of the day's Top 3 (ranks 2 and 3, and the Top 10, show as locked slots) | All of the Top 3 and the Top 10 |
+| The prop board and each game's picks are blurred: the server sends only a count, never the rows | The full Prop Board and every game's picks |
+| Matchup analysis is locked (the server answers 402) | Matchup analysis and the position-defense tables |
+| 1 prop analysis a day, free account required (`FREE_DAILY_ANALYSES`) | The prop analyzer, up to `PRO_DAILY_ANALYSES` a day (default 100), and the Prop List (up to 300) |
+
+To see the free view without turning anything on, open `http://localhost:3001/?plan=free` (the banner has an Exit
+button, or use `?plan=pro`). The preview only ever downgrades the view, so it cannot be used to get more. Shot
+charts are not gated because the analyzer reads them.
 
 A free analysis counts only once it works, so a failed one never uses up the day. Saved props stay readable and
 exportable if a subscription ends. Your own account (`ADMIN_EMAIL`) is always Pro, and the Users tab on

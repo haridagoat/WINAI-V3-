@@ -143,18 +143,6 @@ test('price labels read like a price', () => {
   assert.equal(B.priceLabel(null), null);
 });
 
-// ── free Prop Board ──
-test('free users see the top rows and the real top 3 picks, never a different set', () => {
-  const mk = (player, confidence, edge, i) => ({ player, propType: 'points', line: 20 + i, confidence, edge });
-  const props = []; for (let i = 0; i < 8; i++) props.push(mk('A', 95, 5, i));
-  props.push(mk('B', 90, 0.5, 0), mk('B2', 89, 0.2, 1), mk('C', 80, 3, 0), mk('D', 70, 2, 0)); for (let i = 0; i < 5; i++) props.push(mk('E' + i, 60 - i, 2, 0));
-  const free = B.freeBoard(props), names = new Set(free.map(p => p.player));
-  assert.ok(free.length >= 10 && free.length < props.length);
-  for (const n of ['A', 'C', 'D']) assert.ok(names.has(n), n);                       // the top 3 players by the Today ranking
-  assert.ok(!names.has('E4'));                                                       // the tail stays Pro
-  assert.deepEqual(B.freeBoard(props.slice(0, 4)).length, 4);                        // a short board is shown whole
-});
-
 // ── analysis tickets and the daily limit ──
 function tickets() {
   const store = createStore({ dbPath: ':memory:' }), uid = store.createUser('a@x.com'), day = '2026-10-10';
