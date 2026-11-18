@@ -4053,6 +4053,39 @@ for (const entry of Object.values(slateScanCache)) {
 // version stamp a logic change would keep serving numbers from the OLD
 // formula until midnight.
 const SLATE_LOGIC_VERSION = 6; // 2 = continuous confidence score (calcConfidence); 3 = market-anchored chances, per-side best prices, EV-based calls; 4 = per-game props kept balanced across stats and teams; 5 = each book's real line (not the last alternate it listed); 6 = the call (OVER/UNDER) follows the projection; the better price is kept as scan.best and priceSide
+// A scan saved under version 5 (the call was the side with the better price) holds everything needed to apply the projection rule without a re-scan: every
+// book's number and price, the model's projection and its spread. Re-derive the call, its line, book, chances and EV once, from what the row already carries, and
+// move the scan to the current version. A fresh scan after tip-off would only see the games that have not started, so this keeps the whole day's slate.
+function rederiveResult(r) {
+  const sc = r && r.scan;
+  if (!sc || !Array.isArray(sc.books) || !(sc.sd > 0) || !(sc.modelProjection > 0)) return false;
+  const books = {};
+  for (const [name, point, over, under] of sc.books) {
+    if (point == null) continue;
+    const e = {}; if (over != null) e.Over = { point, price: over }; if (under != null) e.Under = { point, price: under };
+    if (e.Over || e.Under) books[name] = e;
+  }
+  const a = assessProp({ propType: r.propType, rawProjection: sc.modelProjection, sd: sc.sd, books });
+  if (!a) return false;
+  const best = a.best, value = a.value;
+  r.line = best.line; r.book = best.book; r.direction = best.side.toUpperCase();
+  r.edge = calcEdgeScore(sc.modelProjection, best.line);
+  r.overProbability = round3(best.side === 'over' ? best.prob : 1 - best.prob);
+  r.underProbability = round3(best.side === 'under' ? best.prob : 1 - best.prob);
+  r.pushProbability = best.push;
+  r.realEdge = buildRealEdge(best);
+  r.priceSide = value.side.toUpperCase(); r.priceEv = value.ev;
+  sc.best = { side: value.side, line: value.line, price: value.price, prob: value.prob, ev: value.ev };
+  sc.call = { side: best.side, line: best.line, price: best.price, prob: best.prob, ev: best.ev };
+  return true;
+}
+for (const [lg, entry] of Object.entries(slateScanCache)) {
+  if (!entry?.data?.results || entry.v !== 5 || entry.dateKey !== getToday()) continue;
+  const n = entry.data.results.filter(rederiveResult).length;
+  entry.v = SLATE_LOGIC_VERSION;
+  saveSlateScanCacheToDisk(slateScanCache);
+  console.log(`[Scan] ${lg}: moved today's saved scan to the projection rule (${n} of ${entry.data.results.length} props re-derived, no re-scan)`);
+}
 // An empty scan (0 candidates) is ambiguous — could mean a real quota/key
 // failure, or just no props posted yet — so it's NOT trusted for the rest
 // of the day like a real successful scan is. Real bug this fixed: a key

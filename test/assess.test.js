@@ -10,9 +10,9 @@ const P = makeProjection();
 params.load();
 let calibrationModel = null;
 const S0 = extract({
-  functions: ['americanToDecimal', 'calcKellyStake', 'assessProp', 'buildRealEdge'],
+  functions: ['americanToDecimal', 'calcKellyStake', 'assessProp', 'buildRealEdge', 'rederiveResult'],
   consts: ['pct1', 'round3'],
-  globals: { normalCdf: P.normalCdf, market, modelParams: params, get calibrationModel() { return calibrationModel; }, calibrate: p => p, calcOverUnderProbability: P.calcOverUnderProbability, usesCountModel: P.usesCountModel, countPmf: P.countPmf, countOverUnder: P.countOverUnder, blendWithMarket: P.blendWithMarket, calcEdgeScore: P.calcEdgeScore, missingProductionShare: P.missingProductionShare, baselineAbsenceWeight: () => 1 },
+  globals: { calcEdgeScore: P.calcEdgeScore, normalCdf: P.normalCdf, market, modelParams: params, get calibrationModel() { return calibrationModel; }, calibrate: p => p, calcOverUnderProbability: P.calcOverUnderProbability, usesCountModel: P.usesCountModel, countPmf: P.countPmf, countOverUnder: P.countOverUnder, blendWithMarket: P.blendWithMarket, calcEdgeScore: P.calcEdgeScore, missingProductionShare: P.missingProductionShare, baselineAbsenceWeight: () => 1 },
 });
 const S = { ...S0, calcOverUnderProbability: P.calcOverUnderProbability, usesCountModel: P.usesCountModel, countPmf: P.countPmf, countOverUnder: P.countOverUnder, blendWithMarket: P.blendWithMarket, calcEdgeScore: P.calcEdgeScore, missingProductionShare: P.missingProductionShare };
 const book = (point, over, under) => ({ Over: { point, price: over }, Under: { point, price: under } });
@@ -157,4 +157,25 @@ test('"no pick cleared the value bar" is never mistaken for a failed scan (which
   assert.ok(!/!data\.games\.length\) scanFailed/.test(teamPicks), 'zero qualifying games must not trigger the fallback');
   const fn = src.slice(src.indexOf('async function computeTeamPicks'), src.indexOf('async function computeTeamPicks') + 2200);
   assert.match(fn, /scanned: \(candidates \|\| \[\]\)\.length/);
+});
+
+test('a scan saved under the old side rule is moved to the projection rule from what each row already carries', () => {
+  // Jaden McDaniels points, Nov 17: books at 16.5 (one at 15.5), the model projects 17.1. The saved row said UNDER 16.5 at DraftKings.
+  const row = { player: 'Jaden McDaniels', propType: 'points', line: 16.5, book: 'DraftKings', direction: 'UNDER', modelProjection: 17.1, projection: 17.1, consensusLine: 16.5,
+    scan: { modelProjection: 17.1, sd: 6.2, books: [['FanDuel', 16.5, -112, -118], ['DraftKings', 16.5, -108, -110], ['BetMGM', 15.5, -125, 100], ['BetRivers', 16.5, -115, -115], ['BetOnline.ag', 16.5, -110, -120], ['Bovada', 16.5, -110, -120]],
+      best: { side: 'under', line: 16.5, price: -110, prob: 0.5, ev: -0.029 } } };
+  assert.equal(S.rederiveResult(row), true);
+  assert.equal(row.direction, 'OVER', 'the call follows the projection');
+  assert.ok(row.edge > 0, 'so the edge points the same way');
+  assert.equal(row.line, 15.5); assert.equal(row.book, 'BetMGM');            // the best Over number within a point of the books
+  assert.ok(['OVER', 'UNDER'].includes(row.priceSide) && Number.isFinite(row.priceEv));
+  assert.equal(row.scan.best.side, row.priceSide.toLowerCase(), 'the value-pick record points at the better price, whichever side that is');
+  assert.equal(row.scan.best.ev, row.priceEv); assert.ok(row.scan.best.ev >= row.scan.call.ev, 'and the better price is never worse than the call\'s');
+  assert.equal(row.scan.call.side, 'over');
+  assert.ok(row.realEdge && Number.isFinite(row.realEdge.expectedValue) && row.realEdge.price === -125);
+  near(row.overProbability + row.underProbability + (row.pushProbability || 0), 1, 1e-6);
+  // rows without what is needed are left alone
+  const bare = { player: 'X', propType: 'points', line: 10.5, direction: 'OVER' };
+  assert.equal(S.rederiveResult(bare), false); assert.deepEqual(bare, { player: 'X', propType: 'points', line: 10.5, direction: 'OVER' });
+  assert.equal(S.rederiveResult(null), false);
 });
