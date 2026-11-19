@@ -14,7 +14,7 @@ function world({ inSeason = true, credits = { known: true, remaining: 300, critA
   const store = createStore({ dbPath: ':memory:', log: () => {} });
   const w = {
     store, TODAY, saved: 0, picksLogged: [], rosters: {}, candidatesFor: {}, evaluated: [], cleared: [], fetchedEvents: [],
-    slateScanCache: {}, slateScanInflight: {}, slateFillInflight: {}, topPlaysCache: { nba: 'x' }, teamPicksCache: { nba: 'x' },
+    slateScanCache: {}, scoreboardAsked: [], slateScanInflight: {}, slateFillInflight: {}, topPlaysCache: { nba: 'x' }, teamPicksCache: { nba: 'x' },
   };
   const g = {
     process: { env: {} }, Date: Object.assign(function (...a) { return a.length ? new Date(...a) : new Date(NOW); }, { now: () => NOW, UTC: Date.UTC, parse: Date.parse }),
@@ -28,9 +28,12 @@ function world({ inSeason = true, credits = { known: true, remaining: 300, critA
     autoLogSlatePicks: (lg, rs) => { w.picksLogged.push(rs.length); },
     fetchPlayerStats: async name => w.stats?.[name] || { error: 'no data' }, fetchWNBAPlayerStats: async () => ({ error: 'no data' }),
     findGameForPick: (stats, e) => (stats.games || []).find(x => x.date === e.date) || null, gradeStatValue: (g, t) => g[t === 'points' ? 'pts' : t === 'rebounds' ? 'reb' : 'ast'],
+    finalsLib: require('../lib/finals'), lastPlayerStatsFetch: {}, ESPN_BASE: 'espn-nba', ESPN_BASE_WNBA: 'espn-wnba',
+    getEspnScoreboard: async (base, ymd) => { w.scoreboardAsked.push(base + ' ' + ymd); return w.scoreboard || []; },
+    resolveESPNTeam: n => ({ 'boston celtics': 'bos', 'miami heat': 'mia', 'denver nuggets': 'den', 'utah jazz': 'uta' })[String(n).toLowerCase()] || null, resolveWNBATeam: () => null,
     FILL_GAP_MS: 40 * 60e3, FILL_WINDOW_MS: 8 * HOUR, FILL_TRIES: 8, FILL_COST_PER_GAME: 3,
   };
-  const fns = extract({ functions: ['logScanProps', 'gradeScanProps', 'injurySig', 'describeInjuryChange', 'reprojectChangedGames', 'reprojectChangedGamesOnce', 'fillMissingProps'], consts: ['REPROJECT_GAP_MS', 'reprojectInflight'], globals: g });
+  const fns = extract({ functions: ['logScanProps', 'gradeScanProps', 'statsAndGame', 'makeFinalChecker', 'injurySig', 'describeInjuryChange', 'reprojectChangedGames', 'reprojectChangedGamesOnce', 'fillMissingProps'], consts: ['REPROJECT_GAP_MS', 'reprojectInflight', 'liveTried', 'LIVE_RETRY_MS'], globals: g });
   return { w, f: fns, store };
 }
 const cand = (player, propType, line, home, away) => ({ player, propType, line, homeTeam: home, awayTeam: away, books: {} });
@@ -62,6 +65,22 @@ test('grading fills in the real stat, sets aside players with no game after thre
   assert.deepEqual(waiting, ['2026-11-03 Broken', '2026-11-03 NoGame'], 'the old miss was set aside; yesterday\'s miss and the failed lookup are still waiting');
   assert.match(await f.gradeScanProps(), /graded 0/);
   assert.equal(store.gradedScanProps('nba').length, 2, 'running again changes nothing');
+});
+
+test('live grading: only a prop whose own game is final is graded, today included, and a miss is not re-fetched every run', async () => {
+  const { w, f, store } = world();
+  const mk = (player, team, opp) => store.addScanProps([{ date: TODAY, league: 'nba', player, propType: 'points', data: { team, opponent: opp } }]);
+  mk('Done', 'Boston Celtics', 'Miami Heat'); mk('Still Playing', 'Denver Nuggets', 'Utah Jazz');
+  w.stats = { Done: { games: [{ date: TODAY, pts: 31 }] }, 'Still Playing': { games: [{ date: TODAY, pts: 12 }] } };
+  const fin = (a, b, name) => ({ competitions: [{ status: { type: { name } }, competitors: [{ team: { abbreviation: a } }, { team: { abbreviation: b } }] }] });
+  w.scoreboard = [fin('BOS', 'MIA', 'STATUS_FINAL'), fin('DEN', 'UTA', 'STATUS_IN_PROGRESS')];
+  assert.match(await f.gradeScanProps(), /nothing waiting/, 'the nightly run never looks at today');
+  assert.match(await f.gradeScanProps({ live: true }), /graded 1 of 1/);
+  assert.deepEqual(Object.fromEntries(store.gradedScanProps('nba').map(r => [r.player, r.actual])), { Done: 31 }, 'the game still in progress is not graded');
+  assert.equal(w.scoreboardAsked.length, 1, 'one scoreboard read covers the whole day');
+  w.scoreboard = [fin('BOS', 'MIA', 'STATUS_FINAL'), fin('DEN', 'UTA', 'STATUS_FINAL')]; w.stats['Still Playing'] = { games: [] };
+  assert.match(await f.gradeScanProps({ live: true }), /graded 0 of 1/, 'final, but not in the stats log yet: tried again later');
+  assert.match(await f.gradeScanProps({ live: true }), /nothing waiting/, 'and not asked again straight away');
 });
 
 test('late news: the first look only records a baseline; a later change re-prices that game, logs it and clears the day-locked caches', async () => {

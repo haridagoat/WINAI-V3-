@@ -32,6 +32,7 @@ const dvpLib = require('./lib/dvp');
 const bestBets = require('./lib/bestbets');
 const slateExtras = require('./lib/slateextras');
 const planGate = require('./lib/plangate');
+const finalsLib = require('./lib/finals');
 const biasLib = require('./lib/bias');
 modelParams.load();
 const { AsyncLocalStorage } = require('node:async_hooks');
@@ -4295,9 +4296,17 @@ function logPicksForUnstartedGames(league) {
 // exact win/loss/push logic the manual Prop List auto-grade uses
 // (checkOneProp in index.html), so a pick graded automatically and one
 // graded by opening the Prop List always agree.
-async function autoGradePendingPicks() {
-  const today = getToday();
-  const pending = loadCLV().filter(e => e.source === 'auto' && e.result == null && (!e.gradeNote || e.gradeNoteV !== GRADE_LOGIC_VERSION) && gradeDateOf(e) < today);
+async function autoGradePendingPicks(opts = {}) {
+  const today = getToday(), live = !!opts.live;
+  let pending = loadCLV().filter(e => e.source === 'auto' && e.result == null && (!e.gradeNote || e.gradeNoteV !== GRADE_LOGIC_VERSION) && (live ? gradeDateOf(e) <= today : gradeDateOf(e) < today));
+  if (live && pending.length) {
+    const isFinal = makeFinalChecker(), keep = [];
+    for (const e of pending) {
+      if (Date.now() - (liveTried.get('p' + e.id) || 0) < LIVE_RETRY_MS) continue;
+      if (await isFinal(e.league, gradeDateOf(e), [e.opp, e.team])) keep.push(e);
+    }
+    pending = keep;
+  }
   if (!pending.length) return 'nothing waiting to grade';
   let graded = 0, unmatched = 0;
   const threeDaysAgo = toLocalDateStr(new Date(Date.now() - 3 * 86400000));
@@ -4306,14 +4315,14 @@ async function autoGradePendingPicks() {
   const patches = new Map();
   for (const e of pending) {
     try {
-      const stats = e.league === 'wnba' ? await fetchWNBAPlayerStats(e.player) : await fetchPlayerStats(e.player);
+      if (live) liveTried.set('p' + e.id, Date.now());
+      const { stats, game } = await statsAndGame(e.league, e.player, e, live);
       if (!stats || stats.error) {
         // The player's stats could not be loaded. Retry for three days, then set it aside like an unmatched game, so it stops
         // counting as "waiting" forever.
         if (gradeDateOf(e) <= threeDaysAgo) { patches.set(e.id, { gradeNote: 'player stats could not be loaded after 3 days', gradeNoteV: GRADE_LOGIC_VERSION }); unmatched++; }
         continue;
       }
-      const game = findGameForPick(stats, e);
       if (!game) {
         // Still no game in the log three days on (offseason stats feed, preseason game, player moved):
         // stop retrying and stop counting it as "waiting".
@@ -4348,20 +4357,55 @@ function logScanProps(league, results) {
   const rows = (results || []).filter(r => r.scan).map(r => ({ date: today, league, player: r.player, propType: r.propType, data: { ...r.scan, team: r.team, opponent: r.opponent, confidence: r.confidence, direction: r.direction, at } }));
   try { return rows.length ? store.addScanProps(rows) : 0; } catch (e) { console.error('[ScanLog] could not save:', e.message); return 0; }
 }
+// Live grading: which games have finished, from ESPN's free scoreboard (no odds credits). A pick is only looked at once its own game is final,
+// so nothing is fetched for games still to be played, and a finished game is graded within minutes instead of at the next nightly run.
+const liveTried = new Map();                       // id (or player) -> when it was last looked at, so a player who did not play is not re-fetched every run
+const LIVE_RETRY_MS = 45 * 60 * 1000;
+function makeFinalChecker() {
+  const cache = new Map();
+  return async (league, date, teams) => {
+    const key = league + '|' + date;
+    if (!cache.has(key)) cache.set(key, finalsLib.finalTeams(await getEspnScoreboard(league === 'wnba' ? ESPN_BASE_WNBA : ESPN_BASE, date.replace(/-/g, '')).catch(() => [])));
+    const abbrs = teams.filter(Boolean).map(t => (league === 'wnba' ? resolveWNBATeam(String(t)) : resolveESPNTeam(String(t))));
+    return finalsLib.anyFinal(cache.get(key), abbrs);
+  };
+}
+// The stats feed is cached for 30 minutes. If the game is over but not in the cached log yet, ask again (at most every 8 minutes per player).
+async function statsAndGame(league, player, pick, live) {
+  const load = () => (league === 'wnba' ? fetchWNBAPlayerStats(player) : fetchPlayerStats(player));
+  let stats = await load();
+  let game = stats && !stats.error ? findGameForPick(stats, pick) : null;
+  if (!game && live && league !== 'wnba' && Date.now() - (lastPlayerStatsFetch[player] || 0) > 8 * 60 * 1000) {
+    lastPlayerStatsFetch[player] = 0;
+    stats = await load();
+    game = stats && !stats.error ? findGameForPick(stats, pick) : null;
+  }
+  return { stats, game };
+}
 // Fills in each logged prop's real stat once its game is over, with the same game matching the pick grader uses.
-async function gradeScanProps() {
-  const today = getToday();
-  const pending = store.scanPropsPending(today, 400);
+// { live: true } also looks at today's props whose game has just finished (the nightly run only looks at earlier days).
+async function gradeScanProps(opts = {}) {
+  const today = getToday(), live = !!opts.live;
+  const upTo = live ? toLocalDateStr(new Date(Date.now() + 86400000)) : today;
+  let pending = store.scanPropsPending(upTo, 400);
+  if (live && pending.length) {
+    const isFinal = makeFinalChecker(), keep = [];
+    for (const row of pending) {
+      if (Date.now() - (liveTried.get('s' + row.id) || 0) < LIVE_RETRY_MS) continue;
+      if (await isFinal(row.league, row.date, [row.data?.team, row.data?.opponent])) keep.push(row);
+    }
+    pending = keep;
+  }
   if (!pending.length) return 'nothing waiting to grade';
   const threeDaysAgo = toLocalDateStr(new Date(Date.now() - 3 * 86400000));
   let graded = 0, aside = 0;
   for (const row of pending) {
     try {
-      const stats = row.league === 'wnba' ? await fetchWNBAPlayerStats(row.player) : await fetchPlayerStats(row.player);
+      if (live) liveTried.set('s' + row.id, Date.now());
+      const { stats, game } = await statsAndGame(row.league, row.player, { league: row.league, player: row.player, date: row.date }, live);
       if (!stats || stats.error) { if (row.date <= threeDaysAgo) { store.setScanNote(row.id, 'player stats could not be loaded'); aside++; } continue; }
-      const game = findGameForPick(stats, { league: row.league, player: row.player, date: row.date });
       if (!game) { if (row.date <= threeDaysAgo) { store.setScanNote(row.id, 'no matching game (did not play, or not in the log)'); aside++; } continue; }
-      if (store.saveScanGrade(row.id, gradeStatValue(game, row.propType))) graded++;
+      if (store.saveScanGrade(row.id, gradeStatValue(game, row.propType))) { graded++; liveTried.delete('s' + row.id); }
     } catch (_) { /* retried on the next run */ }
   }
   try { store.pruneScanProps(toLocalDateStr(new Date(Date.now() - 400 * 86400000))); } catch (_) {}
@@ -5123,7 +5167,22 @@ cron.schedule('*/15 * * * *', () => Promise.allSettled(['nba', 'wnba'].map(lg =>
 // odds requests within CLOSING_WINDOW_MIN of a tip-off with pending picks.
 const trackedClosing = trackJob('closing-lines', captureClosingLines);
 cron.schedule('*/5 * * * *', () => trackedClosing().catch(err => console.error('[Closing] failed:', err.message)));
-setTimeout(() => trackedClosing().catch(err => console.error('[Closing] failed:', err.message)), 20000);
+
+// Results as soon as games end: every 10 minutes, grade the picks and logged props whose own game has just finished (ESPN's scoreboard says which),
+// so a night's results are in by morning instead of after the next nightly run. Cheap when nothing is waiting: no network calls at all.
+let liveGrading = false;
+cron.schedule('*/10 * * * *', async () => {
+  if (liveGrading || pipelineRunning) return;
+  liveGrading = true;
+  try {
+    await trackJob('grade-live', async () => {
+      const a = await inBackground(() => autoGradePendingPicks({ live: true }));
+      const b = await inBackground(() => gradeScanProps({ live: true }));
+      return `picks: ${a}; scan: ${b}`;
+    })();
+  } catch (err) { console.error('[GradeLive] failed:', err.message); }
+  finally { liveGrading = false; }
+});setTimeout(() => trackedClosing().catch(err => console.error('[Closing] failed:', err.message)), 20000);
 // Well after any real-world game could still be in progress — grades
 // everything auto-logged for days that have already fully passed.
 // The daily pipeline: grade finished games, refit the calibrator on the graded history,
