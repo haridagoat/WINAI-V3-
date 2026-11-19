@@ -5203,18 +5203,21 @@ cron.schedule('*/5 * * * *', () => trackedClosing().catch(err => console.error('
 // Results as soon as games end: every 10 minutes, grade the picks and logged props whose own game has just finished (ESPN's scoreboard says which),
 // so a night's results are in by morning instead of after the next nightly run. Cheap when nothing is waiting: no network calls at all.
 let liveGrading = false;
-cron.schedule('*/10 * * * *', async () => {
-  if (liveGrading || pipelineRunning) return;
+async function runLiveGrading() {
+  if (liveGrading || pipelineRunning) { try { store.setMeta('grade-live:last', JSON.stringify({ at: new Date().toISOString(), skipped: liveGrading ? 'previous run still going' : 'nightly run in progress' })); } catch (_) {} return; }
   liveGrading = true;
+  const rec = { at: new Date().toISOString() };
   try {
-    await trackJob('grade-live', async () => {
+    rec.detail = await trackJob('grade-live', async () => {
       const a = await inBackground(() => autoGradePendingPicks({ live: true }));
       const b = await inBackground(() => gradeScanProps({ live: true }));
       return `picks: ${a}; scan: ${b}`;
     })();
-  } catch (err) { console.error('[GradeLive] failed:', err.message); }
-  finally { liveGrading = false; }
-});setTimeout(() => trackedClosing().catch(err => console.error('[Closing] failed:', err.message)), 20000);
+  } catch (err) { rec.error = err.message; console.error('[GradeLive] failed:', err.message); }
+  finally { liveGrading = false; rec.ms = Date.now() - Date.parse(rec.at); try { store.setMeta('grade-live:last', JSON.stringify(rec)); } catch (_) {} }
+}
+cron.schedule('*/10 * * * *', runLiveGrading);
+setTimeout(() => runLiveGrading().catch(() => {}), 60 * 1000);   // and once a minute after start, so a restart does not wait for the next marksetTimeout(() => trackedClosing().catch(err => console.error('[Closing] failed:', err.message)), 20000);
 // Well after any real-world game could still be in progress — grades
 // everything auto-logged for days that have already fully passed.
 // The daily pipeline: grade finished games, refit the calibrator on the graded history,
