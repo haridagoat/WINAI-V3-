@@ -21,3 +21,18 @@ test('anyFinal matches either team of the pick, case-insensitively, and ignores 
   assert.equal(anyFinal(f, ['LAL', null]), false);
   assert.equal(anyFinal(f, []), false);
 });
+
+test('names from the two feeds match through accents, Jr. and punctuation', () => {
+  const { normName } = require('../lib/finals');
+  assert.equal(normName('Luka Dončić'), normName('Luka Doncic'));
+  assert.equal(normName('Jaren Jackson Jr.'), normName('Jaren Jackson'));
+  assert.equal(normName("De'Aaron Fox"), normName('De Aaron Fox'));
+});
+test('the box score says did-not-play, played, or not listed', () => {
+  const { playerDidNotPlay } = require('../lib/finals');
+  const box = [{ statistics: [{ athletes: [{ athlete: { displayName: 'Tyrese Maxey' }, didNotPlay: true }, { athlete: { displayName: 'Paul George' }, didNotPlay: false }] }] }];
+  assert.equal(playerDidNotPlay(box, 'Tyrese Maxey'), true);
+  assert.equal(playerDidNotPlay(box, 'Paul George'), false);
+  assert.equal(playerDidNotPlay(box, 'Nobody'), null);
+  assert.equal(playerDidNotPlay(undefined, 'Nobody'), null);
+});

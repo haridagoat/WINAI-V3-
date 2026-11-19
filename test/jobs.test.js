@@ -29,6 +29,7 @@ function world({ inSeason = true, credits = { known: true, remaining: 300, critA
     fetchPlayerStats: async name => w.stats?.[name] || { error: 'no data' }, fetchWNBAPlayerStats: async () => ({ error: 'no data' }),
     findGameForPick: (stats, e) => (stats.games || []).find(x => x.date === e.date) || null, gradeStatValue: (g, t) => g[t === 'points' ? 'pts' : t === 'rebounds' ? 'reb' : 'ast'],
     finalsLib: require('../lib/finals'), lastPlayerStatsFetch: {}, ESPN_BASE: 'espn-nba', ESPN_BASE_WNBA: 'espn-wnba',
+    getEspnBoxPlayers: async (lg, id) => (w.box && w.box[id]) || [],
     getEspnScoreboard: async (base, ymd) => { w.scoreboardAsked.push(base + ' ' + ymd); return w.scoreboard || []; },
     resolveESPNTeam: n => ({ 'boston celtics': 'bos', 'miami heat': 'mia', 'denver nuggets': 'den', 'utah jazz': 'uta' })[String(n).toLowerCase()] || null, resolveWNBATeam: () => null,
     FILL_GAP_MS: 40 * 60e3, FILL_WINDOW_MS: 8 * HOUR, FILL_TRIES: 8, FILL_COST_PER_GAME: 3,
@@ -81,6 +82,21 @@ test('live grading: only a prop whose own game is final is graded, today include
   w.scoreboard = [fin('BOS', 'MIA', 'STATUS_FINAL'), fin('DEN', 'UTA', 'STATUS_FINAL')]; w.stats['Still Playing'] = { games: [] };
   assert.match(await f.gradeScanProps({ live: true }), /graded 0 of 1/, 'final, but not in the stats log yet: tried again later');
   assert.match(await f.gradeScanProps({ live: true }), /nothing waiting/, 'and not asked again straight away');
+});
+
+test('a player whose finished game lists him as did-not-play is marked DNP, not left waiting; a player not listed is left to the normal retry', async () => {
+  const { w, f, store } = world();
+  const mk = (player, team, opp) => store.addScanProps([{ date: TODAY, league: 'nba', player, propType: 'points', data: { team, opponent: opp } }]);
+  mk('Sat Out', 'Boston Celtics', 'Miami Heat'); mk('Not Listed', 'Boston Celtics', 'Miami Heat'); mk('Played Late', 'Boston Celtics', 'Miami Heat');
+  w.stats = { 'Sat Out': { games: [] }, 'Not Listed': { games: [] }, 'Played Late': { games: [] } };
+  w.scoreboard = [{ id: '77', competitions: [{ status: { type: { name: 'STATUS_FINAL' } }, competitors: [{ team: { abbreviation: 'BOS' } }, { team: { abbreviation: 'MIA' } }] }] }];
+  const ath = (name, dnp) => ({ athlete: { displayName: name }, didNotPlay: dnp });
+  w.box = { 77: [{ statistics: [{ athletes: [ath('Sat Out', true), ath('Played Late', false)] }] }] };
+  assert.match(await f.gradeScanProps({ live: true }), /1 did not play/);
+  assert.equal(store.scanPropNote(TODAY, 'nba', 'Sat Out', 'points'), 'DNP');
+  assert.equal(store.scanPropNote(TODAY, 'nba', 'Not Listed', 'points'), null, 'unknown is never guessed as DNP');
+  assert.equal(store.scanPropNote(TODAY, 'nba', 'Played Late', 'points'), null, 'he has a line in the box score, so the stats feed is just behind');
+  assert.equal(store.scanPropActual(TODAY, 'nba', 'Sat Out', 'points'), null, 'a DNP has no stat');
 });
 
 test('late news: the first look only records a baseline; a later change re-prices that game, logs it and clears the day-locked caches', async () => {

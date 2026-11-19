@@ -4298,9 +4298,10 @@ function logPicksForUnstartedGames(league) {
 // graded by opening the Prop List always agree.
 async function autoGradePendingPicks(opts = {}) {
   const today = getToday(), live = !!opts.live;
+  const isFinal = makeFinalChecker();
   let pending = loadCLV().filter(e => e.source === 'auto' && e.result == null && (!e.gradeNote || e.gradeNoteV !== GRADE_LOGIC_VERSION) && (live ? gradeDateOf(e) <= today : gradeDateOf(e) < today));
   if (live && pending.length) {
-    const isFinal = makeFinalChecker(), keep = [];
+    const keep = [];
     for (const e of pending) {
       if (Date.now() - (liveTried.get('p' + e.id) || 0) < LIVE_RETRY_MS) continue;
       if (await isFinal(e.league, gradeDateOf(e), [e.opp, e.team])) keep.push(e);
@@ -4308,7 +4309,7 @@ async function autoGradePendingPicks(opts = {}) {
     pending = keep;
   }
   if (!pending.length) return 'nothing waiting to grade';
-  let graded = 0, unmatched = 0;
+  let graded = 0, unmatched = 0, dnp = 0;
   const threeDaysAgo = toLocalDateStr(new Date(Date.now() - 3 * 86400000));
   // The network calls below take a while. The results are collected and applied to a fresh read at the
   // end: saving the list we started with would erase any pick saved or deleted in the meantime.
@@ -4322,6 +4323,10 @@ async function autoGradePendingPicks(opts = {}) {
         // counting as "waiting" forever.
         if (gradeDateOf(e) <= threeDaysAgo) { patches.set(e.id, { gradeNote: 'player stats could not be loaded after 3 days', gradeNoteV: GRADE_LOGIC_VERSION }); unmatched++; }
         continue;
+      }
+      if (!game && await isFinal.didNotPlay(e.league, gradeDateOf(e), e.player, [e.opp, e.team])) {
+        // His game is over and the box score says he did not play: no bet, not a win or a loss. NO_BET keeps it out of every record.
+        patches.set(e.id, { result: 'NO_BET', gradeNote: 'DNP', gradeNoteV: GRADE_LOGIC_VERSION }); dnp++; continue;
       }
       if (!game) {
         // Still no game in the log three days on (offseason stats feed, preseason game, player moved):
@@ -4344,9 +4349,9 @@ async function autoGradePendingPicks(opts = {}) {
       if (p && e.result == null) Object.assign(e, p);   // skip anything that was graded by someone else meanwhile
     }
     saveCLV(fresh);
-    console.log(`[AutoGrade] Graded ${graded} pending picks, gave up on ${unmatched}`);
+    console.log(`[AutoGrade] Graded ${graded} pending picks, ${dnp} did not play, gave up on ${unmatched}`);
   }
-  return `graded ${graded} of ${pending.length} waiting${unmatched ? `, ${unmatched} had no matching game` : ''}`;
+  return `graded ${graded} of ${pending.length} waiting${dnp ? `, ${dnp} did not play` : ''}${unmatched ? `, ${unmatched} had no matching game` : ''}`;
 }
 
 // Every prop the scan looked at goes in the scan log, whether or not it looks like a pick: judging the model only on the picks it chose to
@@ -4363,12 +4368,37 @@ const liveTried = new Map();                       // id (or player) -> when it 
 const LIVE_RETRY_MS = 45 * 60 * 1000;
 function makeFinalChecker() {
   const cache = new Map();
-  return async (league, date, teams) => {
+  const load = async (league, date) => {
     const key = league + '|' + date;
-    if (!cache.has(key)) cache.set(key, finalsLib.finalTeams(await getEspnScoreboard(league === 'wnba' ? ESPN_BASE_WNBA : ESPN_BASE, date.replace(/-/g, '')).catch(() => [])));
-    const abbrs = teams.filter(Boolean).map(t => (league === 'wnba' ? resolveWNBATeam(String(t)) : resolveESPNTeam(String(t))));
-    return finalsLib.anyFinal(cache.get(key), abbrs);
+    if (!cache.has(key)) {
+      const events = await getEspnScoreboard(league === 'wnba' ? ESPN_BASE_WNBA : ESPN_BASE, date.replace(/-/g, '')).catch(() => []);
+      cache.set(key, { finals: finalsLib.finalTeams(events), ids: finalsLib.finalEventIds(events) });
+    }
+    return cache.get(key);
   };
+  const abbrsOf = (league, teams) => teams.filter(Boolean).map(t => (league === 'wnba' ? resolveWNBATeam(String(t)) : resolveESPNTeam(String(t))));
+  const check = async (league, date, teams) => finalsLib.anyFinal((await load(league, date)).finals, abbrsOf(league, teams));
+  // The finished game's box score says who sat out. Only an explicit "did not play" counts; a player who is not listed stays unknown.
+  check.didNotPlay = async (league, date, player, teams) => {
+    try {
+      const { ids } = await load(league, date);
+      const id = abbrsOf(league, teams).map(a => a && ids.get(String(a).toLowerCase())).find(Boolean);
+      if (!id) return false;
+      const box = await getEspnBoxPlayers(league, id);
+      return finalsLib.playerDidNotPlay(box, player) === true;
+    } catch (_) { return false; }
+  };
+  return check;
+}
+const espnBoxCache = new Map();
+async function getEspnBoxPlayers(league, eventId) {
+  const key = league + '|' + eventId, hit = espnBoxCache.get(key);
+  if (hit && Date.now() - hit.ts < 10 * 60 * 1000) return hit.players;
+  const r = await axios.get(`${league === 'wnba' ? ESPN_BASE_WNBA : ESPN_BASE}/summary`, { params: { event: eventId }, timeout: 8000 });
+  const players = r.data?.boxscore?.players || [];
+  espnBoxCache.set(key, { players, ts: Date.now() });
+  if (espnBoxCache.size > 60) espnBoxCache.delete(espnBoxCache.keys().next().value);
+  return players;
 }
 // The stats feed is cached for 30 minutes. If the game is over but not in the cached log yet, ask again (at most every 8 minutes per player).
 async function statsAndGame(league, player, pick, live) {
@@ -4388,8 +4418,9 @@ async function gradeScanProps(opts = {}) {
   const today = getToday(), live = !!opts.live;
   const upTo = live ? toLocalDateStr(new Date(Date.now() + 86400000)) : today;
   let pending = store.scanPropsPending(upTo, 400);
+  const isFinal = makeFinalChecker();
   if (live && pending.length) {
-    const isFinal = makeFinalChecker(), keep = [];
+    const keep = [];
     for (const row of pending) {
       if (Date.now() - (liveTried.get('s' + row.id) || 0) < LIVE_RETRY_MS) continue;
       if (await isFinal(row.league, row.date, [row.data?.team, row.data?.opponent])) keep.push(row);
@@ -4398,18 +4429,19 @@ async function gradeScanProps(opts = {}) {
   }
   if (!pending.length) return 'nothing waiting to grade';
   const threeDaysAgo = toLocalDateStr(new Date(Date.now() - 3 * 86400000));
-  let graded = 0, aside = 0;
+  let graded = 0, aside = 0, dnp = 0;
   for (const row of pending) {
     try {
       if (live) liveTried.set('s' + row.id, Date.now());
       const { stats, game } = await statsAndGame(row.league, row.player, { league: row.league, player: row.player, date: row.date }, live);
       if (!stats || stats.error) { if (row.date <= threeDaysAgo) { store.setScanNote(row.id, 'player stats could not be loaded'); aside++; } continue; }
+      if (!game && await isFinal.didNotPlay(row.league, row.date, row.player, [row.data?.team, row.data?.opponent])) { store.setScanNote(row.id, 'DNP'); dnp++; liveTried.delete('s' + row.id); continue; }
       if (!game) { if (row.date <= threeDaysAgo) { store.setScanNote(row.id, 'no matching game (did not play, or not in the log)'); aside++; } continue; }
       if (store.saveScanGrade(row.id, gradeStatValue(game, row.propType))) { graded++; liveTried.delete('s' + row.id); }
     } catch (_) { /* retried on the next run */ }
   }
   try { store.pruneScanProps(toLocalDateStr(new Date(Date.now() - 400 * 86400000))); } catch (_) {}
-  return `graded ${graded} of ${pending.length} logged props${aside ? `, set aside ${aside}` : ''}`;
+  return `graded ${graded} of ${pending.length} logged props${dnp ? `, ${dnp} did not play` : ''}${aside ? `, set aside ${aside}` : ''}`;
 }
 
 async function computeTopPlays(league) {
@@ -6425,7 +6457,7 @@ function collectReportInputs(date) {
   const pickCounts = { waiting: all.filter(e => e.result == null && !e.gradeNote).length, setAside: all.filter(e => e.result == null && e.gradeNote).length };
   const scan = {}; for (const lg of ['nba', 'wnba']) scan[lg] = { counts: store.scanCounts(lg), graded: store.gradedScanProps(lg) };
   const closing = { total: all.length, auto: all.filter(e => e.closingLine != null && e.closingCapture === 'auto').length, scan: all.filter(e => e.closingLine != null && e.closingCapture === 'scan').length, missed: all.filter(e => e.closingLine == null && e.closingCapture === 'missed').length };
-  const top3 = []; for (const h of parseMeta('top3:history', [])) (h.plays || []).forEach((p, i) => top3.push({ rank: p.rank ?? i + 1, date: h.date, league: h.league, player: p.player, propType: p.propType, line: p.line, direction: p.direction, confidence: p.confidence, ev: p.ev, actual: store.scanPropActual(h.date, h.league, p.player, p.propType) }));
+  const top3 = []; for (const h of parseMeta('top3:history', [])) (h.plays || []).forEach((p, i) => top3.push({ rank: p.rank ?? i + 1, date: h.date, league: h.league, player: p.player, propType: p.propType, line: p.line, direction: p.direction, confidence: p.confidence, ev: p.ev, actual: store.scanPropActual(h.date, h.league, p.player, p.propType), dnp: store.scanPropNote(h.date, h.league, p.player, p.propType) === 'DNP' }));
   const b = currentCreditBudget();
   return { date, picks, allPicks, pickCounts, scan, top3, closing, bias: biasTable, calibration: calibrationModel ? { active: calibrationModel.active, reason: calibrationModel.reason } : null, credits: b.known ? b.remaining : null };
 }
@@ -6464,7 +6496,7 @@ app.get('/api/admin/grading-report', requireAdmin, (req, res) => {
 // Every locked Top 3, newest first, each pick with its result once the game is graded (the same grading the report uses).
 app.get('/api/admin/top3', requireAdmin, (req, res) => {
   const days = parseMeta('top3:history', []).map(h => ({ date: h.date, league: h.league, frozenAt: h.frozenAt,
-    plays: (h.plays || []).map(p => { const actual = store.scanPropActual(h.date, h.league, p.player, p.propType); return { ...p, actual, result: top3Result({ ...p, actual }) }; }) }));
+    plays: (h.plays || []).map(p => { const actual = store.scanPropActual(h.date, h.league, p.player, p.propType), dnp = store.scanPropNote(h.date, h.league, p.player, p.propType) === 'DNP'; return { ...p, actual, dnp, result: top3Result({ ...p, actual, dnp }) }; }) }));
   res.json({ days });
 });
 app.get('/api/admin/grading-report/:date', requireAdmin, (req, res) => {

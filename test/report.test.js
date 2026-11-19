@@ -120,6 +120,15 @@ test('the report tracks the Top 3 from the first locked day: that day, all days,
   assert.equal(d.list.length, 2); assert.match(r.text, /TOP 3 \(the most confident picks of the day.*tracked since 2026-11-10/); assert.match(r.text, /✓ D OVER 10.5/);
 });
 
+test('a Top 3 / Top 10 pick whose player did not play is DNP: not a win, not a loss, not waiting', () => {
+  assert.equal(top3Result(t3('d', 'A', 'OVER', 20.5, null, { dnp: true })), 'DNP');
+  const top3 = [t3('2026-11-11', 'A', 'OVER', 20.5, 24), t3('2026-11-11', 'B', 'OVER', 20.5, null, { dnp: true }), t3('2026-11-11', 'C', 'OVER', 9.5, null)];
+  const d = buildGradingReport({ date: '2026-11-11', picks: [], top3 }).data.top3;
+  assert.deepEqual([d.toDate.wins, d.toDate.losses, d.toDate.n], [1, 0, 1], 'only the played pick is in the record');
+  assert.equal(d.waiting, 1, 'the DNP is not waiting'); assert.equal(d.dnp, 1);
+  assert.equal(d.list.find(p => p.player === 'B').result, 'DNP');
+});
+
 test('with no locked Top 3 yet the report says so and nothing breaks', () => {
   const r = buildGradingReport({ date: '2026-11-11', picks: [pick('2026-11-11', 'WIN')] });
   assert.equal(r.data.top3.days, 0); assert.equal(r.data.top3.startedOn, null); assert.match(r.text, /none locked yet/);
