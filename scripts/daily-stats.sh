@@ -16,6 +16,8 @@ mkdir -p "$(dirname "$LOG")"
   if [ "${1:-}" != "push-only" ]; then
     # every player's and team's shot chart (about 10 minutes); a failure keeps yesterday's copies and does not stop the upload
     node scripts/build-shotcharts.js 2>&1 | tail -3 || echo "SHOT CHARTS FAILED"
+    # every player's box scores with the tracking numbers for each game (the first run takes a few minutes, later runs add the new games)
+    python3 scripts/build-gametrack.py 2>&1 | grep -v -i warning | tail -3 || echo "GAME TRACKING FAILED"
   fi
   node scripts/push-stats.js || echo "UPLOAD FAILED"
   echo

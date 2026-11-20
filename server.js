@@ -38,6 +38,7 @@ const espnGames = require('./lib/espngames');
 const dbSwap = require('./lib/dbswap');
 const oddsGuard = require('./lib/oddsguard');
 const shotCharts = require('./lib/shotcharts');
+const gameTrack = require('./lib/gametrack');
 const biasLib = require('./lib/bias');
 modelParams.load();
 const { AsyncLocalStorage } = require('node:async_hooks');
@@ -3160,6 +3161,18 @@ async function fetchShotChart(league, mode, name, season = currentNbaSeason()) {
   } else if (viaScript && !viaScript.error) noteBridge(true);
   return viaScript;
 }
+
+// GET /api/tracklog?name=<player>&n=20 : the player's last games with the nba.com tracking numbers for each (rebound chances, passes, secondary
+// assists...), from the file the owner's computer builds (lib/gametrack.js). NBA only.
+const readGameTrack = gameTrack.createReader(__dirname);
+app.get('/api/tracklog', (req, res) => {
+  const { name } = req.query;
+  if (!name) return res.status(400).json({ error: 'name required' });
+  const out = gameTrack.lookup(readGameTrack(), name, req.query.n);
+  if (!out) return res.status(404).json({ error: 'No game-by-game tracking numbers for this player yet.' });
+  res.set('Cache-Control', 'public, max-age=300');
+  res.json(out);
+});
 
 // GET /api/shotchart?league=nba|wnba&mode=player|defense&name=<player or team>
 app.get('/api/shotchart', async (req, res) => {
