@@ -110,3 +110,18 @@ test('phones: the header is positioned (so its z-index works and the Tonight lis
   assert.match(html, /data-goto-gm=/); assert.match(html, /data-gm="\$\{escapeHtml\(key\)\}"/, 'each chip must have a card to jump to');
   assert.ok(html.indexOf('${gameStrip}') < html.indexOf('tdUpStrip() :'), 'the games row sits above the free-plan banner');
 });
+
+test('player result: potential assists show for assist props and rebound chances for rebound props (combos get both), only from NBA tracking', () => {
+  const src = html.match(/function v2TrackingChips\(ctx, propType\) \{[\s\S]*?\n\}\n/)[0];
+  const f = new Function('PROP_COMBO_KEYS', 'PROP_STATKEY', 'v2F', 'v2Pct', src + '; return v2TrackingChips;')(
+    { pra: ['pts', 'reb', 'ast'], pr: ['pts', 'reb'], pa: ['pts', 'ast'], ra: ['reb', 'ast'] }, { points: 'pts', rebounds: 'reb', assists: 'ast' },
+    n => (Math.round(n * 10) / 10).toString(), x => { const n = parseFloat(x); return isFinite(n) ? (n <= 1 ? n * 100 : n) : null; });
+  const ctx = { playerTracking: { passing: { POTENTIAL_AST: 15.185, AST: 9.255 }, rebounding: { REB_CHANCES: 20.3, REB_CHANCE_PCT: 0.516 } } };
+  const names = (p, c = ctx) => f(c, p).map(x => x[0]);
+  assert.deepEqual(f(ctx, 'assists'), [['Potential AST', '15.2', ''], ['AST ÷ potential', '61', '%']]);
+  assert.deepEqual(f(ctx, 'rebounds'), [['Reb chances', '20.3', ''], ['REB ÷ chances', '51.6', '%']]);
+  assert.deepEqual(names('pra'), ['Potential AST', 'AST ÷ potential', 'Reb chances', 'REB ÷ chances']); assert.deepEqual(names('ra'), names('pra')); assert.deepEqual(names('pa'), ['Potential AST', 'AST ÷ potential']); assert.deepEqual(names('pr'), ['Reb chances', 'REB ÷ chances']);
+  for (const p of ['points', '3pm', 'steals']) assert.deepEqual(f(ctx, p), [], p);
+  assert.deepEqual(f({}, 'assists'), []); assert.deepEqual(f({ playerTracking: { passing: { POTENTIAL_AST: 0, AST: 0 } } }, 'assists'), [], 'no zero or missing numbers shown');
+  assert.match(html, /\.\.\.v2TrackingChips\(ctx, propType\)/);
+});

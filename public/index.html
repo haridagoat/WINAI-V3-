@@ -3226,6 +3226,30 @@ function v2RangeBar(mp, line) {
   </div>`;
 }
 
+// nba.com tracking figures that belong to the stat being looked at: potential assists (passes that would have been assists if the shot went in)
+// for assists, rebound chances (rebounds that were within reach) for rebounds. Both per game. NBA only: there is no WNBA source.
+function v2TrackingChips(ctx, propType) {
+  const tr = ctx?.playerTracking || {};
+  const keys = PROP_COMBO_KEYS[propType] || [PROP_STATKEY[propType] || 'pts'];
+  const out = [];
+  const pass = tr.passing, reb = tr.rebounding;
+  if (keys.includes('ast') && pass) {
+    const pot = parseFloat(pass.POTENTIAL_AST), ast = parseFloat(pass.AST);
+    if (isFinite(pot) && pot > 0) {
+      out.push(['Potential AST', v2F(pot), '']);
+      if (isFinite(ast)) out.push(['AST ÷ potential', v2F(ast / pot * 100), '%']);
+    }
+  }
+  if (keys.includes('reb') && reb) {
+    const ch = parseFloat(reb.REB_CHANCES), pct = v2Pct(reb.REB_CHANCE_PCT);
+    if (isFinite(ch) && ch > 0) {
+      out.push(['Reb chances', v2F(ch), '']);
+      if (pct != null && isFinite(pct)) out.push(['REB ÷ chances', v2F(pct), '%']);
+    }
+  }
+  return out;
+}
+
 function v2KeyStats(ctx, propType, opp) {
   const stats = ctx?.playerStats || {};
   const gv = (g) => gameStatValue(g, propType);
@@ -3245,6 +3269,7 @@ function v2KeyStats(ctx, propType, opp) {
     isFinite(min) ? ['MPG', v2F(min), ''] : null,
     usg != null ? ['Usage', v2F(usg), '%'] : null,
     fg != null && isFinite(fg) ? ['FG%', v2F(fg), '%'] : null,
+    ...v2TrackingChips(ctx, propType),
   ].filter(Boolean);
   return chips.length ? `<div class="v2-label">Key stats <small>per game, ${escapeHtml(V2_PROP[propType] || '').toLowerCase()}</small></div><div class="v2-chips">${chips.map(([k, v, u]) => `<div class="v2-chip"><div class="k" title="${escapeHtml(k)}">${escapeHtml(k)}</div><div class="v">${v}${u ? `<small>${u}</small>` : ''}</div></div>`).join('')}</div>` : '';
 }

@@ -189,8 +189,9 @@ TRACKING = [
     ('PostTouch',               'tracking_posttouch_player.json'),
     ('SpeedDistance',           'tracking_speeddistance_player.json'),
     ('Efficiency',              'tracking_efficiency_player.json'),
-    ('OffensiveReboundChances', 'tracking_offensivereboundchances_player.json'),
-    ('DefensiveReboundChances', 'tracking_defensivereboundchances_player.json'),
+    # nba.com's measure is called "Rebounding" (the old 'OffensiveReboundChances' / 'DefensiveReboundChances' names are not accepted and never produced a file):
+    # rebound chances, contested and uncontested rebounds and how often a chance is converted, offensive, defensive and total.
+    ('Rebounding',              'tracking_rebounding_player.json'),
 ]
 for pt_type, fname in TRACKING:
     df = fetch(f"Tracking {pt_type}", leaguedashptstats.LeagueDashPtStats,

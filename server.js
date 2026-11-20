@@ -563,20 +563,23 @@ function calcStdDev(games, key) {
 }
 
 // Full-name fuzzy match — avoids wrong-player errors from last-name-only search
+// Accents are ignored in both the name asked for and the names in the list: the stat files write "Nikola Jokić" and the sportsbooks "Nikola Jokic",
+// and without this a player with an accent in his name found none of his advanced, tracking, hustle or play-type stats.
+const stripAccents = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 function fuzzyMatchPlayer(list, fullName) {
-  const lower = fullName.toLowerCase();
+  const lower = stripAccents(fullName);
   const parts = lower.split(' ');
   const first = parts[0];
   const last  = parts[parts.length - 1];
   // Exact full name match first
-  let match = list.find(p => (p.PLAYER_NAME || p.name || '').toLowerCase() === lower);
+  let match = list.find(p => stripAccents(p.PLAYER_NAME || p.name || '') === lower);
   // Then first + last
   if (!match) match = list.find(p => {
-    const n = (p.PLAYER_NAME || p.name || '').toLowerCase();
+    const n = stripAccents(p.PLAYER_NAME || p.name || '');
     return n.includes(first) && n.includes(last);
   });
   // Last name only as last resort
-  if (!match) match = list.find(p => (p.PLAYER_NAME || p.name || '').toLowerCase().includes(last));
+  if (!match) match = list.find(p => stripAccents(p.PLAYER_NAME || p.name || '').includes(last));
   return match || null;
 }
 
@@ -690,6 +693,7 @@ function loadNBAStats() {
     trackingDrives:     load('tracking_drives_player.json'),
     trackingCatchShoot: load('tracking_catchshoot_player.json'),
     trackingPassing:    load('tracking_passing_player.json'),
+    trackingRebounding: load('tracking_rebounding_player.json'),
     trackingTouches:    load('tracking_touches_player.json'),
     trackingPullUp:     load('tracking_pullupshot_player.json'),
     trackingElbow:      load('tracking_elbowtouch_player.json'),
@@ -3840,6 +3844,7 @@ app.get('/api/prop-context', async (req, res) => {
   const trackingKeys = [
     ['drives','trackingDrives'],['catchShoot','trackingCatchShoot'],
     ['passing','trackingPassing'],['touches','trackingTouches'],
+    ['rebounding','trackingRebounding'],
     ['pullUp','trackingPullUp'],['elbow','trackingElbow'],
     ['post','trackingPost'],
     ['speed','trackingSpeed'],['offReb','trackingOffReb'],['defReb','trackingDefReb'],

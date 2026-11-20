@@ -183,3 +183,12 @@ test('headshots: a sportsbook spelling without accents still finds the player (J
   assert.equal(f.lookupPlayerId('nba', 'PJ Washington'), 1629023); assert.equal(f.lookupPlayerId('nba', 'jalen williams'), 1631114);
   for (const n of ['Williams', 'Jalen', 'Nobody Atall', '', null]) assert.equal(f.lookupPlayerId('nba', n), null, String(n));
 });
+
+test('player matching ignores accents both ways, still prefers the exact name, and never matches nobody', () => {
+  const list = [{ PLAYER_NAME: 'Nikola Jokić', id: 1 }, { PLAYER_NAME: 'Jalen Williams', id: 2 }, { PLAYER_NAME: 'Jaylin Williams', id: 3 }, { PLAYER_NAME: 'Luka Dončić', id: 4 }];
+  const f = extract({ functions: ['fuzzyMatchPlayer'], consts: ['stripAccents'], globals: {} });
+  assert.equal(f.fuzzyMatchPlayer(list, 'Nikola Jokic').id, 1); assert.equal(f.fuzzyMatchPlayer(list, 'Nikola Jokić').id, 1);
+  assert.equal(f.fuzzyMatchPlayer(list, 'luka doncic').id, 4);
+  assert.equal(f.fuzzyMatchPlayer(list, 'Jalen Williams').id, 2, 'an exact name wins over a look-alike');
+  assert.equal(f.fuzzyMatchPlayer(list, 'Nobody Atall'), null);
+});
