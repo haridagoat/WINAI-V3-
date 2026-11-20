@@ -6061,7 +6061,7 @@ function renderSignin() {
   if (!SI.open) { siStopTimers(); return; }
   const pend = SI.pending, save = SI.reason === 'save' && pend;
   const verdictWord = pend ? String(pend.verdict || '').replace('_', ' ').replace(/^LEAN /, '') : '';
-  const M = AUTH.methods || {}, hasG = true;     // the Google button always shows; tapping it explains if Google is not set up yet
+  const M = AUTH.methods || {}, hasG = M.google !== false && M.google !== null && M.google !== undefined ? !!M.google : false;     // the Google button only shows once Google sign-in is set up on the server
   let body;
   if (SI.step !== 'created') siStopTimers();
   if (SI.step === 'off') {
@@ -6097,8 +6097,8 @@ function renderSignin() {
         : `<label class="ck" id="si-age-row" for="si-age"><input id="si-age" type="checkbox" ${SI.age ? 'checked' : ''} onchange="SI.age=this.checked;siAgeChanged()"><span>I am 21 or older and understand WIN AI is analytics, not betting advice.</span></label>`}
       <div class="err" id="si-err" role="alert" hidden></div>
       <button type="button" class="acct-go" id="si-go" onclick="siSubmit()">${SI.busy ? 'Creating…' : 'Create account'}</button>
-      <p class="note">We email you <b style="color:var(--muted2)">after</b> you sign up, to confirm your address. Nothing is sent before.</p>
-      <div class="or"><span>or</span></div>
+      ${M.mail && M.confirm !== false ? '<p class="note">We email you <b style="color:var(--muted2)">after</b> you sign up, to confirm your address. Nothing is sent before.</p>' : '<p class="note">You are signed in as soon as you create the account.</p>'}
+      ${hasG ? '<div class="or"><span>or</span></div>' : ''}
       ${siGoogleBlock(hasG)}
       <div class="si-links" style="margin-top:14px"><span class="note" style="margin:0">Already have an account?</span><button type="button" class="si-link" onclick="siGo('login')">Sign in</button></div>`;
   } else if (SI.step === 'created') {

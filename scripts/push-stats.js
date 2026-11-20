@@ -44,7 +44,7 @@ const target = site || (env.LIVE_SITE_URL || '').replace(/\/+$/, '');
   let sent = 0;
   for (const [i, b] of batches.entries()) {
     const res = await fetch(target + '/admin-upload/stats', { method: 'POST', headers: { 'x-admin-token': token, 'content-type': 'application/json' },
-      body: JSON.stringify({ files: Object.fromEntries(b.map(f => [f.n, f.text])) }) }).catch(err => { console.error('Could not reach ' + target + ': ' + err.message); process.exit(1); });
+      body: JSON.stringify({ files: Object.fromEntries(b.map(f => [f.n, f.text])), mtimes: Object.fromEntries(b.map(f => [f.n, f.at])) }) }).catch(err => { console.error('Could not reach ' + target + ': ' + err.message); process.exit(1); });
     const j = await res.json().catch(() => ({}));
     if (res.status === 401 && j.code === 'admin_2fa') { console.error('The live admin page now needs a 6-digit code, which this script cannot enter. Tell Claude and it will add that.'); process.exit(1); }
     if (res.status === 401) { console.error('The live site refused the admin token. ADMIN_TOKEN in Railway must match the one in this folder\'s .env.'); process.exit(1); }

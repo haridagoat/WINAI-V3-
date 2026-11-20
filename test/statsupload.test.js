@@ -20,7 +20,7 @@ test('the app\'s own files, paths and odd names are refused', () => {
 });
 
 test('an upload must be valid JSON files with allowed names, otherwise nothing is accepted', () => {
-  assert.deepEqual(Object.keys(U.parseUpload(body({ 'player_stats.json': '[{"a":1}]' }))), ['player_stats.json']);
+  assert.deepEqual(Object.keys(U.parseUpload(body({ 'player_stats.json': '[{"a":1}]' })).files), ['player_stats.json']);
   assert.throws(() => U.parseUpload('nope'), /not valid JSON/);
   assert.throws(() => U.parseUpload(body({})), /No files/);
   assert.throws(() => U.parseUpload(Buffer.from('{"files":[1]}')), /files/);
@@ -54,4 +54,17 @@ test('after a deploy the kept files come back, newer ones win, and the app\'s ow
   assert.equal(fs.readFileSync(path.join(app, 'team_base.json'), 'utf8'), '[newer here]');
   assert.ok(!fs.existsSync(path.join(app, 'server.js')) && !fs.existsSync(path.join(app, 'notes.txt')));
   assert.equal(U.restoreFromKeep(path.join(keep, 'missing'), app), 0, 'no kept folder yet is fine');
+});
+
+test('the files keep the time they were really fetched, so a stale file never looks fresh', () => {
+  const real = Date.parse('2026-11-18T12:00:00Z');
+  const up = U.parseUpload(Buffer.from(JSON.stringify({ files: { 'player_stats.json': '[1]', 'team_base.json': '[2]', 'defense_overall.json': '[3]' },
+    mtimes: { 'player_stats.json': real, 'team_base.json': Date.now() + 9e9, 'defense_overall.json': 'yesterday' } })));
+  assert.equal(up.mtimes['player_stats.json'], real);
+  assert.ok(up.mtimes['team_base.json'] <= Date.now(), 'a time in the future is capped at now');
+  assert.ok(!('defense_overall.json' in up.mtimes), 'nonsense is ignored');
+  assert.deepEqual(U.parseUpload(body({ 'player_stats.json': '[1]' })).mtimes, {}, 'mtimes are optional');
+  const dir = tmp();
+  U.saveFiles(up.files, [dir], up.mtimes);
+  assert.equal(fs.statSync(path.join(dir, 'player_stats.json')).mtimeMs, real);
 });

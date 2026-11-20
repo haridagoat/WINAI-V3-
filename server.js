@@ -126,13 +126,15 @@ app.use((req, res, next) => {
 // nba.com refuses most cloud hosts, so the Python fetch cannot run on Railway. scripts/push-stats.js sends the files this computer fetched.
 // They are kept on the persistent volume (next to the database) and put back into the app folder at every start, so a deploy does not lose them.
 // It sits outside /api on purpose: the stat files are bigger than the API's body limit and contain line breaks the API's input guard refuses.
+// Nightly database copies go next to the database (the volume on a host like Railway), otherwise every deploy wipes them.
+const BACKUP_DIR = process.env.WINAI_BACKUP_DIR || (process.env.WINAI_DB ? path.join(path.dirname(path.resolve(process.env.WINAI_DB)), 'backups') : path.join(__dirname, 'backups'));
 const STATS_KEEP_DIR = process.env.WINAI_DB ? path.join(path.dirname(path.resolve(process.env.WINAI_DB)), 'stats') : null;
 if (STATS_KEEP_DIR) { const n = statsUpload.restoreFromKeep(STATS_KEEP_DIR, __dirname); if (n) console.log(`[Stats] restored ${n} stat files from ${STATS_KEEP_DIR}`); }
 app.post('/admin-upload/stats', (req, res, next) => requireAdmin(req, res, next), express.raw({ type: () => true, limit: '60mb' }), (req, res) => {
-  let files;
-  try { files = statsUpload.parseUpload(req.body); } catch (err) { return res.status(400).json({ error: err.message }); }
+  let files, mtimes;
+  try { ({ files, mtimes } = statsUpload.parseUpload(req.body)); } catch (err) { return res.status(400).json({ error: err.message }); }
   try {
-    const saved = statsUpload.saveFiles(files, [__dirname, STATS_KEEP_DIR]);
+    const saved = statsUpload.saveFiles(files, [__dirname, STATS_KEEP_DIR], mtimes);
     nbaStatsCache = null; lastStatsDiskRead = 0; wnbaStatsCache = null; lastWnbaStatsDiskRead = 0;
     store.addEvent('stats', 'info', `${saved.length} stat files uploaded from the owner's computer${STATS_KEEP_DIR ? ' and kept on the volume' : ' (not kept: WINAI_DB is not set, so a deploy will lose them)'}.`);
     res.json({ saved: saved.length, kept: !!STATS_KEEP_DIR });
@@ -3110,7 +3112,9 @@ app.get('/api/today', async (req, res) => {
 app.get('/api/player-stats', async (req, res) => {
   const { name } = req.query;
   if (!name) return res.status(400).json({ error: 'name required' });
-  res.json(await fetchPlayerStats(name));
+  const out = await fetchPlayerStats(name);
+  if (out && out.error && !out.player) return res.status(503).json({ error: 'Player stats are not available right now.' });   // not the provider's own message ("status code 401")
+  res.json(out);
 });
 
 // Full real player list for autocomplete — the frontend used to only
@@ -3151,7 +3155,7 @@ app.get('/api/roster', async (req, res) => {
   res.json(await fetchESPNRoster(team));
 });
 
-app.get('/api/nba-stats', (req, res) => {
+app.get('/api/nba-stats', requireAdmin, (req, res) => {   // the whole stats dataset (7 MB); no page uses it, so it is not public
   const stats = loadNBAStats();
   if (!stats) return res.status(404).json({ error: 'Run fetch_stats.py first' });
   const { team } = req.query;
@@ -5240,7 +5244,7 @@ setTimeout(() => runLiveGrading().catch(() => {}), 60 * 1000);   // and once a m
 // The daily pipeline: grade finished games, refit the calibrator on the graded history,
 // then score everything for the backtest report.
 cron.schedule('0 6 * * *', () => { if (pipelineRunning) return; pipelineRunning = true; runDailyPipeline().catch(err => console.error('[Pipeline] failed:', err.message)).finally(() => { pipelineRunning = false; }); });
-cron.schedule('0 3 * * *', () => trackJob('backup', async () => `wrote ${path.basename(store.backup(path.join(__dirname, 'backups')) || 'nothing (no file database)')}`)().catch(err => console.error('[Backup] failed:', err.message)));
+cron.schedule('0 3 * * *', () => trackJob('backup', async () => `wrote ${path.basename(store.backup(BACKUP_DIR) || 'nothing (no file database)')}`)().catch(err => console.error('[Backup] failed:', err.message)));
 cron.schedule('5 3 * * *', () => trackJob('offsite-backup', async () => { const r = await uploadOffsite(); return `uploaded ${r.key} (${Math.round(r.bytes / 1024)} KB)`; })().catch(err => { console.error('[Offsite] failed:', err.message); }));
 // The credit count only used to update when a real odds request happened, so after adding credits the app kept believing it
 // was out until something spent one. The /sports call is free (it costs 0 credits and still returns the balance), so asking
@@ -6596,7 +6600,7 @@ const ADMIN_JOBS = {
   pipeline: () => runDailyPipeline(),
   backtest: () => trackJob('backtest', async () => { const r = await runBacktest(); return `${r.totals.graded} graded picks scored`; })(),
   calibration: () => trackJob('calibration', async () => (await refitCalibration()).reason)(),
-  backup: () => trackJob('backup', async () => `wrote ${path.basename(store.backup(path.join(__dirname, 'backups')) || 'nothing (no file database)')}`)(),
+  backup: () => trackJob('backup', async () => `wrote ${path.basename(store.backup(BACKUP_DIR) || 'nothing (no file database)')}`)(),
   health: () => runHealthCheck(),
   dvp: () => trackJob('dvp', runDvpFetch)(),
   bias: () => trackJob('bias', async () => refitBias())(),
@@ -6652,7 +6656,7 @@ app.post('/api/admin/users/:id/:action(disable|enable|comp|uncomp)', requireAdmi
 
 // ── Data checks (admin only) ──
 function mtimeOf(f) { try { return fs.statSync(path.join(__dirname, f)).mtimeMs; } catch (_) { return null; } }
-const BACKUP_DIR = path.join(__dirname, 'backups');
+
 const STAT_FILE = { nba: 'player_stats.json', wnba: 'wnba_player_stats.json' };
 // The same Python scripts the 7 AM jobs run. One attempt, twenty minute limit.
 function runStatsScript(league) {
