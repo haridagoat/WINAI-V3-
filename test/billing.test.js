@@ -191,3 +191,22 @@ test('a real-shaped, deeply nested subscription event is not what the input guar
   const event = { id: 'evt', data: { object: { items: { data: [{ price: { recurring: { interval: 'month' } } }] } } } };
   assert.match(sec.bodyProblem(event), /deeply nested/);        // the ordinary guard would refuse it, so the webhook route skips that guard
 });
+
+// ── PAYWALL=lock: the free/Pro limits with no Stripe and no checkout ──
+const { extract } = require('./helpers/extract');
+const billingWorld = (paywall, o = {}) => extract({ functions: ['billingStatus'], consts: ['paywallOn'], globals: {
+  process: { env: { PAYWALL: paywall, ...(o.env || {}) } }, STRIPE_KEY: o.key || '', STRIPE_WEBHOOK_SECRET: o.hook || '', STRIPE_PRICE: o.price || '',
+  CONFIRM_REQUIRED: false, authStatus: () => ({ enabled: o.auth !== false, methods: { mail: true } }), store: { getMeta: () => null } } });
+test('PAYWALL=lock turns the limits on with no Stripe settings at all', () => {
+  const w = billingWorld('lock'), b = w.billingStatus();
+  assert.equal(b.on, true); assert.equal(b.lockOnly, true); assert.equal(w.paywallOn(), true);
+});
+test('PAYWALL=lock still needs working sign-in, so nobody is locked out of a site that cannot sign them in', () => {
+  assert.equal(billingWorld('lock', { auth: false }).billingStatus().on, false);
+});
+test('PAYWALL=on still needs all three Stripe settings; lock mode is not a loophole for it', () => {
+  assert.equal(billingWorld('on').billingStatus().on, false);
+  assert.equal(billingWorld('on', { key: 'sk_test_x', hook: 'whsec_x', price: 'price_x' }).billingStatus().on, true);
+  assert.equal(billingWorld('on', { key: 'sk_test_x', hook: 'whsec_x', price: 'price_x' }).billingStatus().lockOnly, false);
+  assert.equal(billingWorld('').billingStatus().on, false);
+});

@@ -6098,11 +6098,12 @@ function renderSignin() {
         <li>Matchup analysis for every game</li>
         <li>New Pro tools as they ship</li></ul>
       ${_plans && !_plans.paywall ? '<div class="err">Payments are not switched on yet, so checkout is not available.</div>' : ''}
+      ${_plans && _plans.lockOnly ? '<div class="err" style="background:transparent;border-color:var(--border,#444);color:inherit">Pro is invitation-only for now. Payments are not open yet.</div>' : ''}
       ${price ? `<div class="up-price">${escapeHtml(price.split(' / ')[0])}<small>per ${escapeHtml(price.split(' / ')[1] || 'month')}</small></div>` : ''}
       ${SI.err ? `<div class="err">${escapeHtml(SI.err)}${SI.needConfirm ? '<button type="button" class="si-link" style="display:block;margin-top:8px;color:#ffd0d0" onclick="acctResendConfirm()">Send the confirmation email again</button>' : ''}</div>` : ''}
-      <button type="button" class="acct-go" onclick="upCheckout()">${SI.busy ? 'Opening checkout…' : 'Continue to checkout'}</button>
-      <button type="button" class="acct-alt" onclick="siClose()">Not now</button>
-      <p class="note">Secure checkout by Stripe. Cancel any time from Manage subscription.</p>`;
+      ${_plans && _plans.lockOnly ? '' : `<button type="button" class="acct-go" onclick="upCheckout()">${SI.busy ? 'Opening checkout…' : 'Continue to checkout'}</button>`}
+      <button type="button" class="acct-alt" onclick="siClose()">${_plans && _plans.lockOnly ? 'Close' : 'Not now'}</button>
+      ${_plans && _plans.lockOnly ? '' : '<p class="note">Secure checkout by Stripe. Cancel any time from Manage subscription.</p>'}`;
   } else if (SI.step === 'delete') {
     const n = betslip.length;
     body = `<h2>Delete my account</h2><p>This deletes <b style="color:var(--text)">${escapeHtml(AUTH.user?.email || '')}</b> and ${n === 1 ? 'the 1 prop' : `all ${n} props`} you saved. It cannot be undone.</p>

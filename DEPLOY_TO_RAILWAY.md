@@ -166,6 +166,9 @@ exportable if a subscription ends. Your own account (`ADMIN_EMAIL`) is always Pr
 5. Set `PUBLIC_URL` (see above), then **`PAYWALL=on`**. The paywall only switches on when the key, the price and
    the webhook secret are all set and sign-in works. If anything is missing, nothing is limited and the Data checks
    tab says why. Nobody can be locked out by a half-finished setup.
+   **Lock without payments:** `PAYWALL=lock` applies the same free/Pro limits with no Stripe at all. The upgrade
+   sheet says Pro is invitation-only, and you give Pro by hand from the admin Users tab. Set `ADMIN_EMAIL` to your own
+   email so your account stays Pro. Switch to `PAYWALL=on` later once Stripe is ready.
 6. Test with Stripe's test card `4242 4242 4242 4242` (any future date, any CVC). Check that the account becomes
    Pro, that Manage subscription opens, and that cancelling returns it to free.
 7. To go live: repeat steps 1 to 4 in **Live mode** with live keys, and swap the three values. The Users tab shows

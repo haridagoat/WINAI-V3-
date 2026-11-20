@@ -5655,8 +5655,11 @@ function billingStatus() {
   if (!STRIPE_KEY) missing.push('STRIPE_SECRET_KEY');
   if (!STRIPE_WEBHOOK_SECRET) missing.push('STRIPE_WEBHOOK_SECRET');
   if (!STRIPE_PRICE) missing.push('STRIPE_PRICE_ID');
-  const requested = process.env.PAYWALL === 'on';
-  return { requested, configured: !missing.length, missing, on: requested && !missing.length && authStatus().enabled && (authStatus().methods.mail || !CONFIRM_REQUIRED),
+  // PAYWALL=lock: the free/Pro limits apply but there is no checkout yet. Pro is given by hand (admin Users tab). Needs no Stripe.
+  const lockOnly = process.env.PAYWALL === 'lock';
+  const requested = process.env.PAYWALL === 'on' || lockOnly;
+  const authOk = authStatus().enabled && (authStatus().methods.mail || !CONFIRM_REQUIRED);
+  return { requested, lockOnly, configured: !missing.length, missing, on: requested && (lockOnly || !missing.length) && authOk,
     mode: STRIPE_KEY ? (/^(sk|rk)_test_/.test(STRIPE_KEY) ? 'test' : 'live') : null, lastWebhookAt: store.getMeta('stripe:last_event_at') };
 }
 const paywallOn = () => billingStatus().on;
@@ -5781,13 +5784,13 @@ async function currentPrice() {
 }
 app.get('/api/billing/plans', async (req, res) => {
   res.set('Cache-Control', 'no-store');
-  const on = paywallOn();
-  const price = on ? await currentPrice() : null;
-  res.json({ paywall: on, price: price ? { label: billingLib.priceLabel(price), interval: price.recurring?.interval || null } : null, freeDailyAnalyses: FREE_DAILY_ANALYSES, proDailyAnalyses: PRO_DAILY_ANALYSES, maxProps: USER_MAX_PROPS });
+  const on = paywallOn(), lockOnly = billingStatus().lockOnly;
+  const price = on && !lockOnly ? await currentPrice() : null;
+  res.json({ paywall: on, lockOnly, price: price ? { label: billingLib.priceLabel(price), interval: price.recurring?.interval || null } : null, freeDailyAnalyses: FREE_DAILY_ANALYSES, proDailyAnalyses: PRO_DAILY_ANALYSES, maxProps: USER_MAX_PROPS });
 });
 const checkoutLimiter = security.createRateLimiter({ windowMs: 15 * 60 * 1000, max: 10, message: 'Too many attempts. Try again in a few minutes.' });
 app.post('/api/billing/checkout', requireUser, checkoutLimiter, async (req, res) => {
-  if (!paywallOn() || !stripe) return res.status(503).json({ error: 'Payments are not turned on yet.' });
+  if (!paywallOn() || !stripe || billingStatus().lockOnly) return res.status(503).json({ error: 'Pro is invitation-only for now. Payments are not open yet.' });
   const base = returnBase(req);
   if (!base) return res.status(503).json({ error: 'The site address is not set up for payments yet.' });
   const info = planFor(req);
@@ -6617,7 +6620,7 @@ app.get('/api/admin/users', requireAdmin, (req, res) => {
       signInsBlocked24h: authBlocks.filter(x => x > day).length,
     },
     users: users.map(u => ({ id: u.id, email: maskEmail(u.email), joined: u.created_at, lastSeen: u.last_seen, props: u.props, disabled: !!u.disabled, confirmed: !!u.email_verified_at, ...planOf(u) })),
-    billing: { ...(({ requested, configured, missing, on, mode, lastWebhookAt }) => ({ requested, configured, missing, on, mode, lastWebhookAt }))(billingStatus()), plans: planTotals(users) },
+    billing: { ...(({ requested, lockOnly, configured, missing, on, mode, lastWebhookAt }) => ({ requested, lockOnly, configured, missing, on, mode, lastWebhookAt }))(billingStatus()), plans: planTotals(users) },
   });
 });
 app.post('/api/admin/users/:id/:action(disable|enable|comp|uncomp)', requireAdmin, (req, res) => {
