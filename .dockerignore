@@ -1,0 +1,17 @@
+node_modules
+.git
+.env
+.env.*
+!.env.example
+.claude
+.github
+backups
+lab_data
+season_raw
+winai.db*
+*.bak
+test_results.json
+.DS_Store
+__pycache__
+GitKit-FarmData2
+public/_preview

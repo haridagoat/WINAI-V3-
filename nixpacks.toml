@@ -1,2 +1,0 @@
-# Build both runtimes: Node runs the site, Python runs the stats scripts the server starts each morning.
-providers = ["node", "python"]
