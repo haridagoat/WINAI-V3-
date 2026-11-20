@@ -228,6 +228,10 @@
   .tg-ghost.hatch{background:repeating-linear-gradient(135deg,rgba(74,163,255,.28) 0 3px,rgba(74,163,255,.07) 3px 8px);border:1px dashed rgba(74,163,255,.5);border-bottom:0;}
   .tg-solid{width:100%;background:var(--tgb);border-radius:4px 4px 0 0;min-height:2px;}
   .tg-col.avg .tg-ghost{background:transparent;border:1px dashed var(--muted);border-bottom:0;}
+  .tg-zbar{width:100%;max-width:56px;background:var(--tgb);border-radius:4px 4px 0 0;position:relative;min-height:3px;}
+  .tg-col.avg .tg-zbar{background:var(--tgb-d);outline:1px dashed var(--muted);outline-offset:-1px;}
+  .tg-ref span{position:absolute;left:0;top:-18px;font-size:11.5px;color:var(--muted2);background:var(--surface);padding:0 6px;border-radius:3px;}
+  .tg-legend .d{background:transparent;border:0;border-top:2px dashed var(--muted2);height:0;width:16px;vertical-align:4px;border-radius:0;}
   .tg-col.avg .tg-solid{background:var(--tgb-d);}
   .tg-col.na .tg-ghost{height:42%!important;background:transparent;border:1px dashed var(--border2);}
   .tg-val{position:absolute;bottom:100%;margin-bottom:5px;left:50%;transform:translateX(-50%);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;color:var(--text);font-weight:600;white-space:nowrap;}
@@ -3316,21 +3320,29 @@ function tgAstModel(log, n, propType, line, side, ctx) {
     if (side === 'under') read = `At his <b>${conv}%</b> conversion, the under ${L} holds if he gets fewer than about <b>${Math.round(needed)} potential assists</b>. He averages <b>${tgR1(pot)}</b>, so he would need to run ${cushion > 0 ? `about <b>${tgR1(cushion)}</b> below` : 'at or below'} his average.`;
     else read = `At his <b>${conv}%</b> conversion, clearing ${L} takes about <b>${Math.round(needed)} potential assists</b>. He's averaging <b>${tgR1(pot)}</b>, so the cushion is ${cushion >= 2.5 ? `about <b>${Math.round(cushion)} passes</b>. Comfortable if his volume holds.` : cushion >= 0.5 ? `roughly <b>${cushion >= 1.5 ? 'two passes' : 'one pass'}</b>. Thin edge: this one leans on volume holding up.` : `<b>none</b>: he needs an above-average night of passing or a better conversion.`}`;
   }
-  return { bars, pot: tgR1(pot), conv, avgAst, seasonAst: isFinite(seasonAst) ? tgR1(seasonAst) : null, read };
+  // The axis fits his actual games instead of starting at zero, so a 7 and an 11 look as different as they are. It still reaches the
+  // season potential so the dashed line is on the chart. lo is what the axis starts at (0 means it is not zoomed).
+  const vals = games.map(g => g.ast).concat(isFinite(seasonAst) ? [seasonAst] : []);
+  const minA = Math.min(...vals), maxA = Math.max(...vals);
+  const lo = vals.length ? Math.max(0, Math.floor(maxA > minA ? minA - 0.4 * (maxA - minA) : minA * 0.7)) : 0;
+  const hi = Math.max(lo + 1, Math.ceil(Math.max(pot * 1.05, maxA + 1)));
+  return { bars, pot: tgR1(pot), conv, avgAst, seasonAst: isFinite(seasonAst) ? tgR1(seasonAst) : null, read, axis: { lo, hi } };
 }
 // bars -> the chart: faint full bar (outer) with the solid part (inner) inside it, the label over each bar, the opponent and a hit/miss-coloured % under it.
 function tgChart(bars, avgBar, opts) {
   const all = bars.concat(avgBar ? [avgBar] : []);
+  const z = opts.zoom;                                                                   // { lo, hi, ref, refLabel }: single bars on a zoomed axis
   const max = Math.max(1, ...all.map(b => b.outer || 0)) * 1.2;
-  const h = v => (Math.max(0, v) / max * 100).toFixed(1);
-  const col = b => {
+  const h = z ? (v => (Math.min(1, Math.max(0, (v - z.lo) / (z.hi - z.lo))) * 100).toFixed(1)) : (v => (Math.max(0, v) / max * 100).toFixed(1));
+  const col = z ? (b => `<div class="tg-col ${b.avg ? 'avg' : ''}" title="${escapeHtml(b.avg ? opts.avgTip : `${b.g.date} ${b.g.home ? 'vs' : '@'} ${b.g.opp}, ${Math.round(b.g.min)} min: ${opts.tip(b.g)}`)}"><div class="tg-zbar" style="height:${h(b.inner)}%"><span class="tg-val">${b.avg ? b.label : opts.label(b)}</span></div></div>`) : (b => {
     if (b.avg) return `<div class="tg-col avg" title="${escapeHtml(opts.avgTip)}"><div class="tg-ghost" style="height:${h(b.outer)}%"><span class="tg-val">${b.label}</span><div class="tg-solid" style="height:${b.outer ? (b.inner / b.outer * 100).toFixed(1) : 0}%"></div></div></div>`;
     if (!b.ok) return `<div class="tg-col na" title="${escapeHtml(b.g.date + ' ' + (b.g.home ? 'vs' : '@') + ' ' + b.g.opp + ': nba.com has no tracking numbers for this game yet')}"><div class="tg-ghost"><span class="tg-val">n/a</span></div></div>`;
     return `<div class="tg-col" title="${escapeHtml(`${b.g.date} ${b.g.home ? 'vs' : '@'} ${b.g.opp}, ${Math.round(b.g.min)} min: ${opts.tip(b.g)}`)}"><div class="tg-ghost ${opts.hatch ? 'hatch' : ''}" style="height:${h(b.outer)}%"><span class="tg-val">${opts.label(b)}</span><div class="tg-solid" style="height:${b.outer ? (b.inner / b.outer * 100).toFixed(1) : 0}%"></div></div></div>`;
-  };
+  });
   const x = b => b.avg ? `<div class="tg-x avg">${escapeHtml(opts.avgName)}<em>${b.pct != null ? Math.round(b.pct) + '%' : ''}</em></div>`
     : `<div class="tg-x">${b.g.home ? '' : '@'}${escapeHtml(b.g.opp || '')}<em class="${!b.ok ? '' : b.hit === true ? 'hit' : b.hit === false ? 'miss' : ''}">${b.ok && b.pct != null ? Math.round(b.pct) + '%' : '–'}</em></div>`;
-  return `<div class="tg-scroll"><div class="tg-plot" style="--n:${all.length}"><div class="tg-bars" role="img" aria-label="Game by game">${all.map(col).join('')}</div><div class="tg-xs">${all.map(x).join('')}</div></div></div>`;
+  const refEl = z && z.ref ? `<div class="tg-ref" style="bottom:${h(z.ref)}%"><span>${escapeHtml(z.refLabel)}</span></div>` : '';
+  return `<div class="tg-scroll"><div class="tg-plot" style="--n:${all.length}"><div class="tg-bars" role="img" aria-label="Game by game">${refEl}${all.map(col).join('')}</div><div class="tg-xs">${all.map(x).join('')}</div></div></div>`;
 }
 function tgRebCard(st) {
   const m = tgRebModel(st.log, st.n, st.propType, st.line, st.side);
@@ -3344,10 +3356,10 @@ function tgRebCard(st) {
 function tgAstCard(st) {
   const m = tgAstModel(st.log, st.n, st.propType, st.line, st.side, st.ctx);
   if (!m) return '<div class="tg-none">Potential assists are not available for this player yet.</div>';
-  const avgBar = { avg: true, outer: m.pot, inner: m.seasonAst ?? 0, pct: m.conv, label: `${m.seasonAst ?? '–'}<small>/${m.pot}</small>` };
+  const avgBar = { avg: true, outer: m.pot, inner: m.seasonAst ?? 0, pct: m.conv, label: `${m.seasonAst ?? '–'}` };
   return `<div class="tg-stats"><div class="tg-stat"><b>${m.pot}</b><span>Potential / game · season</span></div><div class="tg-stat"><b>${m.conv != null ? m.conv + '%' : '–'}</b><span>Converted · season</span></div><div class="tg-stat"><b>${m.avgAst ?? '–'}</b><span>Assists / game · last ${m.bars.length}</span></div></div>
-    ${tgChart(m.bars, avgBar, { hatch: true, label: b => `${b.inner}`, tip: g => `${g.ast} assists against his ${m.pot} potential-assist average (${TG_PCT(g.ast, m.pot)}%)`, avgName: 'SZN', avgTip: `Season average: ${m.seasonAst} assists on ${m.pot} potential assists` })}
-    <div class="tg-legend"><span><span><i class="h"></i>Potential assists (season avg)</span><span><i class="s"></i>Assists converted</span></span><span class="r">% = assists ÷ his season potential${m.bars.some(b => b.hit != null) ? ', green/red = prop hit/miss' : ''}</span></div>
+    ${tgChart(m.bars, avgBar, { zoom: { lo: m.axis.lo, hi: m.axis.hi, ref: m.pot, refLabel: `potential assists, season avg ${m.pot}` }, label: b => `${b.inner}`, tip: g => `${g.ast} assists against his ${m.pot} potential-assist average (${TG_PCT(g.ast, m.pot)}%)`, avgName: 'SZN', avgTip: `Season average: ${m.seasonAst} assists on ${m.pot} potential assists` })}
+    <div class="tg-legend"><span><span><i class="s"></i>Assists converted</span><span><i class="d"></i>Potential assists (season avg)</span></span><span class="r">% = assists ÷ his season potential${m.bars.some(b => b.hit != null) ? ', green/red = prop hit/miss' : ''}${m.axis.lo > 0 ? ` · axis starts at ${m.axis.lo}` : ''}</span></div>
     ${m.read ? `<div class="tg-read"><b>READ</b><p>${m.read}</p></div>` : ''}
     <p class="tg-note">nba.com publishes potential assists (passes that would have been assists if the shot went in) only as a season average, so each game's assists are measured against it. It is a guide to how much he has to work with, not a count for that game.</p>`;
 }

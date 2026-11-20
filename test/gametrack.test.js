@@ -91,6 +91,9 @@ test('assist card model: bars are measured against the season potential average,
   const m = P.tgAstModel(log, 10, 'assists', 8.5, 'over', ctx);
   assert.equal(m.pot, 15.2); assert.equal(m.conv, 60.9); assert.equal(m.avgAst, 9); assert.deepEqual(m.bars.map(b => b.inner), [9, 8, 10]);
   assert.deepEqual(m.bars.map(b => b.hit), [true, false, true]);
+  assert.deepEqual(m.axis, { lo: 7, hi: 16 }, 'the axis fits his games (8 to 10) and still reaches the 15.2 potential line');
+  const wide = P.tgAstModel({ games: [gm('d3', 5, 10, 11), gm('d2', 5, 10, 5), gm('d1', 5, 10, 7)] }, 10, 'assists', 8.5, 'over', ctx).axis; assert.deepEqual(wide, { lo: 2, hi: 16 });
+  assert.deepEqual(P.tgAstModel({ games: [gm('d1', 5, 10, 0)] }, 10, 'assists', 8.5, 'over', { playerTracking: { passing: { POTENTIAL_AST: 2, AST: 1 } } }).axis, { lo: 0, hi: 3 }, 'never below zero');
   assert.match(m.read, /At his <b>60\.9%<\/b> conversion, clearing 8\.5 takes about <b>14 potential assists<\/b>[\s\S]*<b>15\.2<\/b>[\s\S]*roughly <b>one pass<\/b>[\s\S]*Thin edge/);
   assert.match(P.tgAstModel(log, 10, 'assists', 4.5, 'over', ctx).read, /Comfortable/); assert.match(P.tgAstModel(log, 10, 'assists', 11.5, 'over', ctx).read, /<b>none<\/b>/);
   assert.match(P.tgAstModel(log, 10, 'assists', 8.5, 'under', ctx).read, /under 8\.5 holds if he gets fewer than about <b>14 potential assists/);
@@ -113,4 +116,16 @@ test('the page: one blue for both cards, only the stat the prop is about (nothin
   assert.match(html, /tgCache\[player\] \|\| \(tgCache\[player\] = fetch\('\/api\/tracklog\?n=20&name='/); assert.match(html, /new IntersectionObserver/);
   assert.match(html, /renderTrackGraphs\(league, player, propType, ctx, line, isUnderSide \? 'under' : 'over'\)/);
   assert.ok(!/window\._tgCtx/.test(html));
+});
+
+test('zoomed bars: height follows the number on the zoomed axis, the potential line sits on it, and nothing leaves the chart', () => {
+  const P = page(); const ctx = { playerTracking: { passing: { POTENTIAL_AST: 15, AST: 9 } } };
+  const log = { games: [gm('d3', 5, 10, 12), gm('d2', 5, 10, 8), gm('d1', 5, 10, 4)] };
+  const m = P.tgAstModel(log, 10, 'assists', 8.5, 'over', ctx);               // assists 4, 8, 12 and season 9: axis 0 to 16
+  const out = P.tgChart(m.bars, { avg: true, outer: m.pot, inner: m.seasonAst, pct: m.conv, label: '9' }, { zoom: { lo: m.axis.lo, hi: m.axis.hi, ref: m.pot, refLabel: 'potential assists, season avg 15' }, label: b => `${b.inner}`, tip: () => 't', avgName: 'SZN', avgTip: 'a' });
+  const heights = [...out.matchAll(/tg-zbar" style="height:([\d.]+)%/g)].map(x => +x[1]);
+  assert.equal(m.axis.lo, 0); assert.equal(m.axis.hi, 16);
+  assert.deepEqual(heights, [25, 50, 75, 56.3], '4, 8, 12 and the season 9 on a 0 to 16 axis, oldest first');
+  assert.match(out, /tg-ref" style="bottom:93\.[78]%"/); assert.ok(!/tg-ghost/.test(out), 'no equal-height hatched bars any more');
+  assert.ok(heights.every(h => h >= 0 && h <= 100));
 });
