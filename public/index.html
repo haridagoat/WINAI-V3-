@@ -209,6 +209,27 @@
   .ev-chip.neg{color:var(--red);border-color:rgba(255,93,93,0.35);}
 
 
+  /* Confidence + recommendation under the header, only when the page is one column (see v2ConfBar) */
+  .v2-cbar{display:none;margin:0 0 14px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;}
+  .v2-cbar.strong{border-color:rgba(76,180,126,.45);} .v2-cbar.thin{border-color:rgba(255,93,93,.35);}
+  .v2-cbar-top{display:flex;align-items:center;gap:14px;}
+  .v2-cbar-num{font-family:var(--display);font-weight:800;font-size:44px;line-height:1;letter-spacing:.01em;font-variant-numeric:tabular-nums;}
+  .v2-cbar-num small{font-size:20px;color:var(--muted2);margin-left:2px;}
+  .v2-cbar-mid{flex:1 1 0;min-width:0;}
+  .v2-cbar-lbl{font-family:var(--label);font-weight:700;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted2);}
+  .v2-cbar-lbl b{margin-left:6px;} .v2-cbar-lbl b.strong{color:var(--pos);} .v2-cbar-lbl b.thin{color:var(--neg);} .v2-cbar-lbl b.lean{color:var(--text);}
+  .v2-cbar-track{position:relative;height:8px;margin-top:9px;border-radius:99px;background:var(--surface3);overflow:hidden;}
+  .v2-cbar-track i{position:absolute;left:0;top:0;bottom:0;background:var(--viz);border-radius:99px;}
+  .v2-cbar-track u{position:absolute;top:0;bottom:0;width:2px;background:var(--surface);text-decoration:none;}
+  .v2-cbar-bot{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);}
+  .v2-cbar-rec b{display:block;font-family:var(--display);font-weight:800;font-size:22px;letter-spacing:.04em;line-height:1.1;}
+  .v2-cbar-rec.over b{color:var(--pos);} .v2-cbar-rec.under b{color:var(--neg);}
+  .v2-cbar-rec span{display:block;font-size:12.5px;color:var(--muted);margin-top:2px;}
+  .v2-cbar-more{font-family:var(--label);font-weight:700;font-size:12.5px;letter-spacing:.1em;text-transform:uppercase;min-height:44px;padding:0 16px;border-radius:10px;border:1px solid var(--border2);background:var(--surface2);color:var(--text);cursor:pointer;}
+  .v2-cbar-more:focus-visible{outline:2px solid var(--muted2);outline-offset:2px;}
+  @media(max-width:1150px){.v2-cbar{display:block;}}
+  @media(max-width:420px){.v2-cbar{padding:12px 14px;}.v2-cbar-num{font-size:38px;}}
+  .result-sidebar:focus{outline:none;}
   /* Rebound chances / potential assists, game by game (nba.com tracking). One card per stat, one blue for both. */
   .tg{--tgb:#4aa3ff;--tgb-d:#2c6db3;--tgb-g:rgba(74,163,255,.2);background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:22px;margin-bottom:14px;font-variant-numeric:tabular-nums;}
   .tg-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap;}
@@ -3491,6 +3512,33 @@ function v2Gauge(confidence) {
   </svg>`;
 }
 
+// A compact confidence + recommendation bar for when the page is one column (phones, tablets): there the sidebar with the full gauge, the
+// recommendation and the factors lands below every chart, so the headline numbers are repeated right under the player header.
+// Hidden on wide screens (the sidebar is beside the page there). The button scrolls to the full breakdown.
+function v2ConfBar(confidence, vc, line, edge, propType) {
+  const c = Math.max(0, Math.min(100, Number(confidence) || 0));
+  const tier = c >= 75 ? 'strong' : c >= 55 ? 'lean' : 'thin';
+  const sideCls = vc === 'over' || vc === 'lean-over' ? 'over' : vc === 'under' || vc === 'lean-under' ? 'under' : 'pass';
+  const word = { over: 'OVER', 'lean-over': 'LEAN OVER', under: 'UNDER', 'lean-under': 'LEAN UNDER', pass: 'PASS' }[vc] || 'PASS';
+  const e = Number(edge);
+  return `<div class="v2-cbar ${tier}" role="group" aria-label="Confidence ${fmtConf(c)} percent, ${tier}. Recommendation ${word}${vc === 'pass' ? '' : ' ' + escapeHtml(String(line))}">
+    <div class="v2-cbar-top">
+      <div class="v2-cbar-num">${fmtConf(c)}<small>%</small></div>
+      <div class="v2-cbar-mid"><div class="v2-cbar-lbl">Confidence <b class="${tier}">${tier.toUpperCase()}</b></div>
+        <div class="v2-cbar-track" aria-hidden="true"><i style="width:${c.toFixed(1)}%"></i><u style="left:55%"></u><u style="left:75%"></u></div></div>
+    </div>
+    <div class="v2-cbar-bot">
+      <div class="v2-cbar-rec ${sideCls}"><b>${word}${vc === 'pass' ? '' : ' ' + escapeHtml(String(line))}</b>${isFinite(e) ? `<span>${e > 0 ? '+' : ''}${e} vs line</span>` : ''}</div>
+      <button type="button" class="v2-cbar-more" onclick="v2JumpToWhy(this)">See why <span aria-hidden="true">↓</span></button>
+    </div>
+  </div>`;
+}
+function v2JumpToWhy(btn) {
+  const side = btn.closest('.result-shell')?.querySelector('.result-sidebar'); if (!side) return;
+  side.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+  side.setAttribute('tabindex', '-1'); side.focus({ preventScroll: true });          // keyboard and screen reader users land on it too
+}
+
 function v2Sidebar(ctx, facts, edge, projection, line, propType, verdict, vc, confidence) {
   const cb = ctx?.mathProjection?.confidenceBreakdown;
   const parts = cb ? [['Consistency', cb.consistency], ['Minutes', cb.minutes], ['Sample depth', cb.depth], ['Data coverage', cb.coverage], ['Situation', cb.situation]] : [];
@@ -3887,6 +3935,7 @@ function renderResult(raw, player, opp, propType, line, ctx, precomputedVerdict,
     <div class="result-shell">
       <div class="result-main-col">
         ${v2Header(ctx, player, opp, propType, line, projection, edge, league, playerId)}
+        ${v2ConfBar(confidence, vc, line, edge, propType)}
         <div class="result-toptabs" id="result-toptabs-${league}" role="tablist" aria-label="Result sections">
           ${tabDefs.map(([k,label],i) => `<div class="result-toptab ${i===0?'active':''}" data-key="${k}" aria-selected="${i===0}" onclick="switchResultTab('${league}','${k}')">${label}</div>`).join('')}
         </div>

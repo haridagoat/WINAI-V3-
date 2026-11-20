@@ -125,3 +125,19 @@ test('player result: potential assists show for assist props and rebound chances
   assert.deepEqual(f({}, 'assists'), []); assert.deepEqual(f({ playerTracking: { passing: { POTENTIAL_AST: 0, AST: 0 } } }, 'assists'), [], 'no zero or missing numbers shown');
   assert.match(html, /\.\.\.v2TrackingChips\(ctx, propType\)/);
 });
+
+test('one-column pages: the confidence and recommendation are repeated under the player header, with the tier, and hidden when the sidebar is beside the page', () => {
+  const src = html.match(/function v2ConfBar\(confidence, vc, line, edge, propType\) \{[\s\S]*?\n\}\n/)[0];
+  const f = new Function('fmtConf', 'escapeHtml', src + '; return v2ConfBar;')(c => (Math.round(c * 10) / 10).toFixed(1), s => String(s));
+  const strong = f(84.5, 'over', 8.5, 2.9, 'rebounds'), lean = f(62, 'lean-under', 24.5, -1.2, 'points'), thin = f(40, 'pass', 20.5, 0.1, 'points');
+  assert.match(strong, /class="v2-cbar strong"/); assert.match(strong, /84\.5<small>%<\/small>/); assert.match(strong, /<b class="strong">STRONG<\/b>/); assert.match(strong, /OVER 8\.5/); assert.match(strong, /\+2\.9 vs line/);
+  assert.match(lean, /class="v2-cbar lean"/); assert.match(lean, /LEAN UNDER 24\.5/); assert.match(lean, /-1\.2 vs line/); assert.match(lean, /v2-cbar-rec under/);
+  assert.match(thin, /class="v2-cbar thin"/); assert.match(thin, /<b>PASS<\/b>/, 'a pass has no line after it');
+  assert.match(strong, /role="group" aria-label="Confidence 84\.5 percent, strong\. Recommendation OVER 8\.5"/);
+  assert.match(strong, /<button type="button" class="v2-cbar-more" onclick="v2JumpToWhy\(this\)">See why/);
+  assert.ok(f(150, 'over', 1, 0, 'points').includes('width:100.0%') && f(-5, 'over', 1, 0, 'points').includes('width:0.0%'), 'the bar never leaves its track');
+  assert.ok(html.indexOf('${v2Header(ctx, player, opp, propType, line, projection, edge, league, playerId)}\n        ${v2ConfBar(') > 0, 'it sits right under the header, before the tabs');
+  assert.match(html, /\.v2-cbar\{display:none;/); assert.match(html, /@media\(max-width:1150px\)\{\.v2-cbar\{display:block;\}\}/, 'shown exactly when the sidebar stacks under the page');
+  assert.match(html, /@media\(max-width:1150px\)\{\.result-shell\{grid-template-columns:1fr;\}/);
+  assert.match(html, /\.v2-cbar-more\{[^}]*min-height:44px/); assert.match(html, /side\.setAttribute\('tabindex', '-1'\); side\.focus\(\{ preventScroll: true \}\)/);
+});
