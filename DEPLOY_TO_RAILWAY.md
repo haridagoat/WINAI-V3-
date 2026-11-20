@@ -227,6 +227,8 @@ nba.com refuses most cloud hosts, so the live site cannot fetch its own stats (t
 2. On your computer, in this folder: `python3 fetch_stats.py` (and `python3 fetch_wnba_stats.py` in the WNBA season).
 3. Send them: `node scripts/push-stats.js https://YOUR-SITE.up.railway.app`. It reads `ADMIN_TOKEN` from `.env` and never prints it.
 
+**Automatic (macOS):** a scheduled job `com.winai.daily-stats` (in `~/Library/LaunchAgents`) opens Terminal at 8:15 AM every day and runs `scripts/daily-stats.sh`, which does steps 2 and 3. If the Mac was asleep at 8:15 it runs when it wakes. It needs `LIVE_SITE_URL` in `.env`. Results are in `~/Library/Logs/winai-stats.log`. A plain background job cannot read the Downloads folder (macOS privacy), which is why it goes through Terminal. To stop it: `launchctl bootout gui/$(id -u)/com.winai.daily-stats`.
+
 The files are kept on the Volume (next to the database) and put back at every start, so a deploy does not lose them. Do steps 2 and 3 once a day, before the 10 AM scan. If you later turn on the admin 2FA code, this script needs a small change; tell Claude.
 
 ## NBA stats: this season, blended with last season
