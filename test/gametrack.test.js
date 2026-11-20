@@ -125,17 +125,17 @@ test('every bar shows both numbers: the actual inside the solid part, the potent
   const out = P.tgChart(m.bars, { avg: true, outer: m.pot, inner: m.seasonAst, pct: m.conv }, { hatch: true, zoom: m.axis, tip: () => 't', avgName: 'SZN', avgTip: 'a' });
   const solids = [...out.matchAll(/tg-solid" style="height:([\d.]+)%"><span class="tg-in">([\d.]+)<\/span>/g)].map(x => [+x[1], +x[2]]);
   assert.deepEqual(solids, [[26.7, 4], [53.3, 8], [80, 12], [60, 9]], 'actual / potential on the axis, with the actual number written inside');
-  assert.equal((out.match(/<span class="tg-of">of 15<\/span>/g) || []).length, 4, 'the potential is written above every bar, the season bar included');
+  assert.equal((out.match(/<span class="tg-of"><i>of <\/i>15<\/span>/g) || []).length, 4, 'the potential is written above every bar, the season bar included');
   assert.equal((out.match(/tg-ghost hatch" style="height:93\.[78]%"/g) || []).length, 3, 'the potential bar reaches the same potential on every game');
   // a tight spread zooms the axis: 8, 9, 10 against a 15.2 potential on an axis starting at 7
   const z = P.tgAstModel({ games: [gm('d3', 5, 10, 10), gm('d2', 5, 10, 9), gm('d1', 5, 10, 8)] }, 10, 'assists', 8.5, 'over', { playerTracking: { passing: { POTENTIAL_AST: 15.2, AST: 9.2 } } });
   assert.deepEqual(z.axis, { lo: 7, hi: 16 });
   const out2 = P.tgChart(z.bars, null, { hatch: true, zoom: z.axis, tip: () => 't', avgName: 'SZN', avgTip: 'a' });
-  assert.match(out2, /tg-ghost hatch" style="height:91\.1%"><span class="tg-of">of 15\.2<\/span><div class="tg-solid" style="height:12\.2%"><span class="tg-in">8<\/span>/);
+  assert.match(out2, /tg-ghost hatch" style="height:91\.1%"><span class="tg-of"><i>of <\/i>15\.2<\/span><div class="tg-solid" style="height:12\.2%"><span class="tg-in">8<\/span>/);
   assert.match(out2, /tg-solid" style="height:24\.4%"><span class="tg-in">9<\/span>/); assert.match(out2, /tg-solid" style="height:36\.6%"><span class="tg-in">10<\/span>/);
   // rebounds keep their own full bar per game
   const r = P.tgRebModel(rebLog, 10, 'rebounds', 8.5, 'over'); const rout = P.tgChart(r.bars, { avg: true, outer: r.avg.chances, inner: r.avg.reb, pct: r.avg.pct }, { tip: () => 't', avgName: 'AVG', avgTip: 'a' });
-  assert.match(rout, /<span class="tg-of">of 22<\/span><div class="tg-solid" style="height:72\.7%"><span class="tg-in">16<\/span>/);
+  assert.match(rout, /<span class="tg-of"><i>of <\/i>22<\/span><div class="tg-solid" style="height:72\.7%"><span class="tg-in">16<\/span>/);
 });
 
 test('the page: one blue for both cards, only the stat the prop is about (nothing for points), NBA only, loaded once per player and only when near the screen', () => {
@@ -146,4 +146,24 @@ test('the page: one blue for both cards, only the stat the prop is about (nothin
   assert.match(html, /tgCache\[player\] \|\| \(tgCache\[player\] = fetch\('\/api\/tracklog\?n=20&name='/); assert.match(html, /new IntersectionObserver/);
   assert.match(html, /renderTrackGraphs\(league, player, propType, ctx, line, isUnderSide \? 'under' : 'over'\)/);
   assert.ok(!/window\._tgCtx/.test(html));
+});
+
+test('accessibility: a keyboard-focusable scroll region, a real table of the same numbers for screen readers, a tap-for-details line, marks as well as colours, no page-widening hidden table', () => {
+  const P = page(); const m = P.tgRebModel(rebLog, 10, 'rebounds', 8.5, 'over');
+  const out = P.tgChart(m.bars, { avg: true, outer: m.avg.chances, inner: m.avg.reb, pct: m.avg.pct }, { caption: 'Rebounds and rebound chances, last 4 games', actualName: 'Rebounds', potentialName: 'Chances', tip: g => `${g.reb} on ${g.rebChances}`, avgName: 'AVG', avgTip: 'a' });
+  assert.match(out, /class="tg-scroll" tabindex="0" role="region" aria-label="Rebounds and rebound chances, last 4 games: chart, scroll sideways for more games"/);
+  assert.match(out, /class="tg-plot"[^>]*aria-hidden="true"/, 'the drawing is hidden from screen readers; the table speaks for it');
+  assert.match(out, /<div class="tg-sr"><table><caption>Rebounds and rebound chances/); assert.match(out, /<th scope="col">Rebounds<\/th><th scope="col">Chances<\/th>/);
+  assert.equal((out.match(/<tr><th scope="row">/g) || []).length, 5, 'one row per game, the one without numbers included');
+  assert.match(out, /<td>16<\/td><td>22<\/td><td>73%<\/td><td>cleared the line<\/td>/); assert.match(out, /<td>7<\/td><td>21<\/td><td>33%<\/td><td>missed the line<\/td>/); assert.match(out, /no tracking numbers yet/);
+  assert.match(out, /data-tip="[^"]+cleared the line"/, 'tap details say the verdict in words');
+  assert.match(out, /<p class="tg-detail" aria-hidden="true">Tap a bar/);
+  assert.match(html, /\.tg-x em\.hit::before\{content:"\\2713/); assert.match(html, /\.tg-x em\.miss::before\{content:"\\2715/);
+  assert.match(html, /\.tg-sr\{position:absolute;width:1px;height:1px;[^}]*clip-path:inset\(50%\)/); assert.match(html, /\.tg\{position:relative;overflow:hidden;\}/);
+  assert.match(html, /aria-label="Last \$\{n\} games" aria-pressed/);
+  assert.match(html, /\.tg-in\{[^}]*background:rgba\(5,14,26,\.86\)/, 'the number sits on a dark chip, readable on any background');
+  assert.match(html, /@media\(prefers-reduced-motion:reduce\)\{\.tg \*\{transition:none!important;animation:none!important;\}\}/);
+  for (const need of ['.tg-pill{min-height:44px;min-width:48px', '.tg-stats{grid-template-columns:minmax(0,1fr);}', '.tg-plot{min-width:calc(var(--n) * 46px);}', '.tg-of i{display:none;}']) assert.ok(html.includes(need), need);
+  const small = [...html.slice(html.indexOf('.tg{--tgb'), html.indexOf('/* Game log chart')).matchAll(/font-size:(\d+(?:\.\d+)?)px/g)].map(x => +x[1]);
+  assert.ok(small.length && Math.min(...small.filter(v => v > 0)) >= 10, 'no text below 10px even before the phone rules lift it');
 });
