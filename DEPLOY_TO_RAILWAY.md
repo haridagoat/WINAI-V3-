@@ -220,6 +220,11 @@ The admin page can read every account, so the admin token should not be its only
 
 If you lose the phone and the saved secret, remove `ADMIN_TOTP_SECRET` from the server and set up a new one. After this is on, scripts that call admin routes with only the token stop working; that is the point.
 
+**Your own upload scripts keep working:** put the same `ADMIN_TOTP_SECRET=...` line in this folder's `.env`. `scripts/push-stats.js`, `scripts/push-db.js` and the 8:15 AM job then work out the current code themselves (`scripts/admin-session.js`) and sign in. The secret never leaves this computer. Without that line in `.env` the daily stats upload stops with a message saying so.
+
+## Odds credit protection
+Besides the morning scan's own check, every Odds API call started by a visitor's page view is refused when the credits left are at or below `ODDS_PAGE_RESERVE` (default 30, kept for the scan), or when page views have already spent `ODDS_PAGE_DAILY_CAP` credits that day (default 200, above one NBA plus one WNBA scan). Scheduled jobs are not affected. A refused call makes the page fall back to what is cached, as it does when the quota runs out, and one note per reason per day appears in the admin log.
+
 ## Stats on Railway: upload them from your own computer
 nba.com refuses most cloud hosts, so the live site cannot fetch its own stats (the script ends without writing files, and the Data checks tab says "NBA stat files: Not found"). Your own computer can fetch them, so send them up:
 

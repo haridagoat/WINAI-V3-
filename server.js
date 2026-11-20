@@ -36,6 +36,7 @@ const finalsLib = require('./lib/finals');
 const statsUpload = require('./lib/statsupload');
 const espnGames = require('./lib/espngames');
 const dbSwap = require('./lib/dbswap');
+const oddsGuard = require('./lib/oddsguard');
 const biasLib = require('./lib/bias');
 modelParams.load();
 const { AsyncLocalStorage } = require('node:async_hooks');
@@ -308,6 +309,23 @@ function oddsCreditUse() {
   const today = toLocalDateStr(new Date());
   return { today: oddsUsageLib.summary(oddsUsageLog, today), days: oddsUsageLib.recent(oddsUsageLog, 7), dailyAverage: oddsUsageLib.dailyAverage(oddsUsageLog, today) };
 }
+// Before a call that costs credits and was started by a visitor's page view: refuse it when the credits are nearly gone or pages have
+// spent their daily share (lib/oddsguard.js). The page then falls back to what it has cached, as it does when the quota runs out.
+// ODDS_PAGE_RESERVE (default 30) and ODDS_PAGE_DAILY_CAP (default 200) set the limits; the free calls (the events list, /sports) are not counted.
+let oddsGuardNoted = '';
+axios.interceptors.request.use((config) => {
+  if (!config?.url?.includes('the-odds-api.com') || /\/sports\/?(\?|$)|\/events$/.test(config.url.split('?')[0])) return config;
+  const today = toLocalDateStr(new Date());
+  const d = oddsGuard.decide({ job: oddsJob.getStore(), remaining: oddsApiHealth.remaining, pageSpent: oddsGuard.pageSpentToday(oddsUsageLog, today),
+    reserve: envNum(process.env.ODDS_PAGE_RESERVE, 30), pageCap: envNum(process.env.ODDS_PAGE_DAILY_CAP, 200) });
+  if (d.allow) return config;
+  if (oddsGuardNoted !== today + d.reason.slice(0, 20)) {        // once per reason per day in the admin log, not once per refused call
+    oddsGuardNoted = today + d.reason.slice(0, 20);
+    try { store.addEvent('odds', 'warn', `A page view's Odds API call was refused: ${d.reason}.`); } catch (_) {}
+  }
+  const err = new Error(`Odds API call skipped: ${d.reason}`); err.code = 'ODDS_GUARD'; err.config = config;
+  return Promise.reject(err);
+});
 axios.interceptors.response.use(
   (response) => {
     if (response.config?.url?.includes('the-odds-api.com')) {

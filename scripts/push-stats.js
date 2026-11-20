@@ -8,6 +8,7 @@
 // Add --dry to only list what would be sent.
 const fs = require('fs'), path = require('path');
 const { isStatsFileName } = require('../lib/statsupload');
+const { adminHeaders } = require('./admin-session');
 
 const root = path.join(__dirname, '..');
 const args = process.argv.slice(2);
@@ -21,6 +22,7 @@ function readEnv() {
 }
 const env = readEnv();
 const token = process.env.ADMIN_TOKEN || env.ADMIN_TOKEN;
+const totpSecret = process.env.ADMIN_TOTP_SECRET || env.ADMIN_TOTP_SECRET || '';
 const target = site || (env.LIVE_SITE_URL || '').replace(/\/+$/, '');
 
 (async () => {
@@ -42,11 +44,12 @@ const target = site || (env.LIVE_SITE_URL || '').replace(/\/+$/, '');
   if (cur.length) batches.push(cur);
 
   let sent = 0;
+  const auth = await adminHeaders({ site: target, token, secret: totpSecret }).catch(e => { console.error(e.message); process.exit(1); });
   for (const [i, b] of batches.entries()) {
-    const res = await fetch(target + '/admin-upload/stats', { method: 'POST', headers: { 'x-admin-token': token, 'content-type': 'application/json' },
+    const res = await fetch(target + '/admin-upload/stats', { method: 'POST', headers: { ...auth, 'content-type': 'application/json' },
       body: JSON.stringify({ files: Object.fromEntries(b.map(f => [f.n, f.text])), mtimes: Object.fromEntries(b.map(f => [f.n, f.at])) }) }).catch(err => { console.error('Could not reach ' + target + ': ' + err.message); process.exit(1); });
     const j = await res.json().catch(() => ({}));
-    if (res.status === 401 && j.code === 'admin_2fa') { console.error('The live admin page now needs a 6-digit code, which this script cannot enter. Tell Claude and it will add that.'); process.exit(1); }
+    if (res.status === 401 && j.code === 'admin_2fa') { console.error('The live admin page needs a 6-digit code. Add ADMIN_TOTP_SECRET=<your secret> to this folder\'s .env (the same value as in Railway).'); process.exit(1); }
     if (res.status === 401) { console.error('The live site refused the admin token. ADMIN_TOKEN in Railway must match the one in this folder\'s .env.'); process.exit(1); }
     if (res.status === 404) { console.error('The live site does not have the upload route yet. It is still deploying the latest code; try again in a few minutes.'); process.exit(1); }
     if (!res.ok) { console.error(`Upload ${i + 1}/${batches.length} failed (${res.status}): ${j.error || 'unknown error'}`); process.exit(1); }

@@ -12,6 +12,7 @@
 const fs = require('fs'), os = require('os'), path = require('path'), zlib = require('zlib');
 const { DatabaseSync } = require('node:sqlite');
 const { checkDatabase } = require('../lib/dbswap');
+const { adminHeaders } = require('./admin-session');
 
 const root = path.join(__dirname, '..');
 const args = process.argv.slice(2);
@@ -19,6 +20,7 @@ const go = args.includes('--yes');
 const env = {};
 try { for (const l of fs.readFileSync(path.join(root, '.env'), 'utf8').split('\n')) { const m = l.match(/^([A-Z0-9_]+)=(.*)$/); if (m) env[m[1]] = m[2].trim().replace(/^["']|["']$/g, ''); } } catch (_) {}
 const token = process.env.ADMIN_TOKEN || env.ADMIN_TOKEN;
+const totpSecret = process.env.ADMIN_TOTP_SECRET || env.ADMIN_TOTP_SECRET || '';
 const site = (args.find(a => /^https?:\/\//.test(a)) || env.LIVE_SITE_URL || '').replace(/\/+$/, '');
 const src = path.resolve(process.env.WINAI_DB || path.join(root, 'winai.db'));
 const die = m => { console.error(m); process.exit(1); };
@@ -56,7 +58,8 @@ const die = m => { console.error(m); process.exit(1); };
     if (!go) { console.log('\nNothing was sent. To send it:  node scripts/push-db.js --yes'); return; }
 
     console.log(`\nSending to ${site} ...`);
-    const res = await fetch(site + '/admin-upload/db', { method: 'POST', headers: { 'x-admin-token': token, 'x-confirm-replace': 'replace-live-database', 'content-type': 'application/octet-stream' }, body: zipped })
+    const auth = await adminHeaders({ site, token, secret: totpSecret }).catch(e => die(e.message));
+    const res = await fetch(site + '/admin-upload/db', { method: 'POST', headers: { ...auth, 'x-confirm-replace': 'replace-live-database', 'content-type': 'application/octet-stream' }, body: zipped })
       .catch(e => die('Could not reach ' + site + ': ' + e.message));
     const j = await res.json().catch(() => ({}));
     if (res.status === 401) die('The live site refused the admin token (or needs the 6-digit code).');
