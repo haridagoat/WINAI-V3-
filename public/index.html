@@ -226,18 +226,12 @@
   .tg-col{flex:1 1 0;min-width:0;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;position:relative;}
   .tg-ghost{width:100%;max-width:56px;border-radius:5px 5px 0 0;background:var(--tgb-g);position:relative;display:flex;align-items:flex-end;}
   .tg-ghost.hatch{background:repeating-linear-gradient(135deg,rgba(74,163,255,.28) 0 3px,rgba(74,163,255,.07) 3px 8px);border:1px dashed rgba(74,163,255,.5);border-bottom:0;}
-  .tg-solid{width:100%;background:var(--tgb);border-radius:4px 4px 0 0;min-height:2px;}
+  .tg-solid{width:100%;background:var(--tgb);border-radius:4px 4px 0 0;min-height:2px;position:relative;}
   .tg-col.avg .tg-ghost{background:transparent;border:1px dashed var(--muted);border-bottom:0;}
-  .tg-zbar{width:100%;max-width:56px;background:var(--tgb);border-radius:4px 4px 0 0;position:relative;min-height:3px;}
-  .tg-col.avg .tg-zbar{background:var(--tgb-d);outline:1px dashed var(--muted);outline-offset:-1px;}
-  .tg-ref span{position:absolute;left:0;top:-18px;font-size:11.5px;color:var(--muted2);background:var(--surface);padding:0 6px;border-radius:3px;}
-  .tg-legend .d{background:transparent;border:0;border-top:2px dashed var(--muted2);height:0;width:16px;vertical-align:4px;border-radius:0;}
   .tg-col.avg .tg-solid{background:var(--tgb-d);}
   .tg-col.na .tg-ghost{height:42%!important;background:transparent;border:1px dashed var(--border2);}
-  .tg-val{position:absolute;bottom:100%;margin-bottom:5px;left:50%;transform:translateX(-50%);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;color:var(--text);font-weight:600;white-space:nowrap;}
-  .tg-val small{color:var(--muted);font-weight:500;font-size:inherit;}
-  .tg-col.na .tg-val{color:var(--muted);font-weight:500;}
-  .tg-ref{position:absolute;left:0;right:0;border-top:1px dashed var(--muted2);opacity:.8;pointer-events:none;}
+  .tg-of{position:absolute;bottom:100%;margin-bottom:5px;left:50%;transform:translateX(-50%);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;color:var(--muted);font-weight:500;white-space:nowrap;}
+  .tg-in{position:absolute;top:5px;left:0;right:0;text-align:center;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14px;font-weight:700;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.6);}
   .tg-xs{display:flex;gap:8px;margin-top:10px;}
   .tg-x{flex:1 1 0;min-width:0;text-align:center;font-size:12.5px;color:var(--muted2);line-height:1.5;white-space:nowrap;}
   .tg-x em{display:block;font-style:normal;font-weight:700;font-size:12.5px;color:var(--muted);}
@@ -253,7 +247,7 @@
   .tg-read p b{font-weight:700;} .tg-read p b.hit{color:var(--green);} .tg-read p b.miss{color:var(--red);}
   .tg-note{font-size:12px;color:var(--muted);margin-top:12px;line-height:1.5;}
   .tg-none{font-size:13.5px;color:var(--muted);padding:10px 0;}
-  @media(max-width:760px){.tg-plot{min-width:calc(var(--n) * 40px);}.tg{padding:16px;}.tg-title{font-size:24px;}.tg-stats{gap:8px;}.tg-stat{padding:11px 12px;}.tg-stat b{font-size:24px;}.tg-stat span{font-size:10px;letter-spacing:.08em;}.tg-bars{height:170px;gap:4px;}.tg-xs{gap:4px;}.tg-x{font-size:10px;}.tg-x em{font-size:10px;}.tg-val{font-size:10.5px;}.tg-pill{min-height:44px;padding:6px 14px;}}
+  @media(max-width:760px){.tg-plot{min-width:calc(var(--n) * 40px);}.tg{padding:16px;}.tg-title{font-size:24px;}.tg-stats{gap:8px;}.tg-stat{padding:11px 12px;}.tg-stat b{font-size:24px;}.tg-stat span{font-size:10px;letter-spacing:.08em;}.tg-bars{height:170px;gap:4px;}.tg-xs{gap:4px;}.tg-x{font-size:10px;}.tg-x em{font-size:10px;}.tg-of{font-size:10px;}.tg-in{font-size:12px;}.tg-pill{min-height:44px;padding:6px 14px;}}
   /* Game log chart — hit rate up front, movable line, colors = hit/miss for
      the selected side. Scoped under .gl2 so it can't touch other components. */
   .gl2{--surface3:#202024;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:14px;font-variant-numeric:tabular-nums;}
@@ -3294,7 +3288,7 @@ function tgRebModel(log, n, propType, line, side) {
   const avg = c ? { chances: tgR1(sumC / c), reb: tgR1(sumR / c), pct: TG_PCT(sumR, sumC) } : null;
   const hits = gs.filter(g => tgHit(g, keys, line, side) === true), miss = gs.filter(g => tgHit(g, keys, line, side) === false);
   let read = '';
-  if (avg && parseFloat(line) > 0) {
+  if (avg && parseFloat(line) > 0 && keys.length === 1) {                               // a combo line is not a rebound line: no sentence
     const L = parseFloat(line), word = side === 'under' ? 'under' : 'over';
     const mC = miss.length ? tgSum(miss, 'rebChances') / miss.length : null, hC = hits.length ? tgSum(hits, 'rebChances') / hits.length : null;
     const mP = miss.length ? TG_PCT(tgSum(miss, 'reb'), tgSum(miss, 'rebChances')) : null, hP = hits.length ? TG_PCT(tgSum(hits, 'reb'), tgSum(hits, 'rebChances')) : null;
@@ -3310,7 +3304,7 @@ function tgAstModel(log, n, propType, line, side, ctx) {
   const pot = parseFloat(pass && pass.POTENTIAL_AST), seasonAst = parseFloat(pass && pass.AST);
   if (!(pot > 0)) return null;
   const games = tgWindow(log.games, n);
-  const bars = games.map(g => ({ g, ok: true, outer: pot, inner: g.ast, pct: TG_PCT(g.ast, pot), hit: tgHit(g, keys, line, side) }));
+  const bars = games.map(g => ({ g, ok: true, outer: tgR1(pot), inner: g.ast, pct: TG_PCT(g.ast, pot), hit: tgHit(g, keys, line, side) }));
   const conv = isFinite(seasonAst) ? TG_PCT(seasonAst, pot) : null;
   const avgAst = games.length ? tgR1(tgSum(games, 'ast') / games.length) : null;
   let read = '';
@@ -3328,38 +3322,40 @@ function tgAstModel(log, n, propType, line, side, ctx) {
   const hi = Math.max(lo + 1, Math.ceil(Math.max(pot * 1.05, maxA + 1)));
   return { bars, pot: tgR1(pot), conv, avgAst, seasonAst: isFinite(seasonAst) ? tgR1(seasonAst) : null, read, axis: { lo, hi } };
 }
-// bars -> the chart: faint full bar (outer) with the solid part (inner) inside it, the label over each bar, the opponent and a hit/miss-coloured % under it.
+// bars -> the chart. Each game is a full bar for the potential (chances, or his potential-assist average) with the solid part inside it for what he
+// actually got: the actual number is written inside the solid part, the potential above the bar. The opponent and a hit/miss-coloured % sit under it.
+// opts.zoom { lo, hi } starts the axis at lo instead of zero (used for assists, so 7 and 11 look as different as they are).
 function tgChart(bars, avgBar, opts) {
   const all = bars.concat(avgBar ? [avgBar] : []);
-  const z = opts.zoom;                                                                   // { lo, hi, ref, refLabel }: single bars on a zoomed axis
+  const z = opts.zoom;
   const max = Math.max(1, ...all.map(b => b.outer || 0)) * 1.2;
-  const h = z ? (v => (Math.min(1, Math.max(0, (v - z.lo) / (z.hi - z.lo))) * 100).toFixed(1)) : (v => (Math.max(0, v) / max * 100).toFixed(1));
-  const col = z ? (b => `<div class="tg-col ${b.avg ? 'avg' : ''}" title="${escapeHtml(b.avg ? opts.avgTip : `${b.g.date} ${b.g.home ? 'vs' : '@'} ${b.g.opp}, ${Math.round(b.g.min)} min: ${opts.tip(b.g)}`)}"><div class="tg-zbar" style="height:${h(b.inner)}%"><span class="tg-val">${b.avg ? b.label : opts.label(b)}</span></div></div>`) : (b => {
-    if (b.avg) return `<div class="tg-col avg" title="${escapeHtml(opts.avgTip)}"><div class="tg-ghost" style="height:${h(b.outer)}%"><span class="tg-val">${b.label}</span><div class="tg-solid" style="height:${b.outer ? (b.inner / b.outer * 100).toFixed(1) : 0}%"></div></div></div>`;
-    if (!b.ok) return `<div class="tg-col na" title="${escapeHtml(b.g.date + ' ' + (b.g.home ? 'vs' : '@') + ' ' + b.g.opp + ': nba.com has no tracking numbers for this game yet')}"><div class="tg-ghost"><span class="tg-val">n/a</span></div></div>`;
-    return `<div class="tg-col" title="${escapeHtml(`${b.g.date} ${b.g.home ? 'vs' : '@'} ${b.g.opp}, ${Math.round(b.g.min)} min: ${opts.tip(b.g)}`)}"><div class="tg-ghost ${opts.hatch ? 'hatch' : ''}" style="height:${h(b.outer)}%"><span class="tg-val">${opts.label(b)}</span><div class="tg-solid" style="height:${b.outer ? (b.inner / b.outer * 100).toFixed(1) : 0}%"></div></div></div>`;
-  });
+  const h = z ? (v => Math.min(100, Math.max(0, (v - z.lo) / (z.hi - z.lo) * 100))) : (v => Math.max(0, v) / max * 100);
+  const col = b => {
+    if (!b.avg && !b.ok) return `<div class="tg-col na" title="${escapeHtml(b.g.date + ' ' + (b.g.home ? 'vs' : '@') + ' ' + b.g.opp + ': nba.com has no tracking numbers for this game yet')}"><div class="tg-ghost"><span class="tg-of">n/a</span></div></div>`;
+    const ho = h(b.outer), hn = h(b.inner), solid = ho > 0 ? Math.min(100, hn / ho * 100) : 0;
+    const tip = b.avg ? opts.avgTip : `${b.g.date} ${b.g.home ? 'vs' : '@'} ${b.g.opp}, ${Math.round(b.g.min)} min: ${opts.tip(b.g)}`;
+    return `<div class="tg-col ${b.avg ? 'avg' : ''}" title="${escapeHtml(tip)}"><div class="tg-ghost ${opts.hatch && !b.avg ? 'hatch' : ''}" style="height:${ho.toFixed(1)}%"><span class="tg-of">of ${b.outer}</span><div class="tg-solid" style="height:${solid.toFixed(1)}%"><span class="tg-in">${b.inner}</span></div></div></div>`;
+  };
   const x = b => b.avg ? `<div class="tg-x avg">${escapeHtml(opts.avgName)}<em>${b.pct != null ? Math.round(b.pct) + '%' : ''}</em></div>`
     : `<div class="tg-x">${b.g.home ? '' : '@'}${escapeHtml(b.g.opp || '')}<em class="${!b.ok ? '' : b.hit === true ? 'hit' : b.hit === false ? 'miss' : ''}">${b.ok && b.pct != null ? Math.round(b.pct) + '%' : '–'}</em></div>`;
-  const refEl = z && z.ref ? `<div class="tg-ref" style="bottom:${h(z.ref)}%"><span>${escapeHtml(z.refLabel)}</span></div>` : '';
-  return `<div class="tg-scroll"><div class="tg-plot" style="--n:${all.length}"><div class="tg-bars" role="img" aria-label="Game by game">${refEl}${all.map(col).join('')}</div><div class="tg-xs">${all.map(x).join('')}</div></div></div>`;
+  return `<div class="tg-scroll"><div class="tg-plot" style="--n:${all.length}"><div class="tg-bars" role="img" aria-label="Game by game">${all.map(col).join('')}</div><div class="tg-xs">${all.map(x).join('')}</div></div></div>`;
 }
 function tgRebCard(st) {
   const m = tgRebModel(st.log, st.n, st.propType, st.line, st.side);
   if (!m.avg) return '<div class="tg-none">nba.com has no tracking numbers for these games yet.</div>';
-  const avgBar = { avg: true, outer: m.avg.chances, inner: m.avg.reb, pct: m.avg.pct, label: `${m.avg.reb}<small>/${m.avg.chances}</small>` };
+  const avgBar = { avg: true, outer: m.avg.chances, inner: m.avg.reb, pct: m.avg.pct };
   return `<div class="tg-stats"><div class="tg-stat"><b>${m.avg.chances}</b><span>Chances / game</span></div><div class="tg-stat"><b>${m.avg.pct}%</b><span>Converted · last ${m.n}</span></div><div class="tg-stat"><b>${m.avg.reb}</b><span>Rebounds / game</span></div></div>
-    ${tgChart(m.bars, avgBar, { label: b => `${b.inner}<small>/${b.outer}</small>`, tip: g => `${g.reb} rebounds on ${g.rebChances} chances (${TG_PCT(g.reb, g.rebChances)}%): ${g.orebChances} offensive, ${g.drebChances} defensive chances`, avgName: 'AVG', avgTip: `Average over the ${m.n} games with tracking numbers` })}
+    ${tgChart(m.bars, avgBar, { tip: g => `${g.reb} rebounds on ${g.rebChances} chances (${TG_PCT(g.reb, g.rebChances)}%): ${g.orebChances} offensive, ${g.drebChances} defensive chances`, avgName: 'AVG', avgTip: `Average over the ${m.n} games with tracking numbers` })}
     <div class="tg-legend"><span><span><i class="g"></i>Chances</span><span><i class="s"></i>Rebounds grabbed</span></span><span class="r">% = conversion${m.bars.some(b => b.hit != null) ? ', green/red = prop hit/miss' : ''}</span></div>
     ${m.read ? `<div class="tg-read"><b>READ</b><p>${m.read}</p></div>` : ''}${m.gap ? `<p class="tg-note">${m.gap} of these ${m.bars.length} games have no tracking numbers yet.</p>` : ''}`;
 }
 function tgAstCard(st) {
   const m = tgAstModel(st.log, st.n, st.propType, st.line, st.side, st.ctx);
   if (!m) return '<div class="tg-none">Potential assists are not available for this player yet.</div>';
-  const avgBar = { avg: true, outer: m.pot, inner: m.seasonAst ?? 0, pct: m.conv, label: `${m.seasonAst ?? '–'}` };
+  const avgBar = { avg: true, outer: m.pot, inner: m.seasonAst ?? 0, pct: m.conv };
   return `<div class="tg-stats"><div class="tg-stat"><b>${m.pot}</b><span>Potential / game · season</span></div><div class="tg-stat"><b>${m.conv != null ? m.conv + '%' : '–'}</b><span>Converted · season</span></div><div class="tg-stat"><b>${m.avgAst ?? '–'}</b><span>Assists / game · last ${m.bars.length}</span></div></div>
-    ${tgChart(m.bars, avgBar, { zoom: { lo: m.axis.lo, hi: m.axis.hi, ref: m.pot, refLabel: `potential assists, season avg ${m.pot}` }, label: b => `${b.inner}`, tip: g => `${g.ast} assists against his ${m.pot} potential-assist average (${TG_PCT(g.ast, m.pot)}%)`, avgName: 'SZN', avgTip: `Season average: ${m.seasonAst} assists on ${m.pot} potential assists` })}
-    <div class="tg-legend"><span><span><i class="s"></i>Assists converted</span><span><i class="d"></i>Potential assists (season avg)</span></span><span class="r">% = assists ÷ his season potential${m.bars.some(b => b.hit != null) ? ', green/red = prop hit/miss' : ''}${m.axis.lo > 0 ? ` · axis starts at ${m.axis.lo}` : ''}</span></div>
+    ${tgChart(m.bars, avgBar, { hatch: true, zoom: { lo: m.axis.lo, hi: m.axis.hi }, tip: g => `${g.ast} assists against his ${m.pot} potential-assist average (${TG_PCT(g.ast, m.pot)}%)`, avgName: 'SZN', avgTip: `Season average: ${m.seasonAst} assists on ${m.pot} potential assists` })}
+    <div class="tg-legend"><span><span><i class="h"></i>Potential assists (season avg)</span><span><i class="s"></i>Assists converted</span></span><span class="r">% = assists ÷ his season potential${m.bars.some(b => b.hit != null) ? ', green/red = prop hit/miss' : ''}${m.axis.lo > 0 ? ` · axis starts at ${m.axis.lo}` : ''}</span></div>
     ${m.read ? `<div class="tg-read"><b>READ</b><p>${m.read}</p></div>` : ''}
     <p class="tg-note">nba.com publishes potential assists (passes that would have been assists if the shot went in) only as a season average, so each game's assists are measured against it. It is a guide to how much he has to work with, not a count for that game.</p>`;
 }

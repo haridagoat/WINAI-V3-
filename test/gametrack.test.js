@@ -82,6 +82,7 @@ test('the READ sentence: misses with normal chances are not an opportunity probl
   assert.match(P.tgRebModel(rebLog, 10, 'rebounds', 3.5, 'over').read, /cleared the over 3\.5 in all <b>4<\/b>/);
   assert.match(P.tgRebModel(rebLog, 10, 'rebounds', 30.5, 'over').read, /missed the over 30\.5 in all <b>4<\/b>/);
   assert.equal(P.tgRebModel(rebLog, 10, 'rebounds', undefined, 'over').read, '', 'no posted line: no sentence');
+  assert.equal(P.tgRebModel(rebLog, 10, 'ra', 19.5, 'over').read, '', 'a combo line is not a rebound line');
   assert.deepEqual(P.tgRebModel({ games: [gm('d', 5, undefined)] }, 10, 'rebounds', 8.5, 'over').avg, null);
 });
 
@@ -118,14 +119,31 @@ test('the page: one blue for both cards, only the stat the prop is about (nothin
   assert.ok(!/window\._tgCtx/.test(html));
 });
 
-test('zoomed bars: height follows the number on the zoomed axis, the potential line sits on it, and nothing leaves the chart', () => {
+test('every bar shows both numbers: the actual inside the solid part, the potential above the bar, and the solid part is sized on the (zoomed) axis', () => {
   const P = page(); const ctx = { playerTracking: { passing: { POTENTIAL_AST: 15, AST: 9 } } };
-  const log = { games: [gm('d3', 5, 10, 12), gm('d2', 5, 10, 8), gm('d1', 5, 10, 4)] };
-  const m = P.tgAstModel(log, 10, 'assists', 8.5, 'over', ctx);               // assists 4, 8, 12 and season 9: axis 0 to 16
-  const out = P.tgChart(m.bars, { avg: true, outer: m.pot, inner: m.seasonAst, pct: m.conv, label: '9' }, { zoom: { lo: m.axis.lo, hi: m.axis.hi, ref: m.pot, refLabel: 'potential assists, season avg 15' }, label: b => `${b.inner}`, tip: () => 't', avgName: 'SZN', avgTip: 'a' });
-  const heights = [...out.matchAll(/tg-zbar" style="height:([\d.]+)%/g)].map(x => +x[1]);
-  assert.equal(m.axis.lo, 0); assert.equal(m.axis.hi, 16);
-  assert.deepEqual(heights, [25, 50, 75, 56.3], '4, 8, 12 and the season 9 on a 0 to 16 axis, oldest first');
-  assert.match(out, /tg-ref" style="bottom:93\.[78]%"/); assert.ok(!/tg-ghost/.test(out), 'no equal-height hatched bars any more');
-  assert.ok(heights.every(h => h >= 0 && h <= 100));
+  const m = P.tgAstModel({ games: [gm('d3', 5, 10, 12), gm('d2', 5, 10, 8), gm('d1', 5, 10, 4)] }, 10, 'assists', 8.5, 'over', ctx);   // assists 4, 8, 12, season 9, potential 15: axis 0 to 16
+  const out = P.tgChart(m.bars, { avg: true, outer: m.pot, inner: m.seasonAst, pct: m.conv }, { hatch: true, zoom: m.axis, tip: () => 't', avgName: 'SZN', avgTip: 'a' });
+  const solids = [...out.matchAll(/tg-solid" style="height:([\d.]+)%"><span class="tg-in">([\d.]+)<\/span>/g)].map(x => [+x[1], +x[2]]);
+  assert.deepEqual(solids, [[26.7, 4], [53.3, 8], [80, 12], [60, 9]], 'actual / potential on the axis, with the actual number written inside');
+  assert.equal((out.match(/<span class="tg-of">of 15<\/span>/g) || []).length, 4, 'the potential is written above every bar, the season bar included');
+  assert.equal((out.match(/tg-ghost hatch" style="height:93\.[78]%"/g) || []).length, 3, 'the potential bar reaches the same potential on every game');
+  // a tight spread zooms the axis: 8, 9, 10 against a 15.2 potential on an axis starting at 7
+  const z = P.tgAstModel({ games: [gm('d3', 5, 10, 10), gm('d2', 5, 10, 9), gm('d1', 5, 10, 8)] }, 10, 'assists', 8.5, 'over', { playerTracking: { passing: { POTENTIAL_AST: 15.2, AST: 9.2 } } });
+  assert.deepEqual(z.axis, { lo: 7, hi: 16 });
+  const out2 = P.tgChart(z.bars, null, { hatch: true, zoom: z.axis, tip: () => 't', avgName: 'SZN', avgTip: 'a' });
+  assert.match(out2, /tg-ghost hatch" style="height:91\.1%"><span class="tg-of">of 15\.2<\/span><div class="tg-solid" style="height:12\.2%"><span class="tg-in">8<\/span>/);
+  assert.match(out2, /tg-solid" style="height:24\.4%"><span class="tg-in">9<\/span>/); assert.match(out2, /tg-solid" style="height:36\.6%"><span class="tg-in">10<\/span>/);
+  // rebounds keep their own full bar per game
+  const r = P.tgRebModel(rebLog, 10, 'rebounds', 8.5, 'over'); const rout = P.tgChart(r.bars, { avg: true, outer: r.avg.chances, inner: r.avg.reb, pct: r.avg.pct }, { tip: () => 't', avgName: 'AVG', avgTip: 'a' });
+  assert.match(rout, /<span class="tg-of">of 22<\/span><div class="tg-solid" style="height:72\.7%"><span class="tg-in">16<\/span>/);
+});
+
+test('the page: one blue for both cards, only the stat the prop is about (nothing for points), NBA only, loaded once per player and only when near the screen', () => {
+  const P = page();
+  assert.deepEqual(P.tgKeys('pra').filter(k => ['reb', 'ast'].includes(k)), ['reb', 'ast']);
+  assert.match(html, /\.tg\{--tgb:#4aa3ff;/); assert.ok(!/#c084fc|#8aa4ff|#22d3ee|#a78bfa/i.test(html.slice(html.indexOf('.tg{--tgb'), html.indexOf('/* Game log chart'))), 'no purple or cyan in the cards');
+  assert.match(html, /kinds = \['ast', 'reb'\]\.filter\(k => keys\.includes\(k\)\)/); assert.match(html, /if \(league === 'wnba' \|\| !player \|\| !kinds\.length\) return '';/);
+  assert.match(html, /tgCache\[player\] \|\| \(tgCache\[player\] = fetch\('\/api\/tracklog\?n=20&name='/); assert.match(html, /new IntersectionObserver/);
+  assert.match(html, /renderTrackGraphs\(league, player, propType, ctx, line, isUnderSide \? 'under' : 'over'\)/);
+  assert.ok(!/window\._tgCtx/.test(html));
 });
