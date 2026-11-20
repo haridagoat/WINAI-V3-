@@ -4229,7 +4229,9 @@ async function evaluateWNBACandidate(cand) {
 // day and paid for it again from zero. Confirmed live this session — that
 // exact pattern burned a fresh 500-request key down to 0 from nothing but
 // repeated restarts, not real traffic.
-const SLATE_CACHE_FILE = 'slate_scan_cache.json';
+// On a host with a persistent volume (WINAI_DB points at it) the saved scan lives there, next to the database. In the app folder it is wiped by every
+// deploy, and each deploy then cost the next visitor a full re-scan: three deploys in one day spent 135 Odds credits that way.
+const SLATE_CACHE_FILE = process.env.WINAI_DB ? path.join(path.dirname(path.resolve(process.env.WINAI_DB)), 'slate_scan_cache.json') : 'slate_scan_cache.json';
 function loadSlateScanCacheFromDisk() {
   try {
     if (!fs.existsSync(SLATE_CACHE_FILE)) return {};
@@ -4320,6 +4322,13 @@ async function collectSlateResults(league, { allowPartial = false } = {}) {
   // credits are back. ODDS_ALLOW_LOW_CREDITS=1 overrides this.
   const budget = currentCreditBudget();
   if (budget.known && !budget.canScan && process.env.ODDS_ALLOW_LOW_CREDITS !== '1') return { candidates: [], results: [], skipped: 'low Odds credits' };
+  // The visitor-spending guard (lib/oddsguard.js) refuses odds calls once pages have used their daily share. A scan it cut off half way would be saved
+  // as the day's scan, so a scan that would not fit in what is left is not started at all (nothing is cached; the scheduled scan still runs).
+  if (process.env.ODDS_ALLOW_LOW_CREDITS !== '1' && String(oddsJob.getStore() || '').startsWith('page:')) {
+    const fit = oddsGuard.decide({ job: oddsJob.getStore(), remaining: oddsApiHealth.remaining, pageSpent: oddsGuard.pageSpentToday(oddsUsageLog, toLocalDateStr(new Date())) + (budget.scanCost || 60),
+      reserve: envNum(process.env.ODDS_PAGE_RESERVE, 30), pageCap: envNum(process.env.ODDS_PAGE_DAILY_CAP, 200) });
+    if (!fit.allow && !slateScanInflight[league]) return { candidates: [], results: [], skipped: 'page spending limit' };
+  }
   if (!slateScanInflight[league]) {
     slateScanInflight[league] = scanSlate(league, today).finally(() => { delete slateScanInflight[league]; delete slateScanPartial[league]; });
   }
