@@ -4,10 +4,10 @@ const assert = require('node:assert/strict');
 const { extract } = require('./helpers/extract');
 
 const NOW = Date.parse('2026-11-11T20:00:00Z');
-function setup({ mtime, inSeason = true, fail = false } = {}) {
-  const calls = [];
+function setup({ mtime, inSeason = true, fail = false, writes = true } = {}) {
+  const calls = []; let mt = mtime;
   const f = extract({ functions: ['ensureStatsFresh'], consts: ['STATS_MAX_AGE_HOURS', 'statsRefreshing'],
-    globals: { datachecks: { inSeason: () => inSeason }, mtimeOf: () => mtime, STAT_FILE: { nba: 'a.json', wnba: 'b.json' }, runStatsScript: async lg => { calls.push(lg); if (fail) throw new Error('nba.com refused'); },
+    globals: { datachecks: { inSeason: () => inSeason }, mtimeOf: () => mt, STAT_FILE: { nba: 'a.json', wnba: 'b.json' }, runStatsScript: async lg => { calls.push(lg); if (fail) throw new Error('nba.com refused'); if (writes) mt = (mt || 0) + 1000; },
       Date: Object.assign(function (...a) { return a.length ? new Date(...a) : new Date(NOW); }, { now: () => NOW }) } });
   return { f, calls };
 }
@@ -24,7 +24,14 @@ test('forced runs ignore age and season, only one refresh runs per league at a t
   const t = setup({ mtime: NOW - 1000, inSeason: false });
   assert.equal(await t.f.ensureStatsFresh('nba', { force: true }), 'refreshed');
   let release; const hold = new Promise(r => { release = r; });
-  const slow = extract({ functions: ['ensureStatsFresh'], consts: ['STATS_MAX_AGE_HOURS', 'statsRefreshing'], globals: { datachecks: { inSeason: () => true }, mtimeOf: () => 0, STAT_FILE: { nba: 'a' }, runStatsScript: () => hold, Date } });
+  let slowMt = 0; const slow = extract({ functions: ['ensureStatsFresh'], consts: ['STATS_MAX_AGE_HOURS', 'statsRefreshing'], globals: { datachecks: { inSeason: () => true }, mtimeOf: () => slowMt, STAT_FILE: { nba: 'a' }, runStatsScript: () => hold.then(() => { slowMt = 5; }), Date } });
   const first = slow.ensureStatsFresh('nba'); assert.equal(await slow.ensureStatsFresh('nba'), 'already running'); release(); assert.equal(await first, 'refreshed');
   const bad = setup({ mtime: 0, fail: true }); await assert.rejects(() => bad.f.ensureStatsFresh('nba'), /refused/); await assert.rejects(() => bad.f.ensureStatsFresh('nba'), /refused/, 'the lock was released');
+});
+
+test('a script that exits cleanly but wrote no new file is a failure, not "refreshed" (nba.com refusing a cloud host looks exactly like this)', async () => {
+  const blocked = setup({ mtime: NOW - 38 * 3600e3, writes: false });
+  await assert.rejects(() => blocked.f.ensureStatsFresh('nba'), /wrote no new file/);
+  const none = setup({ mtime: null, writes: false });
+  await assert.rejects(() => none.f.ensureStatsFresh('nba'), /wrote no new file/, 'no file before and none after');
 });

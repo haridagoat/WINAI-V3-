@@ -33,6 +33,7 @@ const bestBets = require('./lib/bestbets');
 const slateExtras = require('./lib/slateextras');
 const planGate = require('./lib/plangate');
 const finalsLib = require('./lib/finals');
+const statsUpload = require('./lib/statsupload');
 const biasLib = require('./lib/bias');
 modelParams.load();
 const { AsyncLocalStorage } = require('node:async_hooks');
@@ -120,6 +121,22 @@ app.use(security.securityHeaders);
 app.use((req, res, next) => {
   res.on('finish', () => { if ([500, 502, 504].includes(res.statusCode) && !res.locals.errorLogged && req.path !== '/api/client-error') errorLog.record({ source: 'server', route: errorsLib.routeOf(req.method, req.originalUrl), message: `answered ${res.statusCode}` }); });
   next();
+});
+// ── Stat files pushed from the owner's own computer (see lib/statsupload.js) ──
+// nba.com refuses most cloud hosts, so the Python fetch cannot run on Railway. scripts/push-stats.js sends the files this computer fetched.
+// They are kept on the persistent volume (next to the database) and put back into the app folder at every start, so a deploy does not lose them.
+// It sits outside /api on purpose: the stat files are bigger than the API's body limit and contain line breaks the API's input guard refuses.
+const STATS_KEEP_DIR = process.env.WINAI_DB ? path.join(path.dirname(path.resolve(process.env.WINAI_DB)), 'stats') : null;
+if (STATS_KEEP_DIR) { const n = statsUpload.restoreFromKeep(STATS_KEEP_DIR, __dirname); if (n) console.log(`[Stats] restored ${n} stat files from ${STATS_KEEP_DIR}`); }
+app.post('/admin-upload/stats', (req, res, next) => requireAdmin(req, res, next), express.raw({ type: () => true, limit: '60mb' }), (req, res) => {
+  let files;
+  try { files = statsUpload.parseUpload(req.body); } catch (err) { return res.status(400).json({ error: err.message }); }
+  try {
+    const saved = statsUpload.saveFiles(files, [__dirname, STATS_KEEP_DIR]);
+    nbaStatsCache = null; lastStatsDiskRead = 0; wnbaStatsCache = null; lastWnbaStatsDiskRead = 0;
+    store.addEvent('stats', 'info', `${saved.length} stat files uploaded from the owner's computer${STATS_KEEP_DIR ? ' and kept on the volume' : ' (not kept: WINAI_DB is not set, so a deploy will lose them)'}.`);
+    res.json({ saved: saved.length, kept: !!STATS_KEEP_DIR });
+  } catch (err) { res.status(500).json({ error: 'The files could not be saved: ' + err.message }); }
 });
 app.use(express.json({ limit: '100kb', inflate: false, verify: (req, res, buf) => { if (req.originalUrl === '/api/stripe/webhook') req.rawBody = buf; } }));   // Stripe signs the exact bytes
 // One bad character in a name used to reach a Python launch call and crash the whole server.
@@ -6640,6 +6657,7 @@ const STAT_FILE = { nba: 'player_stats.json', wnba: 'wnba_player_stats.json' };
 // The same Python scripts the 7 AM jobs run. One attempt, twenty minute limit.
 function runStatsScript(league) {
   return new Promise((resolve, reject) => {
+    if (process.env.STATS_FETCH === 'off') return reject(new Error('automatic fetching is off here (STATS_FETCH=off): upload the files from your own computer with scripts/push-stats.js'));
     const [cmd, script] = league === 'nba' ? ['python3', 'fetch_stats.py'] : ['python3', 'fetch_wnba_stats.py'];
     const py = spawn(cmd, [script], { cwd: __dirname });
     const timer = setTimeout(() => { py.kill(); reject(new Error('timed out after 20 minutes')); }, 20 * 60 * 1000);   // the NBA script makes about 60 calls to nba.com and retries slow ones
@@ -6660,7 +6678,13 @@ async function ensureStatsFresh(league, { force = false } = {}) {
   const m = mtimeOf(STAT_FILE[league]);
   if (!force && m && Date.now() - m < STATS_MAX_AGE_HOURS * 3600e3) return 'fresh';
   statsRefreshing[league] = true;
-  try { await runStatsScript(league); return 'refreshed'; } finally { statsRefreshing[league] = false; }
+  try {
+    await runStatsScript(league);
+    // The script exits cleanly even when nba.com refuses every request, so "it finished" is not proof. A newer file is.
+    const after = mtimeOf(STAT_FILE[league]);
+    if (after == null || (m != null && after <= m)) throw new Error('the script finished but wrote no new file (nba.com may be refusing this computer)');
+    return 'refreshed';
+  } finally { statsRefreshing[league] = false; }
 }
 // Offsite backups: an encrypted copy in an S3-compatible bucket. The address must be https (or this computer, for tests).
 const offsite = (() => {

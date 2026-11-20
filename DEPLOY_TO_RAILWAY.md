@@ -220,6 +220,15 @@ The admin page can read every account, so the admin token should not be its only
 
 If you lose the phone and the saved secret, remove `ADMIN_TOTP_SECRET` from the server and set up a new one. After this is on, scripts that call admin routes with only the token stop working; that is the point.
 
+## Stats on Railway: upload them from your own computer
+nba.com refuses most cloud hosts, so the live site cannot fetch its own stats (the script ends without writing files, and the Data checks tab says "NBA stat files: Not found"). Your own computer can fetch them, so send them up:
+
+1. In Railway, add the variable `STATS_FETCH=off` (the server stops trying and says so).
+2. On your computer, in this folder: `python3 fetch_stats.py` (and `python3 fetch_wnba_stats.py` in the WNBA season).
+3. Send them: `node scripts/push-stats.js https://YOUR-SITE.up.railway.app`. It reads `ADMIN_TOKEN` from `.env` and never prints it.
+
+The files are kept on the Volume (next to the database) and put back at every start, so a deploy does not lose them. Do steps 2 and 3 once a day, before the 10 AM scan. If you later turn on the admin 2FA code, this script needs a small change; tell Claude.
+
 ## NBA stats: this season, blended with last season
 
 `fetch_stats.py` fetches the current NBA season (it follows the calendar: October starts a new one) and blends it with last season's final files in `prior_season/`. The current season dominates. Last season is a slight prior that counts for most while a player has fewer than 10 games, about 15% after that, and fades to 5% by game 60. This is automatic, and runs with the 7 AM refresh.

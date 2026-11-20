@@ -102,3 +102,11 @@ test('phones: fields are 16px (no iPhone auto-zoom) and the controls a thumb mus
   for (const sel of ['.acct-btn', '.td-chip', '.bd-bar .td-chip', '.gp-pill', '.top-plays-refresh', '.suggestion-item', '.gs-i', '.gp-gm']) assert.ok(block.includes(sel), `${sel} must be sized for touch`);
   assert.ok(!/user-scalable\s*=\s*no|maximum-scale/i.test(html), 'pinch-zoom must stay allowed');
 });
+
+test('phones: the header is positioned (so its z-index works and the Tonight list opens above the search bar), and the games row is phone-only', () => {
+  assert.match(html, /@media \(max-width:760px\)\{ header\{position:relative;top:auto;\} \}/, 'a static header ignores z-index and the search bar paints over the games list');
+  assert.ok(!/@media \(max-width:760px\)\{ header\{position:static;\} \}/.test(html));
+  assert.match(html, /\.td-strip\{display:none;\}\s*@media \(max-width:760px\)\{\s*\.td-strip\{display:flex;/, 'the games row is hidden on wide screens');
+  assert.match(html, /data-goto-gm=/); assert.match(html, /data-gm="\$\{escapeHtml\(key\)\}"/, 'each chip must have a card to jump to');
+  assert.ok(html.indexOf('${gameStrip}') < html.indexOf('tdUpStrip() :'), 'the games row sits above the free-plan banner');
+});
