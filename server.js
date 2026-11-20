@@ -563,7 +563,7 @@ function fuzzyMatchPlayer(list, fullName) {
 
 // Headshot id for a pick, from the stats files. Exact full-name match only —
 // fuzzyMatchPlayer falls back to last-name-only, which would put the wrong
-// person's face next to a pick; a miss just shows initials instead.
+// person's face next to a pick; a miss just shows initials instead. Accents and punctuation are ignored.
 const playerIdCache = {};
 function lookupPlayerId(league, name) {
   const key = league + '|' + name;
@@ -571,8 +571,10 @@ function lookupPlayerId(league, name) {
   let id = null;
   try {
     const st = league === 'wnba' ? loadWNBAStats() : loadNBAStats();
-    const lower = String(name || '').toLowerCase();
-    const row = (st?.playerAdvanced || []).find(p => (p.PLAYER_NAME || '').toLowerCase() === lower);
+    // Compared without accents, dots and hyphens: the stats files say "Nikola Jokić" and the sportsbooks say "Nikola Jokic".
+    // Still a whole-name match, never last-name only, so a miss shows initials rather than someone else's face.
+    const want = normalizePlayerName(name);
+    const row = want ? (st?.playerAdvanced || []).find(p => normalizePlayerName(p.PLAYER_NAME) === want) : null;
     id = row?.PLAYER_ID ?? null;
   } catch (_) {}
   playerIdCache[key] = id;

@@ -175,3 +175,11 @@ test('head to head: an error answer from the nba.com script ("Expecting value") 
   const espnOnly = bridgeWorld({ source: 'espn', python: () => fakePy({ out: '' }) });
   assert.equal((await espnOnly.f.fetchH2HViaBridge('Jalen Brunson', 'Boston Celtics')).gamesVsOpp, 6); assert.equal(espnOnly.calls.python, 0);
 });
+
+test('headshots: a sportsbook spelling without accents still finds the player (Jokic / Jokić), but never by last name alone', () => {
+  const adv = [{ PLAYER_NAME: 'Nikola Jokić', PLAYER_ID: 203999 }, { PLAYER_NAME: 'Luka Dončić', PLAYER_ID: 1629029 }, { PLAYER_NAME: 'P.J. Washington', PLAYER_ID: 1629023 }, { PLAYER_NAME: 'Jalen Williams', PLAYER_ID: 1631114 }, { PLAYER_NAME: 'Jaylin Williams', PLAYER_ID: 1631119 }];
+  const f = extract({ functions: ['lookupPlayerId', 'normalizePlayerName'], consts: ['playerIdCache'], globals: { loadNBAStats: () => ({ playerAdvanced: adv }), loadWNBAStats: () => ({ playerAdvanced: [] }) } });
+  assert.equal(f.lookupPlayerId('nba', 'Nikola Jokic'), 203999); assert.equal(f.lookupPlayerId('nba', 'Luka Doncic'), 1629029);
+  assert.equal(f.lookupPlayerId('nba', 'PJ Washington'), 1629023); assert.equal(f.lookupPlayerId('nba', 'jalen williams'), 1631114);
+  for (const n of ['Williams', 'Jalen', 'Nobody Atall', '', null]) assert.equal(f.lookupPlayerId('nba', n), null, String(n));
+});
