@@ -118,7 +118,7 @@ test('player result: potential assists show for assist props and rebound chances
     n => (Math.round(n * 10) / 10).toString(), x => { const n = parseFloat(x); return isFinite(n) ? (n <= 1 ? n * 100 : n) : null; });
   const ctx = { playerTracking: { passing: { POTENTIAL_AST: 15.185, AST: 9.255 }, rebounding: { REB_CHANCES: 20.3, REB_CHANCE_PCT: 0.516 } } };
   const names = (p, c = ctx) => f(c, p).map(x => x[0]);
-  assert.deepEqual(f(ctx, 'assists'), [['Potential AST', '15.2', ''], ['AST ÷ potential', '61', '%']]);
+  assert.deepEqual(f(ctx, 'assists'), [['Potential AST', '15.2', ''], ['AST ÷ potential', '60.9', '%']]);
   assert.deepEqual(f(ctx, 'rebounds'), [['Reb chances', '20.3', ''], ['REB ÷ chances', '51.6', '%']]);
   assert.deepEqual(names('pra'), ['Potential AST', 'AST ÷ potential', 'Reb chances', 'REB ÷ chances']); assert.deepEqual(names('ra'), names('pra')); assert.deepEqual(names('pa'), ['Potential AST', 'AST ÷ potential']); assert.deepEqual(names('pr'), ['Reb chances', 'REB ÷ chances']);
   for (const p of ['points', '3pm', 'steals']) assert.deepEqual(f(ctx, p), [], p);
