@@ -1,2 +1,5 @@
-nba_api==1.12.0
-requests==2.33.1
+# Python packages for the stats scripts (fetch_stats.py, fetch_wnba_stats.py, fetch_dvp.py, shotchart.py).
+# The server runs them every morning; Railway installs these during the build (see nixpacks.toml).
+nba_api>=1.10
+pandas>=2.0
+requests>=2.31
