@@ -1844,6 +1844,8 @@ async function fetchH2HViaBridge(playerName, opponent, season = currentNbaSeason
           console.log(`[H2H Bridge] ✓ ${data.h2h.gamesVsOpp} games — ${playerName} vs ${opponent}`);
           noteBridge(true);
           resolve(data.h2h);
+        } else if (data && data.error && isBridgeOutage(data.error)) {
+          resolve({ outage: true });                                // the script answered with an error such as "Expecting value": nba.com is not reachable
         } else {
           console.warn(`[H2H Bridge] No games found: ${data?.error || 'empty'}`);
           resolve(null);

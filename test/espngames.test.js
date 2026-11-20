@@ -111,7 +111,7 @@ function bridgeWorld({ source = 'auto', python }) {
     fetchViaEspn: async () => { calls.espn++; return espnResult; }, fetchH2HViaEspn: async () => { calls.espn++; return { gamesVsOpp: 6, source: 'espn' }; },
     setTimeout, clearTimeout, Date, Buffer, JSON,
   };
-  const f = extract({ functions: ['fetchViaBridge', 'noteBridge'], consts: ['GAMELOG_SOURCE', 'bridgeHealth', 'bridgeIsDown', 'isBridgeOutage'], globals: g });
+  const f = extract({ functions: ['fetchViaBridge', 'fetchH2HViaBridge', 'noteBridge'], consts: ['GAMELOG_SOURCE', 'bridgeHealth', 'bridgeIsDown', 'isBridgeOutage'], globals: g });
   return { f, calls, events, espnResult };
 }
 const fakePy = ({ out = '', err = '' } = {}) => {
@@ -162,4 +162,16 @@ test('a forced refresh (grading a game that just ended) forgets the player\'s ca
   await f.dropGameLogCaches('Jalen Brunson');
   assert.deepEqual(Object.keys(cache), ['Someone Else:2026-27']); assert.deepEqual(Object.keys(eCache), ['999:2027']);
   await f.dropGameLogCaches('Unknown Person'); assert.equal(Object.keys(cache).length, 1, 'an unknown player does not break it');
+});
+
+test('head to head: an error answer from the nba.com script ("Expecting value") is an outage and ESPN is used; "no games vs that team" is not', async () => {
+  const blocked = bridgeWorld({ python: () => fakePy({ out: JSON.stringify({ error: 'Expecting value: line 1 column 1 (char 0)' }) }) });
+  const h = await blocked.f.fetchH2HViaBridge('Jalen Brunson', 'Boston Celtics');
+  assert.equal(h.gamesVsOpp, 6); assert.equal(blocked.calls.espn, 1);
+  const none = bridgeWorld({ python: () => fakePy({ out: JSON.stringify({ player: 'P', h2h: null, error: 'No H2H games found vs Nowhere' }) }) });
+  assert.equal(await none.f.fetchH2HViaBridge('Jalen Brunson', 'Nowhere'), null); assert.equal(none.calls.espn, 0, 'a real "none found" is an answer');
+  const timedOut = bridgeWorld({ python: () => fakePy({ out: 'not json at all' }) });
+  assert.equal((await timedOut.f.fetchH2HViaBridge('Jalen Brunson', 'Boston Celtics')).gamesVsOpp, 6);
+  const espnOnly = bridgeWorld({ source: 'espn', python: () => fakePy({ out: '' }) });
+  assert.equal((await espnOnly.f.fetchH2HViaBridge('Jalen Brunson', 'Boston Celtics')).gamesVsOpp, 6); assert.equal(espnOnly.calls.python, 0);
 });
