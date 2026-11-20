@@ -192,3 +192,13 @@ test('player matching ignores accents both ways, still prefers the exact name, a
   assert.equal(f.fuzzyMatchPlayer(list, 'Jalen Williams').id, 2, 'an exact name wins over a look-alike');
   assert.equal(f.fuzzyMatchPlayer(list, 'Nobody Atall'), null);
 });
+
+test('a list cached before a photo id could be found gets the id when it is served; an id already there is left alone', () => {
+  const ids = { 'Nikola Jokic': 203999 };
+  const f = extract({ functions: ['fillPlayerIds'], globals: { lookupPlayerId: (lg, n) => ids[n] ?? null, Object, Array } });
+  const cached = { topPlays: [{ player: 'Nikola Jokic', playerId: null }, { player: 'Kevin Durant', playerId: 201142 }, { player: 'Rookie', playerId: null }], games: [{ home: 'DEN', picks: [{ player: 'Nikola Jokic', playerId: null }] }], cached: true };
+  const out = f.fillPlayerIds('nba', cached);
+  assert.equal(JSON.stringify(out.topPlays.map(p => p.playerId)), '[203999,201142,null]'); assert.equal(out.games[0].picks[0].playerId, 203999);
+  assert.equal(cached.topPlays[0].playerId, null, 'the cached copy itself is not changed'); assert.equal(out.cached, true);
+  assert.equal(f.fillPlayerIds('nba', null), null); assert.equal(JSON.stringify(f.fillPlayerIds('nba', { topPlays: [] })), '{"topPlays":[]}');
+});

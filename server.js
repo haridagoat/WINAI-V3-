@@ -4790,8 +4790,18 @@ app.get('/api/freshness', (req, res) => {
   res.json({ now: new Date().toISOString(), stats: { nba: mtime('player_stats.json'), wnba: mtime('wnba_player_stats.json') }, lines: { nba: scanAt('nba'), wnba: scanAt('wnba') },
     injuries: rosters.length ? new Date(Math.max(...rosters)).toISOString() : null, inSeason: { nba: datachecks.inSeason('nba', new Date()), wnba: datachecks.inSeason('wnba', new Date()) } });
 });
+// A list cached earlier in the day was built before some players' photo ids could be found (an accent in the name), and it is kept until
+// tomorrow. A missing id is filled in when the list is served, so a fix reaches the cached list too.
+function fillPlayerIds(league, d) {
+  if (!d || typeof d !== 'object') return d;
+  const fix = p => (p && p.player && p.playerId == null ? { ...p, playerId: lookupPlayerId(league, p.player) } : p);
+  const out = { ...d };
+  for (const k of ['topPlays', 'fallbackPlays']) if (Array.isArray(d[k])) out[k] = d[k].map(fix);
+  if (Array.isArray(d.games)) out.games = d.games.map(g => (g && Array.isArray(g.picks) ? { ...g, picks: g.picks.map(fix) } : g));
+  return out;
+}
 app.get('/api/top-plays', async (req, res) => {
-  const send = d => res.json(planGated(req) ? planGate.lockedTopPlays(d) : d);          // a free account is sent the first pick and empty slots, never the rest
+  const send = d => { d = fillPlayerIds((req.query.league || 'nba').toLowerCase() === 'wnba' ? 'wnba' : 'nba', d); res.json(planGated(req) ? planGate.lockedTopPlays(d) : d); };          // a free account is sent the first pick and empty slots, never the rest
   const league  = (req.query.league || 'nba').toLowerCase() === 'wnba' ? 'wnba' : 'nba';
   const today   = getToday();
   const frozen  = frozenTopPlays(league, today);
@@ -4855,7 +4865,7 @@ app.get('/api/prop-board', async (req, res) => {
 
 const teamPicksCache = {}; // league -> { data, dateKey, ts } — same freshness rule as topPlaysCache
 app.get('/api/team-picks', async (req, res) => {
-  const send = d => res.json(planGated(req) ? planGate.lockedTeamPicks(d) : d);          // a free account sees the games and slots, never who the picks are
+  const send = d => { d = fillPlayerIds((req.query.league || 'nba').toLowerCase() === 'wnba' ? 'wnba' : 'nba', d); res.json(planGated(req) ? planGate.lockedTeamPicks(d) : d); };          // a free account sees the games and slots, never who the picks are
   const league = (req.query.league || 'nba').toLowerCase() === 'wnba' ? 'wnba' : 'nba';
   const today  = getToday();
   const cached = teamPicksCache[league];
