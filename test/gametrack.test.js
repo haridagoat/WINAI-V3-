@@ -47,15 +47,23 @@ test('the file is accepted by the stats upload; look-alikes are not', () => {
   for (const n of ['gametrack.js', '../gametrack_nba.json', 'gametrack_nba.db']) assert.ok(!isStatsFileName(n), n);
 });
 
-test('the page section: NBA only, built from the endpoint, with the rebound panel first for rebound props and the assist panel first otherwise', () => {
+test('the page section: only the stat the prop is about, nothing for points, NBA only, fetched once per player', () => {
   const html = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
   const src = html.slice(html.indexOf('const TG_PCT'), html.indexOf('function renderTrackGraphs'));
-  const f = new Function('PROP_COMBO_KEYS', 'PROP_STATKEY', 'escapeHtml', src + '; return { tgSummary, tgPanels, tgWindow };')({ pra: ['pts', 'reb', 'ast'] }, { points: 'pts', rebounds: 'reb', assists: 'ast' }, s => String(s));
+  const f = new Function('PROP_COMBO_KEYS', 'PROP_STATKEY', 'escapeHtml', src + '; return { tgSummary, tgPanels, tgWindow };')({ pra: ['pts', 'reb', 'ast'], ra: ['reb', 'ast'], pr: ['pts', 'reb'], pa: ['pts', 'ast'] }, { points: 'pts', rebounds: 'reb', assists: 'ast', '3pm': 'fg3m' }, s => String(s));
   const log = G.lookup(G.index(bundle), 'Nikola Jokic', 20);
-  const order = prop => { const h = f.tgPanels(log, 10, prop, {}); return h.indexOf('Rebound chances') < h.indexOf('Assist creation') ? 'reb first' : 'ast first'; };
-  assert.equal(order('rebounds'), 'reb first'); assert.equal(order('assists'), 'ast first'); assert.equal(order('pra'), 'ast first');
+  const ctx = { playerTracking: { passing: { POTENTIAL_AST: 15.2, AST: 9.3 } } };
+  // a panel is recognised by its own content (a single panel has no title of its own: the section header says it)
+  const titles = prop => { const h = f.tgPanels(log, 10, prop, ctx).html; return [/assists a game, last/.test(h) && 'Potential assists', /chances a game/.test(h) && 'Rebound chances'].filter(Boolean); };
+  assert.deepEqual(titles('rebounds'), ['Rebound chances']); assert.deepEqual(titles('assists'), ['Potential assists']);
+  assert.deepEqual(titles('pra'), ['Potential assists', 'Rebound chances'], 'both for a combo, assists first'); assert.deepEqual(titles('pr'), ['Rebound chances']); assert.deepEqual(titles('pa'), ['Potential assists']);
+  assert.deepEqual(titles('points'), []); assert.deepEqual(titles('3pm'), []);
+  assert.equal(f.tgPanels(log, 10, 'pra', ctx).two, true); assert.match(f.tgPanels(log, 10, 'pra', ctx).html, /tg-pt">Potential assists[\s\S]*tg-pt">Rebound chances/, 'a combo keeps both titles'); assert.ok(!/tg-pt/.test(f.tgPanels(log, 10, 'rebounds', ctx).html), 'a single panel has no duplicate title'); assert.equal(f.tgPanels(log, 10, 'rebounds', ctx).two, false);
+  assert.match(f.tgPanels(log, 10, 'assists', ctx).html, /potential assists, season avg 15\.2/, 'the season potential is the dashed line');
   assert.deepEqual(f.tgWindow(log.games, 2).map(g => g.date), ['2026-11-18', '2026-11-19'], 'oldest first, like the game log chart');
-  const s = f.tgSummary(f.tgWindow(log.games, 10)); assert.equal(s.n, 2, 'a game without tracking numbers is left out of the averages'); assert.equal(s.rebChances, 16);
-  assert.match(html, /fetch\('\/api\/tracklog\?n=20&name='/); assert.match(html, /if \(league === 'wnba' \|\| !player\) return '';/);
-  assert.match(html, /renderTrackGraphs\(league, player, propType\)/);
+  const sm = f.tgSummary(f.tgWindow(log.games, 10)); assert.equal(sm.n, 2, 'a game without tracking numbers is left out of the averages'); assert.equal(sm.rebChances, 16);
+  assert.equal(f.tgPanels(log, 10, 'rebounds', ctx).gap, 1, 'and reported, not drawn as zero');
+  assert.match(html, /function renderTrackGraphs\(league, player, propType, ctx\) \{\s*const keys[\s\S]*?if \(league === 'wnba' \|\| !player \|\| !\(keys\.includes\('reb'\) \|\| keys\.includes\('ast'\)\)\) return '';/);
+  assert.match(html, /tgCache\[player\] \|\| \(tgCache\[player\] = fetch\('\/api\/tracklog\?n=20&name='/);
+  assert.match(html, /new IntersectionObserver/); assert.match(html, /renderTrackGraphs\(league, player, propType, ctx\)/); assert.ok(!/window\._tgCtx/.test(html), 'each section keeps its own player data');
 });
