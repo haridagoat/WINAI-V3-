@@ -231,6 +231,14 @@ nba.com refuses most cloud hosts, so the live site cannot fetch its own stats (t
 
 The files are kept on the Volume (next to the database) and put back at every start, so a deploy does not lose them. Do steps 2 and 3 once a day, before the 10 AM scan. If you later turn on the admin 2FA code, this script needs a small change; tell Claude.
 
+## Copying your computer's database to the live site
+A new live site starts with an empty database: no graded history and no learned projection correction (the "bias"), so its projections run a few percent high until it has graded 100 results per stat. To start it with your computer's history:
+
+1. `node scripts/push-db.js` shows what would be sent (nothing is sent).
+2. `node scripts/push-db.js --yes` sends it. The live site checks it, saves its old database to `backups/` on the Volume, swaps yours in and restarts (about a minute).
+
+Left out on purpose: login sessions, one-time sign-in tokens, running analysis tickets, alert and check bookkeeping. Accounts made on the live site that are not in your database are replaced by the ones that are, so sign up again afterwards (your `ADMIN_EMAIL` account is Pro automatically). It only works when `WINAI_DB` is set on the server, needs the admin token and a confirmation header, and a file that is not a healthy, complete database is refused and the old one stays. After this the two databases learn separately, so do it once, not daily.
+
 ## Player game logs on Railway (ESPN)
 Projections are built from each player's recent games. On your own computer those come from nba.com (`predict_tonight.py`). nba.com refuses Railway, so there the server reads the same logs from ESPN (`lib/espngames.js`): same games, last-10 averages within 0.1 minutes, identical head-to-head (checked on 16 players). ESPN has no offensive/defensive rebound split and no plus-minus; nothing in the projection uses them.
 

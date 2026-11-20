@@ -35,6 +35,7 @@ const planGate = require('./lib/plangate');
 const finalsLib = require('./lib/finals');
 const statsUpload = require('./lib/statsupload');
 const espnGames = require('./lib/espngames');
+const dbSwap = require('./lib/dbswap');
 const biasLib = require('./lib/bias');
 modelParams.load();
 const { AsyncLocalStorage } = require('node:async_hooks');
@@ -54,6 +55,10 @@ const totp = require('./lib/totp');
 const { createGoogleVerifier } = require('./lib/google');
 
 const CLV_FILE = 'clv_tracker.json';   // legacy file, imported into SQLite on first start
+// A replacement database uploaded earlier (see /admin-upload/db) is swapped in here, before anything has the database open.
+// Only when WINAI_DB is set, i.e. on a real host, so a stray upload can never replace a development database.
+const DB_REPLACE_FILE = process.env.WINAI_DB ? path.resolve(process.env.WINAI_DB) : null;
+if (DB_REPLACE_FILE) { try { dbSwap.applyIncoming(DB_REPLACE_FILE, m => console.log(m)); } catch (err) { console.error('[DbSwap] failed, the current database is used as it is:', err.message); } }
 const store = createStore({
   dbPath: process.env.WINAI_DB || path.join(__dirname, 'winai.db'),
   jsonPath: path.join(__dirname, CLV_FILE),
@@ -140,6 +145,22 @@ app.post('/admin-upload/stats', (req, res, next) => requireAdmin(req, res, next)
     store.addEvent('stats', 'info', `${saved.length} stat files uploaded from the owner's computer${STATS_KEEP_DIR ? ' and kept on the volume' : ' (not kept: WINAI_DB is not set, so a deploy will lose them)'}.`);
     res.json({ saved: saved.length, kept: !!STATS_KEEP_DIR });
   } catch (err) { res.status(500).json({ error: 'The files could not be saved: ' + err.message }); }
+});
+// Replace the whole database with one uploaded from the owner's computer (scripts/push-db.js). It is only saved here and checked; the swap
+// happens at the next start (lib/dbswap.js), which this triggers. The old database is kept in backups/ next to it. Needs the admin token and
+// an explicit confirmation header, and does nothing unless WINAI_DB is set.
+app.post('/admin-upload/db', (req, res, next) => requireAdmin(req, res, next), express.raw({ type: () => true, limit: '120mb' }), (req, res) => {
+  if (!DB_REPLACE_FILE) return res.status(503).json({ error: 'This server has no WINAI_DB path set, so it will not replace its database.' });
+  if (req.get('x-confirm-replace') !== 'replace-live-database') return res.status(400).json({ error: 'Missing the confirmation header.' });
+  let bytes = req.body;
+  if (!Buffer.isBuffer(bytes) || !bytes.length) return res.status(400).json({ error: 'No database was sent.' });
+  try { if (bytes[0] === 0x1f && bytes[1] === 0x8b) bytes = require('zlib').gunzipSync(bytes, { maxOutputLength: 300 * 1024 * 1024 }); } catch (_) { return res.status(400).json({ error: 'The upload could not be unzipped.' }); }
+  let staged;
+  try { staged = dbSwap.stageIncoming(DB_REPLACE_FILE, bytes); } catch (err) { return res.status(500).json({ error: 'The upload could not be saved: ' + err.message }); }
+  if (!staged.ok) return res.status(400).json({ error: `The database was not accepted: ${staged.reason}. The current database was not touched.` });
+  try { store.addEvent('admin', 'warn', `A replacement database was uploaded (${JSON.stringify(staged.counts)}). The server restarts to swap it in; the old one is kept in backups/.`); } catch (_) {}
+  res.json({ ok: true, restarting: true, counts: staged.counts });
+  res.on('finish', () => setTimeout(() => { console.log('[DbSwap] restarting to apply the uploaded database'); process.exit(1); }, 500));   // a non-zero exit makes Railway start it again
 });
 app.use(express.json({ limit: '100kb', inflate: false, verify: (req, res, buf) => { if (req.originalUrl === '/api/stripe/webhook') req.rawBody = buf; } }));   // Stripe signs the exact bytes
 // One bad character in a name used to reach a Python launch call and crash the whole server.
