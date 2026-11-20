@@ -93,3 +93,12 @@ test('the play-type card: lean, soft-D share, best edge and watch come out as de
   assert.equal(ctx.f(pt, {}), null, 'no defensive ranks at all: no card');
   assert.equal(ctx.f({}, def), null);
 });
+
+test('phones: fields are 16px (no iPhone auto-zoom) and the controls a thumb must hit are at least 44px', () => {
+  const m = html.match(/@media \(max-width:760px\)\{\s*input:not\(\[type="checkbox"\]\)[\s\S]*?\n  \}\n<\/style>/);
+  assert.ok(m, 'the phone accessibility block is missing');
+  const block = m[0];
+  assert.match(block, /input:not\(\[type="checkbox"\]\):not\(\[type="radio"\]\):not\(\[type="range"\]\),select,textarea\{font-size:16px !important;min-height:44px;\}/);
+  for (const sel of ['.acct-btn', '.td-chip', '.bd-bar .td-chip', '.gp-pill', '.top-plays-refresh', '.suggestion-item', '.gs-i', '.gp-gm']) assert.ok(block.includes(sel), `${sel} must be sized for touch`);
+  assert.ok(!/user-scalable\s*=\s*no|maximum-scale/i.test(html), 'pinch-zoom must stay allowed');
+});

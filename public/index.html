@@ -1487,6 +1487,33 @@
     .result-btn{min-height:44px;}
     .day-chip{min-width:48px;padding:7px 10px;} .schedule-strip{scroll-snap-type:x proximity;} .game-chip{scroll-snap-align:start;}
   }
+
+  /* ── Phones: easier to read and to hit ──
+     16px fields: iPhones zoom the whole page when a smaller field is tapped, and do not zoom back out.
+     44px targets (Apple's and WCAG's recommended minimum) for everything a thumb has to hit, dropdowns included. */
+  @media (max-width:760px){
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),select,textarea{font-size:16px !important;min-height:44px;}
+    select{padding-top:8px;padding-bottom:8px;padding-right:30px;}
+    button,a[href],select,input,[onclick],[role="button"],[role="tab"],[role="option"]{touch-action:manipulation;}
+    .acct-btn,.scan-btn,.mini-btn,.lk-link,.si-link,.err-btn,.td-link,.day-chip,.game-chip,.analyze-btn{min-height:44px;}
+    .scan-btn,.mini-btn,.err-btn,.td-link{padding-left:16px;padding-right:16px;}
+    .quota-note button,.pl-empty button{min-height:44px;padding:0 10px;margin:0 -6px;}
+    .si-link{padding:12px 8px;}
+    .top-plays-refresh{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;margin:-14px -8px -14px 0;font-size:20px;vertical-align:middle;}
+    .subtabs .subtab{min-width:44px;}
+    .matchup-input-row{gap:12px;}
+    .matchup-input-row select{flex:1 1 140px;min-width:0;}
+    .matchup-input-row input{min-width:0;}
+    /* the lists that open from a field or a menu: bigger rows, and never taller than the screen */
+    .suggestion-item{padding:13px 14px;font-size:15px;min-height:44px;display:flex;align-items:center;}
+    .gs-res{max-height:min(60vh,420px);}
+    .gs-i{min-height:48px;padding:10px;}
+    .gs-g{font-size:12.5px;}
+    .gp-dd{max-height:70vh;overflow-y:auto;}
+    .gp-gm{min-height:48px;padding-top:12px;padding-bottom:12px;}
+    .bd-sort select{min-height:44px;}
+    .gp-pill,.td-seg button,.td-chip,.bd-bar .td-chip{min-height:44px;}
+  }
 </style>
 </head>
 <body>
