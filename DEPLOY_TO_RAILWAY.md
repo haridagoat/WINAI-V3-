@@ -231,6 +231,14 @@ nba.com refuses most cloud hosts, so the live site cannot fetch its own stats (t
 
 The files are kept on the Volume (next to the database) and put back at every start, so a deploy does not lose them. Do steps 2 and 3 once a day, before the 10 AM scan. If you later turn on the admin 2FA code, this script needs a small change; tell Claude.
 
+## Player game logs on Railway (ESPN)
+Projections are built from each player's recent games. On your own computer those come from nba.com (`predict_tonight.py`). nba.com refuses Railway, so there the server reads the same logs from ESPN (`lib/espngames.js`): same games, last-10 averages within 0.1 minutes, identical head-to-head (checked on 16 players). ESPN has no offensive/defensive rebound split and no plus-minus; nothing in the projection uses them.
+
+- `GAMELOG_SOURCE=auto` (default): try nba.com's script; if it does not answer, use ESPN, and after 3 failures in a row stop trying nba.com for 15 minutes. Self-healing, but the first few lookups each wait up to 20 seconds.
+- `GAMELOG_SOURCE=espn`: ESPN only. **Set this on Railway** so nothing waits on nba.com.
+- `GAMELOG_SOURCE=nba`: nba.com's script only (what a home computer can use).
+- Not covered by ESPN: the shot chart (still nba.com, so empty on Railway).
+
 ## NBA stats: this season, blended with last season
 
 `fetch_stats.py` fetches the current NBA season (it follows the calendar: October starts a new one) and blends it with last season's final files in `prior_season/`. The current season dominates. Last season is a slight prior that counts for most while a player has fewer than 10 games, about 15% after that, and fades to 5% by game 60. This is automatic, and runs with the 7 AM refresh.

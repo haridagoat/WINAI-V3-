@@ -34,6 +34,7 @@ const slateExtras = require('./lib/slateextras');
 const planGate = require('./lib/plangate');
 const finalsLib = require('./lib/finals');
 const statsUpload = require('./lib/statsupload');
+const espnGames = require('./lib/espngames');
 const biasLib = require('./lib/bias');
 modelParams.load();
 const { AsyncLocalStorage } = require('node:async_hooks');
@@ -1521,7 +1522,7 @@ async function fetchPlayerStats(playerName) {
       },
       form:             hotCold,
       minutesStability: stdMin > 5 ? 'VOLATILE' : 'STABLE',
-      dataSource:       'nba_api (primary)',
+      dataSource:       /espn/i.test(bridgeData.source || '') ? 'ESPN game log' : 'nba_api (primary)',
       averages: {
         pts:      String(bridgeData.l10.pts  || 0),
         reb:      String(bridgeData.l10.reb  || 0),
@@ -1814,7 +1815,12 @@ async function fetchH2HViaBridge(playerName, opponent, season = currentNbaSeason
     return cached.data;
   }
 
-  return enqueueBridge(() => new Promise((resolve) => {
+  if (GAMELOG_SOURCE !== 'nba' && bridgeIsDown()) {
+    const h = await fetchH2HViaEspn(playerName, opponent, season);
+    if (h) nbaApiBridgeCache[cacheKey] = { data: h, ts: Date.now() };
+    return h;
+  }
+  const viaScript = await enqueueBridge(() => new Promise((resolve) => {
     const py = spawn('python3', [
       path.join(__dirname, 'predict_tonight.py'),
       playerName, season, opponent
@@ -1826,7 +1832,7 @@ async function fetchH2HViaBridge(playerName, opponent, season = currentNbaSeason
     const timer = setTimeout(() => {
       py.kill();
       console.warn(`[H2H Bridge] Timeout after 25s: ${playerName} vs ${opponent}`);
-      resolve(null);
+      resolve({ outage: true });
     }, 25000);
 
     py.on('close', () => {
@@ -1836,6 +1842,7 @@ async function fetchH2HViaBridge(playerName, opponent, season = currentNbaSeason
         if (data?.h2h?.gamesVsOpp > 0) {
           nbaApiBridgeCache[cacheKey] = { data: data.h2h, ts: Date.now() };
           console.log(`[H2H Bridge] ✓ ${data.h2h.gamesVsOpp} games — ${playerName} vs ${opponent}`);
+          noteBridge(true);
           resolve(data.h2h);
         } else {
           console.warn(`[H2H Bridge] No games found: ${data?.error || 'empty'}`);
@@ -1843,10 +1850,18 @@ async function fetchH2HViaBridge(playerName, opponent, season = currentNbaSeason
         }
       } catch(e) {
         console.warn(`[H2H Bridge] Parse error: ${err || out}`);
-        resolve(null);
+        resolve({ outage: true });
       }
     });
   }));
+  if (viaScript && viaScript.outage) {                          // nba.com did not answer: ESPN has the same games
+    if (GAMELOG_SOURCE === 'nba') return null;
+    noteBridge(false);
+    const h = await fetchH2HViaEspn(playerName, opponent, season);
+    if (h) nbaApiBridgeCache[cacheKey] = { data: h, ts: Date.now() };
+    return h;
+  }
+  return viaScript;
 }
 
 async function fetchH2HStats(playerId, playerTeamId, opponentTeamId, seasons = [2025, 2024]) {
@@ -2896,6 +2911,68 @@ function buildLiveMarket(mathProjection, propLines, propType) {
 // Supplements BallDontLie with direct nba.com game logs
 // ════════════════════════════════════════════════════════════════
 
+// ── Game logs from ESPN (lib/espngames.js) ──
+// nba.com refuses requests from cloud hosts such as Railway, so predict_tonight.py cannot run there. ESPN answers from anywhere, and its logs match
+// nba.com's to within a rounding hair (checked on 16 players: same games, last-10 averages within 0.1 minutes, identical head-to-head).
+// GAMELOG_SOURCE: "auto" (default) tries nba.com's script and falls back to ESPN when it is unreachable, and stops trying it for 15 minutes after
+// 3 failures in a row; "espn" uses ESPN only (set this on a cloud host); "nba" uses the script only.
+const GAMELOG_SOURCE = String(process.env.GAMELOG_SOURCE || 'auto').toLowerCase();
+const bridgeHealth = { fails: 0, downUntil: 0 };
+const bridgeIsDown = () => GAMELOG_SOURCE === 'espn' || (GAMELOG_SOURCE === 'auto' && Date.now() < bridgeHealth.downUntil);
+function noteBridge(ok) {
+  if (ok) { bridgeHealth.fails = 0; bridgeHealth.downUntil = 0; return; }
+  bridgeHealth.fails++;
+  if (bridgeHealth.fails >= 3 && Date.now() >= bridgeHealth.downUntil) {
+    bridgeHealth.downUntil = Date.now() + 15 * 60 * 1000;
+    console.warn('[Bridge] nba.com is not answering; game logs come from ESPN for the next 15 minutes.');
+    try { store.addEvent('stats', 'warn', 'nba.com is not answering this server, so player game logs now come from ESPN (checked again in 15 minutes).'); } catch (_) {}
+  }
+}
+// An outage (no answer, not JSON, script missing) as opposed to a real answer such as "player not found".
+const isBridgeOutage = err => /timeout|timed out|parse error|ECONN|ENOTFOUND|Max retries|Connection|HTTPSConnectionPool|not installed|Expecting value|ReadTimeout/i.test(String(err || ''));
+const espnLogCache = {};   // "<espn id>:<season end year>" -> { json, ts }
+const espnLogQueue = createLaneQueue({ concurrency: 4, lowConcurrency: 2, minGapMs: 100, maxHigh: 60 });
+async function fetchEspnGameLogJson(id, endYear) {
+  const key = `${id}:${endYear}`, hit = espnLogCache[key];
+  const thisSeason = endYear === parseInt(currentNbaSeason(), 10) + 1;
+  if (hit && Date.now() - hit.ts < (thisSeason ? 20 * 60 * 1000 : 12 * 3600 * 1000)) return hit.json;
+  const json = await espnLogQueue.enqueue(async () => (await axios.get(`https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/${encodeURIComponent(id)}/gamelog`, { params: { season: endYear }, timeout: 12000 })).data, bridgeLane.getStore() === 'low' ? 'low' : 'high');
+  if (json && json.error && !json.names) throw new Error(json.error);
+  espnLogCache[key] = { json, ts: Date.now() };
+  const keys = Object.keys(espnLogCache); if (keys.length > 500) for (const k of keys.sort((a, b) => espnLogCache[a].ts - espnLogCache[b].ts).slice(0, 100)) delete espnLogCache[k];
+  return json;
+}
+// Forget a player's cached game logs (both sources) so the next lookup reads them fresh.
+async function dropGameLogCaches(playerName) {
+  for (const k of Object.keys(nbaApiBridgeCache)) if (k.startsWith(`${playerName}:`) || k.startsWith(`h2h:${playerName}:`)) delete nbaApiBridgeCache[k];
+  try { const p = await resolveNBAPlayer(playerName); if (p) for (const k of Object.keys(espnLogCache)) if (k.startsWith(`${p.id}:`)) delete espnLogCache[k]; } catch (_) {}
+}
+async function fetchViaEspn(playerName, season = currentNbaSeason()) {
+  try {
+    const p = await resolveNBAPlayer(playerName);
+    if (!p) return { error: `Player not found: ${playerName}` };
+    const end = parseInt(season, 10) + 1, team = espnGames.nbaAbbr(p.teamAbbr);
+    const current = espnGames.parseGameLog(await fetchEspnGameLogJson(p.id, end), { teamAbbr: team });
+    // Early in a season last season's games are kept as a slight prior (the same rule predict_tonight.py applies).
+    const prior = current.regular.length + current.post.length < 40 ? espnGames.parseGameLog(await fetchEspnGameLogJson(p.id, end - 1), { teamAbbr: team }) : null;
+    return espnGames.buildLog({ name: p.name, id: p.id, season, current, prior });
+  } catch (err) { return { error: `ESPN game log unavailable: ${err.message}` }; }
+}
+async function fetchH2HViaEspn(playerName, opponent, season = currentNbaSeason()) {
+  try {
+    const p = await resolveNBAPlayer(playerName);
+    if (!p) return null;
+    const end = parseInt(season, 10) + 1, team = espnGames.nbaAbbr(p.teamAbbr), seasons = [];
+    let r = null;
+    for (let y = end; y > end - 4; y--) {                      // this season and the three before, stopping once there are 6 games
+      seasons.push(espnGames.parseGameLog(await fetchEspnGameLogJson(p.id, y), { teamAbbr: team }));
+      r = espnGames.buildH2H({ name: p.name, id: p.id, opponent, seasons });
+      if (r.h2h && r.h2h.gamesVsOpp >= 6) break;
+    }
+    return r && r.h2h && r.h2h.gamesVsOpp > 0 ? r.h2h : null;
+  } catch (_) { return null; }
+}
+
 // Cache bridge results for 30 min (nba.com rate limits)
 const nbaApiBridgeCache = {};
 const NBA_BRIDGE_TTL = 30 * 60 * 1000;
@@ -2928,7 +3005,12 @@ async function fetchViaBridge(playerName, season = currentNbaSeason()) {
     return cached.data;
   }
 
-  return enqueueBridge(() => new Promise((resolve) => {
+  if (GAMELOG_SOURCE !== 'nba' && bridgeIsDown()) {
+    const viaEspn = await fetchViaEspn(playerName, season);
+    if (!viaEspn.error) nbaApiBridgeCache[cacheKey] = { data: viaEspn, ts: Date.now() };
+    return viaEspn;
+  }
+  const viaScript = await enqueueBridge(() => new Promise((resolve) => {
     const py = spawn('python3', [
       path.join(__dirname, 'predict_tonight.py'),
       playerName,
@@ -2960,6 +3042,14 @@ async function fetchViaBridge(playerName, season = currentNbaSeason()) {
       }
     });
   }));
+  if (GAMELOG_SOURCE !== 'nba' && viaScript && viaScript.error && isBridgeOutage(viaScript.error)) {
+    noteBridge(false);
+    const viaEspn = await fetchViaEspn(playerName, season);
+    if (!viaEspn.error) nbaApiBridgeCache[cacheKey] = { data: viaEspn, ts: Date.now() };
+    return viaEspn.error ? viaScript : viaEspn;
+  }
+  if (viaScript && !viaScript.error) noteBridge(true);
+  return viaScript;
 }
 
 // ── SHOT CHARTS — real per-shot LOC_X/LOC_Y from stats.nba.com, works for
@@ -3580,7 +3670,7 @@ app.get('/api/prop-context', async (req, res) => {
     const avgs = bridgeH2H.avgs || {};
     h2hStats = {
       gamesVsOpp: bridgeH2H.gamesVsOpp,
-      source:     'nba_api',
+      source:     bridgeH2H.source || 'nba_api',
       pts:  avgs.pts  || 0, reb:  avgs.reb  || 0, ast:  avgs.ast  || 0,
       fg3m: avgs.fg3m || 0, fga:  avgs.fga  || 0, fg3a: avgs.fg3a || 0,
       fta:  avgs.fta  || 0, oreb: avgs.oreb || 0, dreb: avgs.dreb || 0,
@@ -4428,6 +4518,7 @@ async function statsAndGame(league, player, pick, live) {
   let game = stats && !stats.error ? findGameForPick(stats, pick) : null;
   if (!game && live && league !== 'wnba' && Date.now() - (lastPlayerStatsFetch[player] || 0) > 8 * 60 * 1000) {
     lastPlayerStatsFetch[player] = 0;
+    await dropGameLogCaches(player);                       // the game logs keep their own cache; a game that just ended is not in it
     stats = await load();
     game = stats && !stats.error ? findGameForPick(stats, pick) : null;
   }

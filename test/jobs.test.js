@@ -28,7 +28,7 @@ function world({ inSeason = true, credits = { known: true, remaining: 300, critA
     autoLogSlatePicks: (lg, rs) => { w.picksLogged.push(rs.length); },
     fetchPlayerStats: async name => w.stats?.[name] || { error: 'no data' }, fetchWNBAPlayerStats: async () => ({ error: 'no data' }),
     findGameForPick: (stats, e) => (stats.games || []).find(x => x.date === e.date) || null, gradeStatValue: (g, t) => g[t === 'points' ? 'pts' : t === 'rebounds' ? 'reb' : 'ast'],
-    finalsLib: require('../lib/finals'), lastPlayerStatsFetch: {}, ESPN_BASE: 'espn-nba', ESPN_BASE_WNBA: 'espn-wnba',
+    finalsLib: require('../lib/finals'), lastPlayerStatsFetch: {}, dropGameLogCaches: async () => {}, ESPN_BASE: 'espn-nba', ESPN_BASE_WNBA: 'espn-wnba',
     getEspnBoxPlayers: async (lg, id) => (w.box && w.box[id]) || [],
     getEspnScoreboard: async (base, ymd) => { w.scoreboardAsked.push(base + ' ' + ymd); return w.scoreboard || []; },
     resolveESPNTeam: n => ({ 'boston celtics': 'bos', 'miami heat': 'mia', 'denver nuggets': 'den', 'utah jazz': 'uta' })[String(n).toLowerCase()] || null, resolveWNBATeam: () => null,
