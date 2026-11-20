@@ -13,6 +13,10 @@ mkdir -p "$(dirname "$LOG")"
   if [ "${1:-}" != "push-only" ]; then
     if python3 fetch_stats.py > /tmp/winai-fetch.out 2>&1; then tail -3 /tmp/winai-fetch.out; else echo "FETCH FAILED (exit $?). Last lines:"; tail -8 /tmp/winai-fetch.out; fi
   fi
+  if [ "${1:-}" != "push-only" ]; then
+    # every player's and team's shot chart (about 10 minutes); a failure keeps yesterday's copies and does not stop the upload
+    node scripts/build-shotcharts.js 2>&1 | tail -3 || echo "SHOT CHARTS FAILED"
+  fi
   node scripts/push-stats.js || echo "UPLOAD FAILED"
   echo
 } >> "$LOG" 2>&1

@@ -37,6 +37,7 @@ const statsUpload = require('./lib/statsupload');
 const espnGames = require('./lib/espngames');
 const dbSwap = require('./lib/dbswap');
 const oddsGuard = require('./lib/oddsguard');
+const shotCharts = require('./lib/shotcharts');
 const biasLib = require('./lib/bias');
 modelParams.load();
 const { AsyncLocalStorage } = require('node:async_hooks');
@@ -3100,6 +3101,7 @@ async function fetchViaBridge(playerName, season = currentNbaSeason()) {
 // Routed through the same bridge queue as predict_tonight.py so this never
 // adds parallel load against nba.com on top of the player-stats bridge.
 const shotChartCache = {};
+const shotChartBundles = (() => { const read = shotCharts.createBundleReader(__dirname); return league => read(league); })();
 const SHOT_CHART_TTL = 30 * 60 * 1000;
 
 async function fetchShotChart(league, mode, name, season = currentNbaSeason()) {
@@ -3110,7 +3112,14 @@ async function fetchShotChart(league, mode, name, season = currentNbaSeason()) {
     return cached.data;
   }
 
-  return enqueueBridge(() => new Promise((resolve) => {
+  // Charts built on the owner's computer and uploaded (lib/shotcharts.js). Used when nba.com is not answering this server (see GAMELOG_SOURCE).
+  const fromUpload = () => shotCharts.lookup(shotChartBundles(league), mode, name);
+  if (GAMELOG_SOURCE !== 'nba' && bridgeIsDown()) {
+    const up = fromUpload();
+    if (up) { shotChartCache[cacheKey] = { data: up, ts: Date.now() }; return up; }
+    if (GAMELOG_SOURCE === 'espn') return { error: 'No shot chart is available for this one yet.' };
+  }
+  const viaScript = await enqueueBridge(() => new Promise((resolve) => {
     const py = spawn('python3', [
       path.join(__dirname, 'shotchart.py'),
       league, mode, name, season
@@ -3140,6 +3149,12 @@ async function fetchShotChart(league, mode, name, season = currentNbaSeason()) {
       }
     });
   }));
+  if (GAMELOG_SOURCE !== 'nba' && viaScript && viaScript.error && isBridgeOutage(viaScript.error)) {
+    noteBridge(false);
+    const up = fromUpload();
+    if (up) { shotChartCache[cacheKey] = { data: up, ts: Date.now() }; return up; }
+  } else if (viaScript && !viaScript.error) noteBridge(true);
+  return viaScript;
 }
 
 // GET /api/shotchart?league=nba|wnba&mode=player|defense&name=<player or team>

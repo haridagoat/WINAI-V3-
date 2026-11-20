@@ -244,6 +244,9 @@ A new live site starts with an empty database: no graded history and no learned 
 
 Left out on purpose: login sessions, one-time sign-in tokens, running analysis tickets, alert and check bookkeeping. Accounts made on the live site that are not in your database are replaced by the ones that are, so sign up again afterwards (your `ADMIN_EMAIL` account is Pro automatically). It only works when `WINAI_DB` is set on the server, needs the admin token and a confirmation header, and a file that is not a healthy, complete database is refused and the old one stays. After this the two databases learn separately, so do it once, not daily.
 
+## Shot charts on Railway
+Shot locations only come from nba.com, which refuses Railway. So `scripts/build-shotcharts.js` builds every player's (10+ minutes a game) and every team's defense chart on your computer into `shotcharts_nba.json` (about 13 MB, about 10 minutes), `scripts/push-stats.js` uploads it with the stat files, and the live server serves those when nba.com does not answer. The 8:15 AM job does both. The charts are the same ones your computer shows, as of the morning's build. A player not in the file (a rookie, under 10 minutes a game) shows "No shot chart is available for this one yet." In the WNBA season run `node scripts/build-shotcharts.js wnba` as well. Set `GAMELOG_SOURCE=espn` on Railway so the server goes straight to the upload.
+
 ## Player game logs on Railway (ESPN)
 Projections are built from each player's recent games. On your own computer those come from nba.com (`predict_tonight.py`). nba.com refuses Railway, so there the server reads the same logs from ESPN (`lib/espngames.js`): same games, last-10 averages within 0.1 minutes, identical head-to-head (checked on 16 players). ESPN has no offensive/defensive rebound split and no plus-minus; nothing in the projection uses them.
 
