@@ -214,3 +214,13 @@ test('stat file columns: a mostly-empty column counts as missing, a few blanks d
   assert.equal((await ctx({ now: () => nov, readStat: noWnba }).run('stat-schema')).status, 'ok');
   assert.equal((await ctx().run('stat-schema')).status, 'ok', 'a context with no reader has nothing to check');
 });
+
+test('the AI check says what is wrong with the Anthropic key and what to do, and a passing blip is not an alarm', async () => {
+  const D = require('../lib/datachecks');
+  const run = async (state, message) => { const c = D.buildChecks({ aiKeyCheck: async () => ({ state, message }) }).find(x => x.key === 'ai-key'); return c.run(); };
+  assert.equal((await run('ok')).status, 'ok');
+  const refused = await run('refused', 'invalid x-api-key'); assert.equal(refused.status, 'bad'); assert.match(refused.detail, /console\.anthropic\.com[\s\S]*ANTHROPIC_KEY/); assert.match(refused.detail, /not answering/);
+  assert.equal((await run('missing')).status, 'bad'); assert.match((await run('model', 'model: x not found')).detail, /ANTHROPIC_MODEL/); assert.equal((await run('model', 'x')).status, 'bad');
+  assert.equal((await run('unreachable', 'timeout')).status, 'ok', 'one failed attempt to reach Anthropic is checked again tomorrow, not reported as broken');
+  assert.equal((await D.buildChecks({}).find(x => x.key === 'ai-key').run()).status, 'ok', 'a server that has no such check function (tests, old setups) is not flagged');
+});

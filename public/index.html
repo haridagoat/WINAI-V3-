@@ -4676,6 +4676,7 @@ function describeError(err) {
   if (code === 'pro_required' || s === 402) return { title: 'This is a Pro feature', detail: m || '', retry: false };
   if (s === 429) return { title: 'Too many requests', detail: /Daily|limit/i.test(m) ? m : 'Wait a minute, then try again.', retry: !/Daily/i.test(m) };
   if (s === 404) return { title: 'Not found', detail: m && !/^Server error/.test(m) ? m : 'That data is not available.', retry: false };
+  if (code === 'ai_unavailable') return { title: 'The write-up is unavailable', detail: m && !/^(Unknown|Server error)/.test(m) ? m : 'The written part is not available right now. The numbers are still good.', retry: true };   // the AI, not a stats or odds source
   if (s === 502 || s === 503 || s === 504) return { title: 'A data source is not answering', detail: 'The stats or odds provider may be down. Try again in a few minutes.', retry: true };
   if (s >= 500) return { title: 'The server hit a problem', detail: 'It has been logged. Try again in a moment.', retry: true };
   if (typeof navigator !== 'undefined' && navigator.onLine === false || /Failed to fetch|NetworkError|Load failed|network/i.test(m) || (err && err.name === 'TypeError')) return { title: 'Cannot reach the server', detail: 'Check your connection, then try again.', retry: true };

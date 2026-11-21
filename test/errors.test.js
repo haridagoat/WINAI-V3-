@@ -71,3 +71,12 @@ test('a failed AI call is sorted into "busy or not answering" (try again) and "u
   assert.doesNotMatch(E.aiFailure(upstream(401), 'invalid x-api-key sk-ant-api03-SECRETSECRET').message, /sk-ant|x-api-key/);
   assert.equal(E.aiFailure(null).status, 502);
 });
+
+test('a refused API key is told apart from an outage (so the owner is told), still shown to visitors as a plain "unavailable", with no key text', () => {
+  const upstream = status => Object.assign(new Error('Request failed'), { response: { status } });
+  for (const [up, text] of [[401, 'invalid x-api-key'], [403, 'permission_error'], [400, 'authentication_error: bad key']]) {
+    const f = E.aiFailure(upstream(up), text); assert.equal(f.kind, 'auth', String(up)); assert.equal(f.status, 502); assert.doesNotMatch(f.message, /key|sk-ant|auth/i);
+  }
+  for (const up of [429, 500, 529]) assert.notEqual(E.aiFailure(upstream(up)).kind, 'auth', 'an outage is not a key problem');
+  assert.notEqual(E.aiFailure(upstream(400), 'Your credit balance is too low').kind, 'auth', 'billing is not a key problem');
+});

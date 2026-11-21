@@ -141,3 +141,12 @@ test('one-column pages: the confidence and recommendation are repeated under the
   assert.match(html, /@media\(max-width:1150px\)\{\.result-shell\{grid-template-columns:1fr;\}/);
   assert.match(html, /\.v2-cbar-more\{[^}]*min-height:44px/); assert.match(html, /side\.setAttribute\('tabindex', '-1'\); side\.focus\(\{ preventScroll: true \}\)/);
 });
+
+test('an AI failure is called what it is on the page ("the write-up is unavailable"), not a stats or odds source being down', () => {
+  const src = html.match(/function describeError\(err\) \{[\s\S]*?\n\}\n/)[0];
+  const f = new Function('navigator', src + '; return describeError;')({ onLine: true });
+  const ai = f({ status: 502, code: 'ai_unavailable', message: 'The AI service is unavailable right now. The numbers are still good; the write-up will be back soon.' });
+  assert.equal(ai.title, 'The write-up is unavailable'); assert.match(ai.detail, /numbers are still good/); assert.equal(ai.retry, true);
+  assert.equal(f({ status: 502, code: 'ai_unavailable', message: 'Server error' }).detail, 'The written part is not available right now. The numbers are still good.');
+  assert.equal(f({ status: 502, message: 'Bad gateway' }).title, 'A data source is not answering', 'a real stats or odds failure keeps its own wording');
+});

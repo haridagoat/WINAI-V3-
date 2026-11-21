@@ -4913,6 +4913,15 @@ app.get('/api/team-picks', async (req, res) => {
 // it can use that key. The app's own prompts are well under 30,000 characters; a daily ceiling
 // (ANALYZE_DAILY_CAP, default 400) bounds the worst case. The admin is not capped.
 // Only a local stand-in may replace the Anthropic address (used by the tests); the real key never goes anywhere else.
+const ANTHROPIC_MODEL = String(process.env.ANTHROPIC_MODEL || 'claude-sonnet-5').trim();   // set ANTHROPIC_MODEL to change the model without a deploy
+let aiKeyNotedDay = '';
+// Anthropic refusing the key is reported once a day in the admin log and as an alert (the page only says the write-up is unavailable).
+function noteAiKeyRefused(status, text) {
+  const day = getToday(); if (aiKeyNotedDay === day) return; aiKeyNotedDay = day;
+  const msg = `Anthropic refused the API key (${status}${text ? ': ' + String(text).slice(0, 80) : ''}). Every written breakdown and AI analysis fails until ANTHROPIC_KEY is replaced with a working key (console.anthropic.com, API keys).`;
+  try { store.addEvent('ai', 'error', msg); } catch (_) {}
+  try { alerts.notify({ key: 'ai-key', level: 'critical', kind: 'ai', message: msg }).catch(() => {}); } catch (_) {}
+}
 const ANTHROPIC_BASE = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(process.env.ANTHROPIC_BASE_URL || '') ? process.env.ANTHROPIC_BASE_URL : 'https://api.anthropic.com';
 let analyzeDay = '', analyzeCount = 0;
 // `kind` says what the prompt is for. 'team' is the free written breakdown on Daily Matchups: its prompt must
@@ -4942,7 +4951,7 @@ app.post('/api/analyze', analyzeRateLimiter, (req, res, next) => {
     const claudeRes = await axios.post(
       `${ANTHROPIC_BASE}/v1/messages`,
       {
-        model: 'claude-sonnet-5',
+        model: ANTHROPIC_MODEL,
         max_tokens: 4096,
         thinking: { type: 'disabled' },
         messages: [{ role: 'user', content: prompt }],
@@ -4959,6 +4968,7 @@ app.post('/api/analyze', analyzeRateLimiter, (req, res, next) => {
     console.error(`[Claude] Error ${errStatus}:`, errMsg);
     console.error('[Claude] Full error:', JSON.stringify(err.response?.data || {}, null, 2));
     const fail = errorsLib.aiFailure(err, errMsg);          // the real reason stays in the log above; the visitor gets a plain one
+    if (fail.kind === 'auth') noteAiKeyRefused(errStatus, errMsg);
     res.status(fail.status).json({ error: fail.message, code: 'ai_unavailable' });
   }
 });
@@ -4979,7 +4989,7 @@ async function streamAnalysis(req, res, prompt) {
   const stop = () => { clearTimeout(idle); clearTimeout(overall); };
   try {
     const upstream = await axios.post(`${ANTHROPIC_BASE}/v1/messages`,
-      { model: 'claude-sonnet-5', max_tokens: 4096, thinking: { type: 'disabled' }, stream: true, messages: [{ role: 'user', content: prompt }] },
+      { model: ANTHROPIC_MODEL, max_tokens: 4096, thinking: { type: 'disabled' }, stream: true, messages: [{ role: 'user', content: prompt }] },
       { headers: { 'x-api-key': process.env.ANTHROPIC_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, timeout: 60000, responseType: 'stream', signal: abort.signal });
     await new Promise((resolve, reject) => {
       const bump = () => { clearTimeout(idle); idle = setTimeout(() => { abort.abort(); reject(new Error('The AI stopped responding.')); }, STREAM_IDLE_MS); };
@@ -5014,7 +5024,9 @@ async function streamAnalysis(req, res, prompt) {
     }
     if (!spent && req.analysisTicket) store.releaseTicket(req.analysisTicket);      // nothing was delivered, so it is not spent
     console.error(`[Claude] Stream error ${err.response?.status || ''}:`, msg);
-    send({ error: errorsLib.aiFailure(err, msg).message, code: 'ai_unavailable' }); res.end();
+    const sf = errorsLib.aiFailure(err, msg);
+    if (sf.kind === 'auth') noteAiKeyRefused(err.response?.status || 401, msg);
+    send({ error: sf.message, code: 'ai_unavailable' }); res.end();
   }
 }
 
@@ -6893,6 +6905,21 @@ async function uploadOffsite() {
 }
 const dataCheckCtx = {
   offsite, offsiteUpload: uploadOffsite, offsiteVerify: () => offsite.verifyLatest(),
+  // One tiny request (a single output token) to see whether Anthropic accepts the key and the model name.
+  aiKeyCheck: async () => {
+    const key = process.env.ANTHROPIC_KEY;
+    if (!key || key.includes('your_')) return { state: 'missing' };
+    try {
+      await axios.post(`${ANTHROPIC_BASE}/v1/messages`, { model: ANTHROPIC_MODEL, max_tokens: 1, messages: [{ role: 'user', content: 'ok' }] },
+        { headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, timeout: 20000 });
+      return { state: 'ok' };
+    } catch (err) {
+      const st = err.response && err.response.status, msg = (err.response && err.response.data && err.response.data.error && err.response.data.error.message) || err.message;
+      if (st === 401 || st === 403) { noteAiKeyRefused(st, msg); return { state: 'refused', message: msg }; }
+      if (st === 404 || (st === 400 && /model/i.test(String(msg)))) return { state: 'model', message: msg };
+      return { state: 'unreachable', message: msg };
+    }
+  },
   store, adminEmail: String(process.env.ADMIN_EMAIL || '').trim().toLowerCase() || null,
   today: getToday,
   daysAgo: n => { const d = new Date(); d.setDate(d.getDate() - n); return toLocalDateStr(d); },
