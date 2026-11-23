@@ -150,3 +150,69 @@ test('an AI failure is called what it is on the page ("the write-up is unavailab
   assert.equal(f({ status: 502, code: 'ai_unavailable', message: 'Server error' }).detail, 'The written part is not available right now. The numbers are still good.');
   assert.equal(f({ status: 502, message: 'Bad gateway' }).title, 'A data source is not answering', 'a real stats or odds failure keeps its own wording');
 });
+
+// ── "no lines" states (Board and Analyze say the same thing, no impossible numbers, no empty counts) ──
+test('one wording for lines on the Board and Analyze: only "Lines N ago" when the scan found lines, "No lines posted yet" when it found none, never the other league\'s time', () => {
+  const src = html.match(/function linesStatus\(f, lg\) \{[\s\S]*?\n\}\n/)[0];
+  const f = new Function('tdAgo', src + '; return linesStatus;')(t => 'AGO(' + t + ')');
+  assert.deepEqual(f({ lines: { nba: 'T' }, linesFound: { nba: 176 } }, 'nba'), { state: 'found', ago: 'AGO(T)', text: 'Lines AGO(T)' });
+  assert.equal(f({ lines: { nba: 'T' }, linesFound: { nba: 0 } }, 'nba').text, 'No lines posted yet');
+  assert.equal(f({ lines: { nba: null, wnba: 'T2' }, linesFound: { nba: null, wnba: 0 } }, 'nba').state, 'unknown', 'a league with no scan of its own does not borrow the other league\'s time');
+  assert.equal(f({ lines: { nba: 'T' } }, 'nba').state, 'found', 'an older server answer without counts keeps the old behaviour');
+  assert.equal(f(null, 'nba').state, 'unknown');
+  assert.ok(!/f\.lines\[lg\] \|\| f\.lines\[other\]/.test(html));
+});
+
+test('the server tells the page how many lines the day\'s scan found (0 is "ran, none posted")', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  assert.match(src, /const linesFound = lg => \{ const c = slateScanCache\[lg\]; return c && c\.dateKey === getToday\(\) && c\.ts \? \(\(c\.data && c\.data\.candidates\) \|\| \[\]\)\.length : null; \};/);
+  assert.match(src, /linesFound: \{ nba: linesFound\('nba'\), wnba: linesFound\('wnba'\) \}/);
+});
+
+test('the Analyze badge is green only with lines; with none it is a neutral "feed ok, no lines yet", and an off-season league says so', () => {
+  assert.match(html, /FR && FR\.inSeason && FR\.inSeason\[lg\] === false \? 'OFF SEASON'/); assert.match(html, /linesStatus\(FR, lg\)\.state === 'none' \? 'FEED OK · NO LINES YET'/);
+  assert.match(html, /\.dfs-synced\.idle\{background:rgba\(255,255,255,0\.05\)/); assert.match(html, /el\.classList\.toggle\('idle', !degraded && label !== 'DATA SYNCED'\)/);
+  assert.match(html, /never "Odds updated" next to "no lines"/);
+});
+
+test('locked pick placeholders are possible numbers: the projection is on the stated side of the line by the stated gap', () => {
+  const m = html.match(/const d = \[\[('Another Player'[^\]]*)\], \[('Third Player'[^\]]*)\]\]\[i % 2\];/);
+  const rows = [m[1], m[2]].map(r => r.split(/,\s*/).map(x => x.replace(/^'|'$/g, '')));
+  for (const [, call, , , proj, gap] of rows) {
+    const [side, line] = call.split(' '); const g = parseFloat(gap.replace('−', '-')), p = parseFloat(proj), L = parseFloat(line);
+    assert.ok(side === 'OVER' ? p > L : p < L, call + ' ' + proj); assert.ok(Math.abs(p - L - g) < 0.051, `${proj} against ${line} is ${(p - L).toFixed(1)}, not ${gap}`);
+  }
+});
+
+test('no lines: no "0 props" chip or "0 props across N games", a plain empty board for a signed-in visitor, and Blend is switched off with a reason', () => {
+  assert.match(html, /\$\{total \? `<span class="bd-count">\$\{total\} props<\/span>` : ''\}/);
+  assert.match(html, /: 'Every line, every book, sorted and filtered your way\. Lines post closer to tip\.'/);
+  assert.match(html, /!D\.props\.length && !D\.loadingBoard && !D\.scanning \? '<section class="td-card td-board">[^']*No lines posted yet<\/b>Lines post closer to tip/);
+  assert.match(html, /v === 'blend' && anyFb \? `<button type="button" data-pm="blend" aria-pressed="false" disabled aria-disabled="true" title="Blend mixes the model with the market line, so it needs live lines">/);
+  assert.match(html, /aria-pressed="\$\{\(anyFb \? 'model' : TD\.projMode\) === v\}"/); assert.match(html, /<span class="td-segnote">Blend needs live lines<\/span>/); assert.match(html, /\.td-seg button:disabled\{opacity:\.45;cursor:not-allowed;\}/);
+});
+
+test('a pick with no line shows "n/a, no line yet" for EV instead of a bare dash, and a real EV is untouched', () => {
+  assert.match(html, /\$\{ev == null && fb \? 'n\/a' : fmtEv\(ev\)\}/); assert.match(html, /ev == null && fb \? '<small class="td-model">no line yet<\/small>'/);
+});
+
+test('pick cards say "away @ home" like the game cards, found from the pick\'s two teams, and keep "team vs opponent" when the game is not on the slate', () => {
+  const src = html.match(/function tdMatchup\(p, team, opp\) \{[\s\S]*?\n\}\n/)[0];
+  const tdLast = n => String(n || '').trim().toLowerCase().split(/\s+/).pop();
+  const make = games => new Function('TD', 'tdLast', src + '; return tdMatchup;')({ data: { games } }, tdLast);
+  const games = [{ league: 'nba', away: 'Indiana Pacers', home: 'New York Knicks' }, { league: 'nba', away: 'Portland Trail Blazers', home: 'Philadelphia 76ers' }];
+  const t = make(games);
+  assert.equal(t({ league: 'nba', team: 'New York Knicks', opponent: 'Indiana Pacers' }, 'Knicks', 'Pacers'), 'Pacers @ Knicks');
+  assert.equal(t({ league: 'nba', team: 'Indiana Pacers', opponent: 'New York Knicks' }, 'Pacers', 'Knicks'), 'Pacers @ Knicks', 'the same line from either team\'s pick');
+  assert.equal(t({ league: 'nba', team: 'Philadelphia 76ers', opponent: 'Portland Trail Blazers' }, '76ers', 'Blazers'), 'Blazers @ 76ers');
+  assert.equal(t({ league: 'nba', team: 'Boston Celtics', opponent: 'Miami Heat' }, 'Celtics', 'Heat'), 'Celtics vs Heat', 'no such game on the slate: unchanged');
+  assert.equal(t({ league: 'wnba', team: 'New York Knicks', opponent: 'Indiana Pacers' }, 'Knicks', 'Pacers'), 'Knicks vs Pacers', 'the league must match too');
+  assert.equal(make(undefined)({ league: 'nba', team: 'A B', opponent: 'C D' }, 'B', 'D'), 'B vs D');
+  assert.match(html, /escapeHtml\(tdMatchup\(p, team, opp\)\)/);
+});
+
+test('WNBA is marked "off season" when it has no games and the server says it is not in season; the empty state says why; the button still works', () => {
+  assert.match(html, /const tdWnbaOff = \(\) => !!\(TD\.data && !TD\.data\.games\.some\(g => g\.league === 'wnba'\) && TD\.fresh && TD\.fresh\.inSeason && TD\.fresh\.inSeason\.wnba === false\);/);
+  assert.match(html, /v === 'wnba' && tdWnbaOff\(\) \? `<button type="button" data-lg="wnba" class="off" aria-pressed="\$\{L === v\}" aria-label="WNBA, off season" title="WNBA is in its off season">/);
+  assert.match(html, /L === 'wnba' && tdWnbaOff\(\) \? 'The WNBA is in its off season\. ' : ''/); assert.match(html, /\.td-seg button\.off::after\{content:" · off season"/);
+});

@@ -4794,9 +4794,11 @@ function isCacheStillFresh(cached, today) {
 app.get('/api/freshness', (req, res) => {
   const mtime = f => { try { return fs.statSync(path.join(__dirname, f)).mtime.toISOString(); } catch (_) { return null; } };
   const scanAt = lg => { const c = slateScanCache[lg]; return c && c.dateKey === getToday() && c.ts ? new Date(c.ts).toISOString() : null; };
+  // How many prop lines that scan found: 0 means the scan ran and the books had none posted, which is not the same as "lines updated a minute ago".
+  const linesFound = lg => { const c = slateScanCache[lg]; return c && c.dateKey === getToday() && c.ts ? ((c.data && c.data.candidates) || []).length : null; };
   const rosters = Object.values(lastRosterFetch).filter(Number.isFinite);
   res.set('Cache-Control', 'public, max-age=60');
-  res.json({ now: new Date().toISOString(), stats: { nba: mtime('player_stats.json'), wnba: mtime('wnba_player_stats.json') }, lines: { nba: scanAt('nba'), wnba: scanAt('wnba') },
+  res.json({ now: new Date().toISOString(), stats: { nba: mtime('player_stats.json'), wnba: mtime('wnba_player_stats.json') }, lines: { nba: scanAt('nba'), wnba: scanAt('wnba') }, linesFound: { nba: linesFound('nba'), wnba: linesFound('wnba') },
     injuries: rosters.length ? new Date(Math.max(...rosters)).toISOString() : null, inSeason: { nba: datachecks.inSeason('nba', new Date()), wnba: datachecks.inSeason('wnba', new Date()) } });
 });
 // A list cached earlier in the day was built before some players' photo ids could be found (an accent in the name), and it is kept until
