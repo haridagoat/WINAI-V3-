@@ -471,3 +471,11 @@ test('a running analysis stops counting after the window, so a stuck one cannot 
   assert.equal(w.store.analysesInFlight(id, day, 150000, Date.now()), 1);
   assert.equal(w.store.analysesInFlight(id, day, 150000, Date.now() + 200000), 0);
 });
+
+test('pasted invisible characters are removed from an email, and anything else that is not plain ASCII is refused (the email provider rejects it)', () => {
+  const A = require('../lib/auth');
+  for (const bad of ['a​@b.com', '﻿a@b.com', 'a@b‍.com', 'a@b.com ', ' a@b.com⁠', 'a­@b.com']) assert.deepEqual(A.normalizeEmail(bad), { email: 'a@b.com' }, JSON.stringify(bad));
+  for (const accented of ['josé@b.com', 'a@bé.com', 'a@b.coḿ', 'ａ@b.com']) assert.match(A.normalizeEmail(accented).error, /plain letters and numbers/, accented);
+  assert.deepEqual(A.normalizeEmail('  Some.One+tag@Example.COM '), { email: 'some.one+tag@example.com' });
+  for (const nope of ['', 'x', 'a b@c.com', 'a@b', null, 5]) assert.ok(A.normalizeEmail(nope).error, String(nope));
+});
