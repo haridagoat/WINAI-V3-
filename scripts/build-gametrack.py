@@ -6,14 +6,14 @@ Builds gametrack_nba.json: every player's box score for every game this season, 
   python3 scripts/build-gametrack.py            add the games played since the last run (the first run fetches the whole season, a few minutes)
   python3 scripts/build-gametrack.py --full     start again from nothing
 
-One call gives every player's basic box score for the season; one more call per NEW game gives the tracking numbers for both teams.
-Potential assists are only published as season averages (tracking_passing_player.json), not per game, so they are not here.
+One call gives every player's basic box score for the season; one more call per NEW game gives the tracking numbers for both teams, and one call per
+game DAY gives every player's potential assists for that day (nba.com's passing dashboard takes a date range, so asking for one day gives one game).
 """
 import json, os, sys, time
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(HERE)
 try:
-    from nba_api.stats.endpoints import leaguegamelog, boxscoreplayertrackv3
+    from nba_api.stats.endpoints import leaguegamelog, boxscoreplayertrackv3, leaguedashptstats
 except ImportError:
     print('nba_api is not installed'); sys.exit(1)
 
@@ -73,7 +73,18 @@ def main():
             'stl': int(num(r['STL'])), 'blk': int(num(r['BLK'])), 'tov': int(num(r['TOV'])), 'fga': int(num(r['FGA'])), 'fgm': int(num(r['FGM'])),
             'oreb': int(num(r['OREB'])), 'dreb': int(num(r['DREB'])),
         }
-    new_ids = [g for g in games if not old.get(g, {}).get('tracked')]
+    TRACK_KEYS = ('rc', 'orc', 'drc', 'pas', 'sast', 'fast', 'tch', 'pot')
+    for gid, og in old.items():                         # what an earlier run already fetched is kept, not fetched again
+        g = games.get(gid)
+        if not g: continue
+        for pid, p in g['players'].items():
+            o = og.get('players', {}).get(pid)
+            if o:
+                for k in TRACK_KEYS:
+                    if k in o: p[k] = o[k]
+        if og.get('tracked'): g['tracked'] = True
+        if og.get('pot'): g['pot'] = True
+    new_ids = [g for g in games if not games[g].get('tracked')]
     print(f'{sea}: {len(games)} games, {len(new_ids)} to add tracking numbers for')
     failed = 0
     for i, gid in enumerate(sorted(new_ids)):
@@ -91,18 +102,34 @@ def main():
             games[gid]['tracked'] = False
         if (i + 1) % 20 == 0: print(f'  {i + 1}/{len(new_ids)}')
         time.sleep(SLEEP)
-    for gid, g in games.items():                       # games already built keep their tracking numbers
-        if gid in old and old[gid].get('tracked') and not g.get('tracked'):
-            for pid, p in g['players'].items():
-                o = old[gid]['players'].get(pid, {})
-                for k in ('rc', 'orc', 'drc', 'pas', 'sast', 'fast', 'tch'):
-                    if k in o: p[k] = o[k]
-            g['tracked'] = True
+    # Potential assists: one call per game day. A player plays once a day, so the day identifies the game.
+    by_day = {}
+    for gid, g in games.items(): by_day.setdefault(g['date'], []).append(gid)
+    day_needed = [d for d, ids in sorted(by_day.items()) if any(not games[i].get('pot') for i in ids)]
+    print(f'potential assists for {len(day_needed)} game days')
+    pot_failed = 0
+    for n, d in enumerate(day_needed):
+        y, m, dd = d.split('-')
+        try:
+            df = retry(lambda: leaguedashptstats.LeagueDashPtStats(season=sea, pt_measure_type='Passing', per_mode_simple='Totals', player_or_team='Player',
+                       season_type_all_star='Regular Season', date_from_nullable=f'{m}/{dd}/{y}', date_to_nullable=f'{m}/{dd}/{y}', timeout=60).get_data_frames()[0])
+            pots = {str(r['PLAYER_ID']): int(num(r.get('POTENTIAL_AST'))) for r in df.to_dict('records')}
+            for gid in by_day[d]:
+                hit = 0
+                for pid, p in games[gid]['players'].items():
+                    if pid in pots: p['pot'] = pots[pid]; hit += 1
+                if hit: games[gid]['pot'] = True
+        except Exception as e:
+            pot_failed += 1
+            print(f'  {d}: potential assists not available ({str(e)[:60]})')
+        if (n + 1) % 10 == 0: print(f'  {n + 1}/{len(day_needed)}')
+        time.sleep(SLEEP)
     tmp = OUT + '.tmp'
     json.dump({'builtAt': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), 'season': sea, 'games': games}, open(tmp, 'w'), separators=(',', ':'))
     os.replace(tmp, OUT)
     tracked = sum(1 for g in games.values() if g.get('tracked'))
-    print(f'Done: {len(games)} games ({tracked} with tracking numbers, {failed} failed this time) -> {OUT}, {os.path.getsize(OUT) / 1048576:.1f} MB')
+    pots = sum(1 for g in games.values() if g.get('pot'))
+    print(f'Done: {len(games)} games ({tracked} with tracking numbers, {pots} with potential assists, {failed + pot_failed} failed this time) -> {OUT}, {os.path.getsize(OUT) / 1048576:.1f} MB')
 
 if __name__ == '__main__':
     main()

@@ -86,56 +86,68 @@ test('the READ sentence: misses with normal chances are not an opportunity probl
   assert.deepEqual(P.tgRebModel({ games: [gm('d', 5, undefined)] }, 10, 'rebounds', 8.5, 'over').avg, null);
 });
 
-test('assist card model: bars are measured against the season potential average, and the READ works out how many potential assists the line needs', () => {
-  const P = page(); const ctx = { playerTracking: { passing: { POTENTIAL_AST: 15.185, AST: 9.255 } } };
-  const log = { games: [gm('d3', 5, 10, 10), gm('d2', 5, 10, 8), gm('d1', 5, 10, 9)] };
-  const m = P.tgAstModel(log, 10, 'assists', 8.5, 'over', ctx);
-  assert.equal(m.pot, 15.2); assert.equal(m.conv, 60.9); assert.equal(m.avgAst, 9); assert.deepEqual(m.bars.map(b => b.inner), [9, 8, 10]);
-  assert.deepEqual(m.bars.map(b => b.hit), [true, false, true]);
-  assert.deepEqual(m.axis, { lo: 7, hi: 16 }, 'the axis fits his games (8 to 10) and still reaches the 15.2 potential line');
-  const wide = P.tgAstModel({ games: [gm('d3', 5, 10, 11), gm('d2', 5, 10, 5), gm('d1', 5, 10, 7)] }, 10, 'assists', 8.5, 'over', ctx).axis; assert.deepEqual(wide, { lo: 2, hi: 16 });
-  assert.deepEqual(P.tgAstModel({ games: [gm('d1', 5, 10, 0)] }, 10, 'assists', 8.5, 'over', { playerTracking: { passing: { POTENTIAL_AST: 2, AST: 1 } } }).axis, { lo: 0, hi: 3 }, 'never below zero');
-  assert.match(m.read, /At his <b>60\.9%<\/b> conversion, clearing 8\.5 takes about <b>14 potential assists<\/b>[\s\S]*<b>15\.2<\/b>[\s\S]*roughly <b>one pass<\/b>[\s\S]*Thin edge/);
-  assert.match(P.tgAstModel(log, 10, 'assists', 4.5, 'over', ctx).read, /Comfortable/); assert.match(P.tgAstModel(log, 10, 'assists', 11.5, 'over', ctx).read, /<b>none<\/b>/);
-  assert.match(P.tgAstModel(log, 10, 'assists', 8.5, 'under', ctx).read, /under 8\.5 holds if he gets fewer than about <b>14 potential assists/);
-  assert.equal(P.tgAstModel(log, 10, 'pa', 28.5, 'over', ctx).read, '', 'a combo line is not an assist line');
-  assert.equal(P.tgAstModel(log, 10, 'assists', 8.5, 'over', {}), null, 'no season potential: no card');
-});
-
-test('the chart: faint bar with the solid part inside, an n/a bar, an average bar, and the % under each game coloured by prop hit/miss', () => {
-  const P = page(); const m = P.tgRebModel(rebLog, 10, 'rebounds', 8.5, 'over');
-  const out = P.tgChart(m.bars, { avg: true, outer: 20.5, inner: 11, pct: 53.7, label: '11/20.5' }, { label: b => `${b.inner}/${b.outer}`, tip: () => 't', avgName: 'AVG', avgTip: 'a' });
-  assert.equal((out.match(/class="tg-col/g) || []).length, 6); assert.match(out, /tg-col na[\s\S]*n\/a/); assert.match(out, /tg-col avg/);
-  assert.match(out, /<em class="hit">62%<\/em>/); assert.match(out, /<em class="miss">33%<\/em>/); assert.match(out, /<em class="miss">40%<\/em>/); assert.match(out, /<em class="">–<\/em>/);
-});
-
-test('the page: one blue for both cards, only the stat the prop is about (nothing for points), NBA only, loaded once per player and only when near the screen', () => {
+test('assist card model: each bar is measured against THAT game\'s own potential assists, the READ uses the games shown, and a game without potential assists is n/a', () => {
   const P = page();
-  assert.deepEqual(P.tgKeys('pra').filter(k => ['reb', 'ast'].includes(k)), ['reb', 'ast']);
-  assert.match(html, /\.tg\{--tgb:#4aa3ff;/); assert.ok(!/#c084fc|#8aa4ff|#22d3ee|#a78bfa/i.test(html.slice(html.indexOf('.tg{--tgb'), html.indexOf('/* Game log chart'))), 'no purple or cyan in the cards');
-  assert.match(html, /kinds = \['ast', 'reb'\]\.filter\(k => keys\.includes\(k\)\)/); assert.match(html, /if \(league === 'wnba' \|\| !player \|\| !kinds\.length\) return '';/);
-  assert.match(html, /tgCache\[player\] \|\| \(tgCache\[player\] = fetch\('\/api\/tracklog\?n=20&name='/); assert.match(html, /new IntersectionObserver/);
-  assert.match(html, /renderTrackGraphs\(league, player, propType, ctx, line, isUnderSide \? 'under' : 'over'\)/);
-  assert.ok(!/window\._tgCtx/.test(html));
+  const log = { games: [gm('d3', 5, 10, 10, { potentialAst: 16 }), gm('d2', 5, 10, 8, { potentialAst: 14 }), gm('d1', 5, 10, 9, { potentialAst: undefined })] };   // newest first
+  const m = P.tgAstModel(log, 10, 'assists', 8.5, 'over');
+  assert.deepEqual(m.bars.map(b => b.g.date), ['d1', 'd2', 'd3'], 'oldest first');
+  assert.deepEqual(m.bars.map(b => b.ok), [false, true, true]); assert.deepEqual(m.bars.map(b => b.outer), [0, 14, 16]); assert.deepEqual(m.bars.map(b => b.inner), [0, 8, 10]);
+  assert.deepEqual(m.bars.map(b => b.pct), [null, 57.1, 62.5], 'a real per-game conversion');
+  assert.deepEqual(m.bars.map(b => b.hit), [true, false, true], 'prop hit or miss comes from his assists, even in a game without potential');
+  assert.deepEqual([m.avg.pot, m.avg.ast, m.avg.pct, m.n, m.gap], [15, 9, 60, 2, 1], 'averages cover only the games that have it');
+  assert.match(m.read, /At his <b>60%<\/b> conversion in these games, clearing 8\.5 takes about <b>14 potential assists<\/b>[\s\S]*<b>15<\/b> in them[\s\S]*roughly <b>one pass<\/b>[\s\S]*Thin edge/);
+  assert.match(P.tgAstModel(log, 10, 'assists', 4.5, 'over').read, /Comfortable/); assert.match(P.tgAstModel(log, 10, 'assists', 11.5, 'over').read, /<b>none<\/b>/);
+  assert.match(P.tgAstModel(log, 10, 'assists', 8.5, 'under').read, /under 8\.5 holds if he gets fewer than about <b>14 potential assists/);
+  assert.equal(P.tgAstModel(log, 10, 'pa', 28.5, 'over').read, '', 'a combo line is not an assist line');
+  assert.equal(P.tgAstModel({ games: [gm('d1', 5, 10, 9)] }, 10, 'assists', 8.5, 'over'), null, 'no potential assists in any game: no card');
+  const chron = P.tgAstModel([gm('d2', 5, 10, 8, { potentialAst: 14 }), gm('d3', 5, 10, 10, { potentialAst: 16 })], 99, 'assists', 8.5, 'over');
+  assert.deepEqual([chron.avg.pot, chron.avg.pct], [15, 60], 'a list of games already chosen (the game log chart\'s) is used as it is, in its order');
 });
 
-test('every bar shows both numbers: the actual inside the solid part, the potential above the bar, and the solid part is sized on the (zoomed) axis', () => {
-  const P = page(); const ctx = { playerTracking: { passing: { POTENTIAL_AST: 15, AST: 9 } } };
-  const m = P.tgAstModel({ games: [gm('d3', 5, 10, 12), gm('d2', 5, 10, 8), gm('d1', 5, 10, 4)] }, 10, 'assists', 8.5, 'over', ctx);   // assists 4, 8, 12, season 9, potential 15: axis 0 to 16
-  const out = P.tgChart(m.bars, { avg: true, outer: m.pot, inner: m.seasonAst, pct: m.conv }, { hatch: true, zoom: m.axis, tip: () => 't', avgName: 'SZN', avgTip: 'a' });
-  const solids = [...out.matchAll(/tg-solid" style="height:([\d.]+)%"><span class="tg-in">([\d.]+)<\/span>/g)].map(x => [+x[1], +x[2]]);
-  assert.deepEqual(solids, [[26.7, 4], [53.3, 8], [80, 12], [60, 9]], 'actual / potential on the axis, with the actual number written inside');
-  assert.equal((out.match(/<span class="tg-of"><i>of <\/i>15<\/span>/g) || []).length, 4, 'the potential is written above every bar, the season bar included');
-  assert.equal((out.match(/tg-ghost hatch" style="height:93\.[78]%"/g) || []).length, 3, 'the potential bar reaches the same potential on every game');
-  // a tight spread zooms the axis: 8, 9, 10 against a 15.2 potential on an axis starting at 7
-  const z = P.tgAstModel({ games: [gm('d3', 5, 10, 10), gm('d2', 5, 10, 9), gm('d1', 5, 10, 8)] }, 10, 'assists', 8.5, 'over', { playerTracking: { passing: { POTENTIAL_AST: 15.2, AST: 9.2 } } });
-  assert.deepEqual(z.axis, { lo: 7, hi: 16 });
-  const out2 = P.tgChart(z.bars, null, { hatch: true, zoom: z.axis, tip: () => 't', avgName: 'SZN', avgTip: 'a' });
-  assert.match(out2, /tg-ghost hatch" style="height:91\.1%"><span class="tg-of"><i>of <\/i>15\.2<\/span><div class="tg-solid" style="height:12\.2%"><span class="tg-in">8<\/span>/);
-  assert.match(out2, /tg-solid" style="height:24\.4%"><span class="tg-in">9<\/span>/); assert.match(out2, /tg-solid" style="height:36\.6%"><span class="tg-in">10<\/span>/);
-  // rebounds keep their own full bar per game
-  const r = P.tgRebModel(rebLog, 10, 'rebounds', 8.5, 'over'); const rout = P.tgChart(r.bars, { avg: true, outer: r.avg.chances, inner: r.avg.reb, pct: r.avg.pct }, { tip: () => 't', avgName: 'AVG', avgTip: 'a' });
+test('every bar shows both numbers: the actual inside the solid part, that game\'s potential above the bar, both sized on one axis from zero', () => {
+  const P = page();
+  const m = P.tgAstModel([gm('d1', 5, 10, 10, { potentialAst: 16 }), gm('d2', 5, 10, 8, { potentialAst: 14 }), gm('d3', 5, 10, 3, { potentialAst: 2 }), gm('d4', 5, 10, 7, { potentialAst: undefined })], 99, 'assists', 8.5, 'over');
+  const out = P.tgChart(m.bars, { avg: true, outer: m.avg.pot, inner: m.avg.ast, pct: m.avg.pct }, { hatch: true, tip: () => 't', avgName: 'AVG', avgTip: 'a' });
+  const cols = [...out.matchAll(/tg-ghost[^"]*" style="height:([\d.]+)%"><span class="tg-of"><i>of <\/i>([\d.]+)<\/span><div class="tg-solid" style="height:([\d.]+)%"><span class="tg-in">([\d.]+)<\/span>/g)].map(x => x.slice(1).map(Number));
+  // axis max = largest of potential and assists (16) x 1.2 = 19.2
+  assert.deepEqual(cols[0], [83.3, 16, 62.5, 10]); assert.deepEqual(cols[1], [72.9, 14, 57.1, 8], 'each game has its own potential, so the faint bars differ');
+  assert.deepEqual(cols[2], [15.6, 2, 100, 3], 'assists above potential (nba.com does this in about 6% of games): the bar is as tall as the assists, the potential is still printed as 2');
+  assert.match(out, /tg-col na[\s\S]*n\/a/); assert.match(out, /<span class="tg-of"><i>of <\/i>10\.7<\/span>/, 'the average bar is the average of the games shown');
+  assert.ok(!/axis starts at|zbar|tg-ref/.test(out));
+  const m2 = P.tgRebModel(rebLog, 10, 'rebounds', 8.5, 'over'); const rout = P.tgChart(m2.bars, { avg: true, outer: m2.avg.chances, inner: m2.avg.reb, pct: m2.avg.pct }, { tip: () => 't', avgName: 'AVG', avgTip: 'a' });
   assert.match(rout, /<span class="tg-of"><i>of <\/i>22<\/span><div class="tg-solid" style="height:72\.7%"><span class="tg-in">16<\/span>/);
+});
+
+test('the cards show exactly the games the game log chart shows: its range, and its line and side for the hit/miss colours; a game not in the tracking data stays as an n/a bar', () => {
+  const src = html.slice(html.indexOf('function tgIso(d)'), html.indexOf('function renderTrackGraphs'));
+  const GL_RANGES = [['l5', 'L5'], ['l10', 'L10'], ['l20', 'L20'], ['h2h', 'H2H'], ['home', 'HOME'], ['away', 'AWAY']];
+  const glGameMeta = g => { const m = String(g.opponent || g.matchup || '').match(/(vs\.?|@)\s*([A-Za-z0-9]+)\s*$/i); return { abbr: m ? m[2].toUpperCase() : '', home: m ? !m[1].startsWith('@') : null }; };
+  const make = gl => new Function('window', 'GL_RANGES', 'glGameMeta', src + '; return { tgIso, tgSeries };')({ _gl: { nba: gl } }, GL_RANGES, glGameMeta);
+  const T = make(null);
+  assert.equal(T.tgIso('2026-11-19'), '2026-11-19'); assert.equal(T.tgIso('2026-11-19T01:00:00Z'), '2026-11-19'); assert.equal(T.tgIso('Nov 19, 2026'), '2026-11-19'); assert.equal(T.tgIso('Nov 07, 2026'), '2026-11-07'); assert.equal(T.tgIso('N/A'), ''); assert.equal(T.tgIso(null), '');
+  const log = { games: [{ date: '2026-11-19', opp: 'MIN', home: false, potentialAst: 17, ast: 9 }, { date: '2026-11-17', opp: 'BOS', home: true, potentialAst: 15, ast: 7 }] };
+  const st = { league: 'nba', log, n: 10, propType: 'assists', line: 8.5, side: 'over' };
+  const alone = T.tgSeries(st); assert.deepEqual([alone.synced, alone.label, alone.n], [false, 'last 10', 10], 'no game log chart on the page: the card keeps its own L5/L10/L20');
+  const gl = { range: 'l5', side: 'under', lines: { assists: 6.5 }, sets: { l5: [{ date: 'Nov 17, 2026', matchup: 'NYK vs. BOS', ast: 7 }, { date: 'Nov 19, 2026', matchup: 'NYK @ MIN', ast: 9 }], h2h: [{ date: '2025-01-12', matchup: 'NYK vs. BOS', ast: 5 }, { date: '2026-11-17', matchup: 'NYK vs. BOS', ast: 7 }] } };
+  const sy = make(gl).tgSeries(st);
+  assert.deepEqual([sy.synced, sy.label, sy.n, sy.line, sy.side], [true, 'L5', 2, 6.5, 'under'], 'the chart\'s own line and side');
+  assert.deepEqual(sy.src.map(g => [g.date, g.potentialAst]), [['2026-11-17', 15], ['2026-11-19', 17]], 'the chart\'s games, oldest first as the chart has them, matched by date');
+  gl.range = 'h2h'; const h = make(gl).tgSeries(st);
+  assert.deepEqual([h.label, h.src.length], ['H2H', 2]); assert.equal(h.src[0].potentialAst, undefined, 'a head-to-head game from an earlier season is not in this season\'s tracking file'); assert.equal(h.src[0].opp, 'BOS'); assert.equal(h.src[0].ast, 5); assert.equal(h.src[1].potentialAst, 15);
+  const none = make({ range: 'l5', sets: {} }).tgSeries(st); assert.equal(none.synced, false, 'a chart without that range is ignored');
+  const noLine = make({ range: 'l5', side: 'over', lines: {}, sets: { l5: [] } }).tgSeries(st); assert.equal(noLine.line, 8.5, 'with no line in the chart the posted line is used');
+  assert.match(html, /root\.innerHTML = glInner\(league\);\s*glMount\(league\);\s*if \(typeof tgSync === 'function'\) tgSync\(league\);/, 'the chart tells the cards every time it redraws');
+  assert.match(html, /if \(pills\) pills\.hidden = sr\.synced;/); assert.match(html, /Same games as the game log above: \$\{sr\.label\}/);
+});
+
+test('the tracking endpoint carries each game\'s potential assists, even for a game with no other tracking numbers', () => {
+  const b = { builtAt: 'T', games: { G1: { date: '2026-11-19', tracked: true, players: { 1: { n: 'A B', t: 'X', m: 'X @ Y', min: 30, pts: 1, reb: 1, ast: 9, fg3m: 0, stl: 0, blk: 0, rc: 5, pot: 17 } } }, G2: { date: '2026-11-17', tracked: false, players: { 1: { n: 'A B', t: 'X', m: 'X vs. Z', min: 30, pts: 1, reb: 1, ast: 4, fg3m: 0, stl: 0, blk: 0, pot: 11 } } } } };
+  const g = G.lookup(G.index(b), 'A B', 5).games;
+  assert.equal(g[0].potentialAst, 17); assert.equal(g[0].rebChances, 5); assert.equal(g[1].potentialAst, 11); assert.equal(g[1].rebChances, undefined);
+  assert.equal(G.lookup(G.index({ games: { G: { date: '2026-11-19', players: { 1: { n: 'C D', t: 'X', m: 'X @ Y', ast: 2 } } } } }), 'C D', 5).games[0].potentialAst, undefined, 'no value is invented');
+  const py = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'build-gametrack.py'), 'utf8');
+  assert.match(py, /pt_measure_type='Passing', per_mode_simple='Totals'[\s\S]*date_from_nullable=f'\{m\}\/\{dd\}\/\{y\}', date_to_nullable=f'\{m\}\/\{dd\}\/\{y\}'/, 'one call per game day');
+  assert.match(py, /TRACK_KEYS = \('rc', 'orc', 'drc', 'pas', 'sast', 'fast', 'tch', 'pot'\)/, 'what is already built is kept');
 });
 
 test('the page: one blue for both cards, only the stat the prop is about (nothing for points), NBA only, loaded once per player and only when near the screen', () => {

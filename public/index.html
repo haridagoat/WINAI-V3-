@@ -236,6 +236,8 @@
   .tg-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap;}
   .tg-title{font-family:var(--display);font-weight:800;font-size:28px;letter-spacing:.03em;text-transform:uppercase;line-height:1.05;}
   .tg-sub{font-size:13.5px;color:var(--muted);margin-top:4px;}
+  .tg-sync{flex:1 1 100%;font-family:var(--label);font-weight:600;font-size:12.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted2);}
+  .tg-pills[hidden]{display:none;}
   .tg-pills{display:inline-flex;gap:2px;padding:3px;border-radius:999px;background:var(--surface2);border:1px solid var(--border);}
   .tg-pill{font-family:var(--label);font-weight:700;font-size:12px;letter-spacing:.1em;padding:6px 16px;min-height:32px;border-radius:999px;border:0;background:transparent;color:var(--muted2);cursor:pointer;}
   .tg-pill[aria-pressed="true"]{background:#f1f1f4;color:#0a0a0b;}
@@ -3071,6 +3073,7 @@ function glRefresh(league) {
   if (!root) return;
   root.innerHTML = glInner(league);
   glMount(league);
+  if (typeof tgSync === 'function') tgSync(league);                // the rebound / potential-assist cards follow this chart's games, line and side
 }
 function glSet(league, key, val) { const st = window._gl[league]; if (!st) return; st[key] = val; glRefresh(league); }
 function glStep(league, d) { const st = window._gl[league]; if (!st) return; st.lines[st.stat] = Math.max(0.5, Math.round((st.lines[st.stat] + d) * 2) / 2); glRefresh(league); }
@@ -3320,9 +3323,12 @@ const tgStat = (g, keys) => keys.reduce((s, k) => s + (parseFloat(g[k]) || 0), 0
 function tgHit(g, keys, line, side) { const L = parseFloat(line); if (!(L > 0)) return null; const v = tgStat(g, keys); return side === 'under' ? v < L : v > L; }
 const tgSum = (a, k) => a.reduce((s, b) => s + (b[k] || 0), 0);
 
-function tgRebModel(log, n, propType, line, side) {
+// `src` is either the tracking log ({ games }, newest first, with `n` = how many to take) or a list of games already chosen, oldest first: the games the
+// game log chart above is showing (see tgSeries). A game that is not in the tracking data has no rebChances / potentialAst and is drawn as "n/a".
+const tgPick = (src, n) => (Array.isArray(src) ? src : tgWindow(src.games, n));
+function tgRebModel(src, n, propType, line, side) {
   const keys = tgKeys(propType);
-  const bars = tgWindow(log.games, n).map(g => { const ok = g.rebChances != null; return { g, ok, outer: ok ? g.rebChances : 0, inner: ok ? g.reb : 0, pct: ok ? TG_PCT(g.reb, g.rebChances) : null, hit: tgHit(g, keys, line, side) }; });
+  const bars = tgPick(src, n).map(g => { const ok = g.rebChances != null; return { g, ok, outer: ok ? g.rebChances : 0, inner: ok ? g.reb : 0, pct: ok ? TG_PCT(g.reb, g.rebChances) : null, hit: tgHit(g, keys, line, side) }; });
   const t = bars.filter(b => b.ok), c = t.length;
   const gs = t.map(b => b.g), sumR = tgSum(gs, 'reb'), sumC = tgSum(gs, 'rebChances');
   const avg = c ? { chances: tgR1(sumC / c), reb: tgR1(sumR / c), pct: TG_PCT(sumR, sumC) } : null;
@@ -3339,28 +3345,22 @@ function tgRebModel(log, n, propType, line, side) {
   }
   return { bars, n: c, avg, read, gap: bars.length - c };
 }
-function tgAstModel(log, n, propType, line, side, ctx) {
-  const pass = ctx && ctx.playerTracking && ctx.playerTracking.passing, keys = tgKeys(propType);
-  const pot = parseFloat(pass && pass.POTENTIAL_AST), seasonAst = parseFloat(pass && pass.AST);
-  if (!(pot > 0)) return null;
-  const games = tgWindow(log.games, n);
-  const bars = games.map(g => ({ g, ok: true, outer: tgR1(pot), inner: g.ast, pct: TG_PCT(g.ast, pot), hit: tgHit(g, keys, line, side) }));
-  const conv = isFinite(seasonAst) ? TG_PCT(seasonAst, pot) : null;
-  const avgAst = games.length ? tgR1(tgSum(games, 'ast') / games.length) : null;
+// Assists against that game's own potential assists (nba.com's count of passes that would have been assists if the shot went in).
+function tgAstModel(src, n, propType, line, side) {
+  const keys = tgKeys(propType);
+  const bars = tgPick(src, n).map(g => { const ok = g.potentialAst != null; return { g, ok, outer: ok ? g.potentialAst : 0, inner: ok ? g.ast : 0, pct: ok ? TG_PCT(g.ast, g.potentialAst) : null, hit: tgHit(g, keys, line, side) }; });
+  const t = bars.filter(b => b.ok), c = t.length;
+  if (!c) return null;
+  const gs = t.map(b => b.g), sumA = tgSum(gs, 'ast'), sumP = tgSum(gs, 'potentialAst');
+  const avg = { pot: tgR1(sumP / c), ast: tgR1(sumA / c), pct: TG_PCT(sumA, sumP) };
   let read = '';
   const L = parseFloat(line);
-  if (conv && L > 0 && keys.length === 1) {
-    const needed = L / (conv / 100), cushion = pot - needed;
-    if (side === 'under') read = `At his <b>${conv}%</b> conversion, the under ${L} holds if he gets fewer than about <b>${Math.round(needed)} potential assists</b>. He averages <b>${tgR1(pot)}</b>, so he would need to run ${cushion > 0 ? `about <b>${tgR1(cushion)}</b> below` : 'at or below'} his average.`;
-    else read = `At his <b>${conv}%</b> conversion, clearing ${L} takes about <b>${Math.round(needed)} potential assists</b>. He's averaging <b>${tgR1(pot)}</b>, so the cushion is ${cushion >= 2.5 ? `about <b>${Math.round(cushion)} passes</b>. Comfortable if his volume holds.` : cushion >= 0.5 ? `roughly <b>${cushion >= 1.5 ? 'two passes' : 'one pass'}</b>. Thin edge: this one leans on volume holding up.` : `<b>none</b>: he needs an above-average night of passing or a better conversion.`}`;
+  if (avg.pct && L > 0 && keys.length === 1) {
+    const needed = L / (avg.pct / 100), cushion = avg.pot - needed;
+    if (side === 'under') read = `At his <b>${avg.pct}%</b> conversion in these games, the under ${L} holds if he gets fewer than about <b>${Math.round(needed)} potential assists</b>. He averages <b>${avg.pot}</b> in them, so he would need to run ${cushion > 0 ? `about <b>${tgR1(cushion)}</b> below` : 'at or below'} that.`;
+    else read = `At his <b>${avg.pct}%</b> conversion in these games, clearing ${L} takes about <b>${Math.round(needed)} potential assists</b>. He's averaging <b>${avg.pot}</b> in them, so the cushion is ${cushion >= 2.5 ? `about <b>${Math.round(cushion)} passes</b>. Comfortable if his volume holds.` : cushion >= 0.5 ? `roughly <b>${cushion >= 1.5 ? 'two passes' : 'one pass'}</b>. Thin edge: this one leans on volume holding up.` : `<b>none</b>: he needs an above-average night of passing or a better conversion.`}`;
   }
-  // The axis fits his actual games instead of starting at zero, so a 7 and an 11 look as different as they are. It still reaches the
-  // season potential so the dashed line is on the chart. lo is what the axis starts at (0 means it is not zoomed).
-  const vals = games.map(g => g.ast).concat(isFinite(seasonAst) ? [seasonAst] : []);
-  const minA = Math.min(...vals), maxA = Math.max(...vals);
-  const lo = vals.length ? Math.max(0, Math.floor(maxA > minA ? minA - 0.4 * (maxA - minA) : minA * 0.7)) : 0;
-  const hi = Math.max(lo + 1, Math.ceil(Math.max(pot * 1.05, maxA + 1)));
-  return { bars, pot: tgR1(pot), conv, avgAst, seasonAst: isFinite(seasonAst) ? tgR1(seasonAst) : null, read, axis: { lo, hi } };
+  return { bars, n: c, avg, read, gap: bars.length - c };
 }
 // bars -> the chart. Each game is a full bar for the potential (chances, or his potential-assist average) with the solid part inside it for what he
 // actually got: the actual number is written inside the solid part, the potential above the bar. The opponent and a hit/miss-coloured % sit under it.
@@ -3368,13 +3368,13 @@ function tgAstModel(log, n, propType, line, side, ctx) {
 function tgChart(bars, avgBar, opts) {
   const all = bars.concat(avgBar ? [avgBar] : []);
   const z = opts.zoom;
-  const max = Math.max(1, ...all.map(b => b.outer || 0)) * 1.2;
+  const max = Math.max(1, ...all.map(b => Math.max(b.outer || 0, b.inner || 0))) * 1.2;
   const h = z ? (v => Math.min(100, Math.max(0, (v - z.lo) / (z.hi - z.lo) * 100))) : (v => Math.max(0, v) / max * 100);
   const gameName = g => `${g.date} ${g.home ? 'vs' : '@'} ${g.opp}`;
   const verdict = b => (b.hit === true ? 'cleared the line' : b.hit === false ? 'missed the line' : '');
   const col = b => {
     if (!b.avg && !b.ok) { const t = gameName(b.g) + ': nba.com has no tracking numbers for this game yet'; return `<div class="tg-col na" data-tip="${escapeHtml(t)}" title="${escapeHtml(t)}"><div class="tg-ghost"><span class="tg-of">n/a</span></div></div>`; }
-    const ho = h(b.outer), hn = h(b.inner), solid = ho > 0 ? Math.min(100, hn / ho * 100) : 0;
+    const ho = h(Math.max(b.outer, b.inner)), hn = h(b.inner), solid = ho > 0 ? Math.min(100, hn / ho * 100) : 0;   // in about 6% of games nba.com counts more assists than potential assists: the bar is then as tall as the assists
     const tip = b.avg ? opts.avgTip : `${gameName(b.g)}, ${Math.round(b.g.min)} min: ${opts.tip(b.g)}${verdict(b) ? ', ' + verdict(b) : ''}`;
     return `<div class="tg-col ${b.avg ? 'avg' : ''}" data-tip="${escapeHtml(tip)}" title="${escapeHtml(tip)}"><div class="tg-ghost ${opts.hatch && !b.avg ? 'hatch' : ''}" style="height:${ho.toFixed(1)}%"><span class="tg-of"><i>of </i>${b.outer}</span><div class="tg-solid" style="height:${solid.toFixed(1)}%"><span class="tg-in">${b.inner}</span></div></div></div>`;
   };
@@ -3385,24 +3385,25 @@ function tgChart(bars, avgBar, opts) {
   const table = `<div class="tg-sr"><table><caption>${escapeHtml(opts.caption || 'Game by game')}</caption><thead><tr><th scope="col">Game</th><th scope="col">${escapeHtml(opts.actualName || 'Actual')}</th><th scope="col">${escapeHtml(opts.potentialName || 'Potential')}</th><th scope="col">Share</th><th scope="col">Prop line</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   return `<div class="tg-scroll" tabindex="0" role="region" aria-label="${escapeHtml((opts.caption || 'Game by game') + ': chart, scroll sideways for more games')}"><div class="tg-plot" style="--n:${all.length}" aria-hidden="true"><div class="tg-bars">${all.map(col).join('')}</div><div class="tg-xs">${all.map(x).join('')}</div></div></div>${table}<p class="tg-detail" aria-hidden="true">Tap a bar for that game's details.</p>`;
 }
-function tgRebCard(st) {
-  const m = tgRebModel(st.log, st.n, st.propType, st.line, st.side);
+function tgGapNote(m) { return m.gap ? `<p class="tg-note">${m.gap} of these ${m.bars.length} games ${m.gap === 1 ? 'is' : 'are'} not in the tracking data (older than this season's file, or not published yet) and ${m.gap === 1 ? 'is' : 'are'} left out of the averages.</p>` : ''; }
+function tgRebCard(st, sr) {
+  const m = tgRebModel(sr.src, sr.n, st.propType, sr.line, sr.side);
   if (!m.avg) return '<div class="tg-none">nba.com has no tracking numbers for these games yet.</div>';
   const avgBar = { avg: true, outer: m.avg.chances, inner: m.avg.reb, pct: m.avg.pct };
-  return `<div class="tg-stats"><div class="tg-stat"><b>${m.avg.chances}</b><span>Chances / game</span></div><div class="tg-stat"><b>${m.avg.pct}%</b><span>Converted · last ${m.n}</span></div><div class="tg-stat"><b>${m.avg.reb}</b><span>Rebounds / game</span></div></div>
-    ${tgChart(m.bars, avgBar, { caption: `Rebounds and rebound chances, last ${m.n} games`, actualName: 'Rebounds', potentialName: 'Chances', tip: g => `${g.reb} rebounds on ${g.rebChances} chances (${TG_PCT(g.reb, g.rebChances)}%): ${g.orebChances} offensive, ${g.drebChances} defensive chances`, avgName: 'AVG', avgTip: `Average over the ${m.n} games with tracking numbers` })}
+  return `<div class="tg-stats"><div class="tg-stat"><b>${m.avg.chances}</b><span>Chances / game</span></div><div class="tg-stat"><b>${m.avg.pct}%</b><span>Converted · ${escapeHtml(sr.label)}</span></div><div class="tg-stat"><b>${m.avg.reb}</b><span>Rebounds / game</span></div></div>
+    ${tgChart(m.bars, avgBar, { caption: `Rebounds and rebound chances, ${sr.label}`, actualName: 'Rebounds', potentialName: 'Chances', tip: g => `${g.reb} rebounds on ${g.rebChances} chances (${TG_PCT(g.reb, g.rebChances)}%): ${g.orebChances} offensive, ${g.drebChances} defensive chances`, avgName: 'AVG', avgTip: `Average over the ${m.n} games with tracking numbers` })}
     <div class="tg-legend"><span><span><i class="g"></i>Chances (number above each bar)</span><span><i class="s"></i>Rebounds grabbed (number inside)</span></span><span class="r">% = conversion${m.bars.some(b => b.hit != null) ? ', green/red = prop hit/miss' : ''}</span></div>
-    ${m.read ? `<div class="tg-read"><b>READ</b><p>${m.read}</p></div>` : ''}${m.gap ? `<p class="tg-note">${m.gap} of these ${m.bars.length} games have no tracking numbers yet.</p>` : ''}`;
+    ${m.read ? `<div class="tg-read"><b>READ</b><p>${m.read}</p></div>` : ''}${tgGapNote(m)}`;
 }
-function tgAstCard(st) {
-  const m = tgAstModel(st.log, st.n, st.propType, st.line, st.side, st.ctx);
-  if (!m) return '<div class="tg-none">Potential assists are not available for this player yet.</div>';
-  const avgBar = { avg: true, outer: m.pot, inner: m.seasonAst ?? 0, pct: m.conv };
-  return `<div class="tg-stats"><div class="tg-stat"><b>${m.pot}</b><span>Potential / game · season</span></div><div class="tg-stat"><b>${m.conv != null ? m.conv + '%' : '–'}</b><span>Converted · season</span></div><div class="tg-stat"><b>${m.avgAst ?? '–'}</b><span>Assists / game · last ${m.bars.length}</span></div></div>
-    ${tgChart(m.bars, avgBar, { hatch: true, zoom: { lo: m.axis.lo, hi: m.axis.hi }, caption: `Assists against his ${m.pot} season potential assists, last ${m.bars.length} games`, actualName: 'Assists', potentialName: 'Potential (season avg)', tip: g => `${g.ast} assists against his ${m.pot} potential-assist average (${TG_PCT(g.ast, m.pot)}%)`, avgName: 'SZN', avgTip: `Season average: ${m.seasonAst} assists on ${m.pot} potential assists` })}
-    <div class="tg-legend"><span><span><i class="h"></i>Potential assists, season avg (above each bar)</span><span><i class="s"></i>Assists converted (inside)</span></span><span class="r">% = assists ÷ his season potential${m.bars.some(b => b.hit != null) ? ', green/red = prop hit/miss' : ''}${m.axis.lo > 0 ? ` · axis starts at ${m.axis.lo}` : ''}</span></div>
-    ${m.read ? `<div class="tg-read"><b>READ</b><p>${m.read}</p></div>` : ''}
-    <p class="tg-note">nba.com publishes potential assists (passes that would have been assists if the shot went in) only as a season average, so each game's assists are measured against it. It is a guide to how much he has to work with, not a count for that game.</p>`;
+function tgAstCard(st, sr) {
+  const m = tgAstModel(sr.src, sr.n, st.propType, sr.line, sr.side);
+  if (!m) return '<div class="tg-none">nba.com has no potential assists for these games yet.</div>';
+  const avgBar = { avg: true, outer: m.avg.pot, inner: m.avg.ast, pct: m.avg.pct };
+  return `<div class="tg-stats"><div class="tg-stat"><b>${m.avg.pot}</b><span>Potential / game · ${escapeHtml(sr.label)}</span></div><div class="tg-stat"><b>${m.avg.pct}%</b><span>Converted · ${escapeHtml(sr.label)}</span></div><div class="tg-stat"><b>${m.avg.ast}</b><span>Assists / game</span></div></div>
+    ${tgChart(m.bars, avgBar, { hatch: true, caption: `Assists and potential assists, ${sr.label}`, actualName: 'Assists', potentialName: 'Potential assists', tip: g => `${g.ast} assists on ${g.potentialAst} potential assists (${TG_PCT(g.ast, g.potentialAst)}%)`, avgName: 'AVG', avgTip: `Average over the ${m.n} games with potential assists` })}
+    <div class="tg-legend"><span><span><i class="h"></i>Potential assists in that game (above each bar)</span><span><i class="s"></i>Assists (inside)</span></span><span class="r">% = assists ÷ that game's potential${m.bars.some(b => b.hit != null) ? ', green/red = prop hit/miss' : ''}</span></div>
+    ${m.read ? `<div class="tg-read"><b>READ</b><p>${m.read}</p></div>` : ''}${tgGapNote(m)}
+    <p class="tg-note">Potential assists are nba.com's count for that game: passes to a teammate who then took a shot, which would have been assists if it went in.</p>`;
 }
 const TG_INFO = {
   reb: { title: 'Rebound chances', sub: 'how many he got vs. how many were there', card: tgRebCard },
@@ -3410,16 +3411,39 @@ const TG_INFO = {
 };
 const tgCache = {};
 function tgFetch(player) { return tgCache[player] || (tgCache[player] = fetch('/api/tracklog?n=20&name=' + encodeURIComponent(player)).then(r => { if (!r.ok) throw new Error('none'); return r.json(); })); }
+// "2026-11-19" and "Nov 19, 2026" (what the NBA feed writes) both become 2026-11-19, so a game in the game log chart can be found in the tracking data.
+function tgIso(d) {
+  const s = String(d == null ? '' : d), m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return m[0];
+  const t = Date.parse(s.replace(',', '') + ' 12:00:00'); if (!isFinite(t)) return '';
+  const x = new Date(t); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+}
+// The games a card shows. With the game log chart on the page (L5, L10, L20, H2H, Home, Away, and its line and side) they are exactly the chart's
+// games; a game that is not in the tracking data is kept as an "n/a" bar. Without the chart the card has its own L5/L10/L20.
+function tgSeries(st) {
+  const gl = window._gl && window._gl[st.league];
+  if (!gl || !gl.sets || !gl.sets[gl.range]) return { src: st.log, n: st.n, label: `last ${st.n}`, synced: false, line: st.line, side: st.side };
+  const byDate = new Map(st.log.games.map(g => [g.date, g]));
+  const games = gl.sets[gl.range].map(g => {
+    const iso = tgIso(g.date), hit = byDate.get(iso);
+    if (hit) return hit;
+    const meta = typeof glGameMeta === 'function' ? glGameMeta(g) : { abbr: '', home: null };
+    return { date: iso || String(g.date || ''), opp: meta.abbr, home: meta.home !== false, min: 0, pts: g.pts, reb: g.reb, ast: g.ast, fg3m: g.fg3m, stl: g.stl, blk: g.blk };
+  });
+  const rl = (GL_RANGES.find(x => x[0] === gl.range) || [])[1] || String(gl.range).toUpperCase();
+  const L = gl.lines && gl.lines[st.propType] != null ? gl.lines[st.propType] : st.line;
+  return { src: games, n: games.length, label: rl, synced: true, line: L, side: gl.side === 'under' ? 'under' : st.side };
+}
 function renderTrackGraphs(league, player, propType, ctx, line, side) {
   const keys = tgKeys(propType), kinds = ['ast', 'reb'].filter(k => keys.includes(k));            // the assist card first when both are asked for
   if (league === 'wnba' || !player || !kinds.length) return '';
   window._tg = window._tg || {};
   return kinds.map(kind => {
     const id = 'tg-' + Math.random().toString(36).slice(2, 8);
-    window._tg[id] = { kind, player, propType, n: 10, log: null, ctx: ctx || {}, line, side: side === 'under' ? 'under' : 'over' };
+    window._tg[id] = { kind, league, player, propType, n: 10, log: null, ctx: ctx || {}, line, side: side === 'under' ? 'under' : 'over' };
     setTimeout(() => tgWatch(id), 0);
     const info = TG_INFO[kind];
-    return `<section class="tg" id="${id}" aria-label="${info.title}, game by game"><div class="tg-head"><div><div class="tg-title">${info.title}</div><div class="tg-sub">${info.sub}</div></div><span class="tg-pills" role="group" aria-label="Games shown">${[5, 10, 20].map(n => `<button type="button" class="tg-pill" data-n="${n}" aria-label="Last ${n} games" aria-pressed="${n === 10}">L${n}</button>`).join('')}</span></div><div class="tg-body"><div class="tg-none">Loading the games…</div></div></section>`;
+    return `<section class="tg" id="${id}" aria-label="${info.title}, game by game"><div class="tg-head"><div><div class="tg-title">${info.title}</div><div class="tg-sub">${info.sub}</div></div><span class="tg-pills" role="group" aria-label="Games shown">${[5, 10, 20].map(n => `<button type="button" class="tg-pill" data-n="${n}" aria-label="Last ${n} games" aria-pressed="${n === 10}">L${n}</button>`).join('')}</span><div class="tg-sync" hidden></div></div><div class="tg-body"><div class="tg-none">Loading the games…</div></div></section>`;
   }).join('');
 }
 // The numbers are fetched only when the card is near the screen, and once per player.
@@ -3443,8 +3467,14 @@ async function tgLoad(id) {
 }
 function tgPaint(id) {
   const st = window._tg[id], root = document.getElementById(id); if (!root || !st.log) return;
-  root.querySelector('.tg-body').innerHTML = TG_INFO[st.kind].card(st);
+  const sr = tgSeries(st);
+  root.querySelector('.tg-body').innerHTML = TG_INFO[st.kind].card(st, sr);
+  const pills = root.querySelector('.tg-pills'), cap = root.querySelector('.tg-sync');
+  if (pills) pills.hidden = sr.synced;                                                      // the game log chart above chooses the games when it is there
+  if (cap) { cap.hidden = !sr.synced; cap.textContent = sr.synced ? `Same games as the game log above: ${sr.label}` : ''; }
 }
+// Called by the game log chart whenever it redraws (a new range, line, side or stat), so these cards show the same games.
+function tgSync(league) { for (const [id, st] of Object.entries(window._tg || {})) if (st.league === league && st.log && document.getElementById(id)) tgPaint(id); }
 
 // nba.com tracking figures that belong to the stat being looked at: potential assists (passes that would have been assists if the shot went in)
 // for assists, rebound chances (rebounds that were within reach) for rebounds. Both per game. NBA only: there is no WNBA source.
