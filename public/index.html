@@ -1394,6 +1394,11 @@
   .td-gp-ev.pos{color:var(--pos);} .td-gp-ev.neg{color:var(--muted2);}
   .td-val{font-family:var(--label);font-weight:700;font-size:10.5px;letter-spacing:.12em;padding:1px 6px;border-radius:5px;border:1px solid var(--pos-line,var(--border2));color:var(--pos);background:var(--pos-bg,transparent);grid-column:auto;}
   .td-gp-empty{color:var(--muted);font-size:14px;padding:8px 6px 12px;}
+  .inj-badge{display:inline-block;margin-left:8px;vertical-align:middle;font-family:var(--label);font-weight:700;font-size:11px;letter-spacing:.12em;line-height:1.5;padding:1px 7px;border-radius:5px;border:1px solid currentColor;white-space:nowrap;}
+  .inj-badge.out,.inj-badge.doubtful{color:#ff8080;background:rgba(255,93,93,.12);} .inj-badge.questionable,.inj-badge.day-to-day{color:#e8b04a;background:rgba(232,176,74,.1);}
+  .inj-note{font-size:12.5px;line-height:1.45;color:var(--muted2);border-top:1px dashed var(--border2);padding-top:9px;margin-top:2px;}
+  .td-out{border-color:rgba(255,93,93,.45);} .td-out .pk-av{filter:grayscale(1);}
+  .td-tp .td-tp-h{padding-right:38px;}   /* the rank (#2) sits in the corner: a long name plus a badge must not run under it */
   .td-best{font-family:var(--label);font-weight:700;font-size:10.5px;letter-spacing:.12em;padding:1px 6px;border-radius:5px;border:1px solid var(--border2);color:var(--text);background:var(--surface2);white-space:nowrap;}
   .td-valnote{margin:0 0 14px;} .td-valnote .td-val{vertical-align:1px;}
   @media (max-width:560px){.td-gp{grid-template-columns:24px minmax(0,1fr) auto auto;} .td-gp-c{display:none;}}
@@ -4984,6 +4989,10 @@ const EV_PICK_MIN = 0.03;
 const isValuePick = p => (p?.realEdge?.expectedValue ?? -1) >= EV_PICK_MIN;
 const byValueDesc = (a, b) => ((b.realEdge?.expectedValue ?? -9) - (a.realEdge?.expectedValue ?? -9)) || (b.confidence - a.confidence);
 
+// A pick in the day's locked list whose player the injury report now lists (the server adds injuryStatus): a badge on the card, and what it means for the pick.
+const INJ_LABEL = { out: 'RULED OUT', doubtful: 'DOUBTFUL', questionable: 'QUESTIONABLE', 'day-to-day': 'DAY-TO-DAY' };
+const injBadge = p => (p && INJ_LABEL[p.injuryStatus] ? `<span class="inj-badge ${p.injuryStatus}">${INJ_LABEL[p.injuryStatus]}</span>` : '');
+const injNote = p => (!p || !INJ_LABEL[p.injuryStatus] ? '' : `<p class="inj-note" role="note">${p.injuryStatus === 'questionable' || p.injuryStatus === 'day-to-day' ? 'Listed ' + p.injuryStatus + ' on the injury report: check lineup news before tip. ' : 'Listed ' + (p.injuryStatus === 'out' ? 'out' : 'doubtful') + ' on the injury report. '}If he does not play, this pick is graded as no bet and left out of the record.</p>`);
 // "away @ home", the way the game cards say it. The game is found by the pick's two teams; without a match it keeps "team vs opponent".
 function tdMatchup(p, team, opp) {
   const t = tdLast(p.team), o = tdLast(p.opponent), nick = n => String(n || '').trim().split(/\s+/).pop();
@@ -4994,14 +5003,14 @@ function tdTopCard(p, i) {
   const idx = tdOpenIdx(p), conf = tdShown(p), fb = p.line == null;
   const over = p.direction === 'OVER', ev = p.realEdge?.expectedValue, hot = ev != null && ev * 100 >= EV_TRUST_LIMIT;
   const opp = (p.opponent || '').split(' ').pop(), team = (p.team || '').split(' ').pop();
-  return `<div class="td-card td-tp" data-pick="${idx}" role="button" tabindex="0">
+  return `<div class="td-card td-tp${p.injuryStatus === 'out' || p.injuryStatus === 'doubtful' ? ' td-out' : ''}" data-pick="${idx}" role="button" tabindex="0">
     <span class="td-rk">#${i + 1}</span>
-    <div class="td-tp-h">${pickAvatar(p.league, p.playerId, p.player)}<div><div class="td-tp-n">${escapeHtml(p.player)}${p.bestBet ? ' <span class="td-best">BEST BET</span>' : ''}</div><div class="td-tp-s">${escapeHtml(tdMatchup(p, team, opp))}</div></div></div>
+    <div class="td-tp-h">${pickAvatar(p.league, p.playerId, p.player)}<div><div class="td-tp-n">${escapeHtml(p.player)}${injBadge(p)}${p.bestBet ? ' <span class="td-best">BEST BET</span>' : ''}</div><div class="td-tp-s">${escapeHtml(tdMatchup(p, team, opp))}</div></div></div>
     <div class="td-call">${fb ? `<span class="td-big">≈ PROJ ${escapeHtml(p.projection)}</span>` : `<span class="td-big ${over ? 'pos' : 'neg'}">${escapeHtml(p.direction)} ${escapeHtml(p.line)}</span>`}<span class="td-pill">${PROP_LABEL[p.propType] || escapeHtml(String(p.propType).toUpperCase())}</span></div>
     ${lineSource(p)}${priceNote(p)}
     <div class="td-m"><div><span>${TD.projMode === 'blend' ? 'Market blend' : 'Projection'}</span><b>${escapeHtml(tdProj(p))}</b>${lineGap(p)}${modelNote(p)}</div>
       <div><span>Confidence</span><b>${fmtConf(conf)}</b><div class="td-cbar"><i style="width:${Math.max(0, Math.min(100, conf))}%"></i></div></div>
-      <div><span>EV</span><b${hot || (ev != null && ev < 0) ? ' class="neg"' : ''} title="${hot ? 'Unusually large: more often the model being overconfident than free money, so no stake is suggested.' : ev != null && ev < 0 ? 'Below break-even at the best posted price' : 'Expected profit per $1 at the best posted price'}">${ev == null && fb ? 'n/a' : fmtEv(ev)}${hot ? ' ⚠' : ''}</b>${ev != null && ev < 0 ? '<small class="td-model">below break-even</small>' : ev == null && fb ? '<small class="td-model">no line yet</small>' : ''}</div></div></div>`;
+      <div><span>EV</span><b${hot || (ev != null && ev < 0) ? ' class="neg"' : ''} title="${hot ? 'Unusually large: more often the model being overconfident than free money, so no stake is suggested.' : ev != null && ev < 0 ? 'Below break-even at the best posted price' : 'Expected profit per $1 at the best posted price'}">${ev == null && fb ? 'n/a' : fmtEv(ev)}${hot ? ' ⚠' : ''}</b>${ev != null && ev < 0 ? '<small class="td-model">below break-even</small>' : ev == null && fb ? '<small class="td-model">no line yet</small>' : ''}</div></div>${injNote(p)}</div>`;
 }
 
 // One row per pick in a game's top three: who, which side and number, our chance, and the expected value at the best price.
@@ -5021,7 +5030,7 @@ function tdTenRow(p, rank) {
   const ev = p.realEdge?.expectedValue, over = p.direction === 'OVER', idx = tdOpenIdx(p), price = p.realEdge?.price;
   return `<div class="td-gp" data-pick="${idx}" role="button" tabindex="0">
     <span class="td-rk">#${rank}</span>
-    <div class="td-gp-n"><b>${escapeHtml(p.player)}</b><small>${escapeHtml(p.book || '')}${price != null ? ' ' + bdOdds(price) : ''}${p.consensusLine != null && Math.abs(p.line - p.consensusLine) >= 0.5 ? ' · books ' + escapeHtml(p.consensusLine) : ''}</small></div>
+    <div class="td-gp-n"><b>${escapeHtml(p.player)}</b>${injBadge(p)}<small>${escapeHtml(p.book || '')}${price != null ? ' ' + bdOdds(price) : ''}${p.consensusLine != null && Math.abs(p.line - p.consensusLine) >= 0.5 ? ' · books ' + escapeHtml(p.consensusLine) : ''}</small></div>
     <span class="td-pill ${over ? 'pos' : 'neg'}">${escapeHtml(p.direction)} ${escapeHtml(p.line)} ${PROP_LABEL[p.propType] || escapeHtml(String(p.propType).toUpperCase())}</span>
     <span class="td-gp-c" title="Strength: how reliable the numbers behind this are. It is not the chance of winning.">${fmtConf(tdShown(p))}</span>
     <span class="td-gp-ev ${ev >= 0 ? 'pos' : 'neg'}">${fmtEv(ev)}</span>
@@ -5552,11 +5561,11 @@ function topPlayCard(p, i, league, conf, fallback) {
   const code = pkTeamCode(league, p.team), oppShort = (p.opponent || '').split(' ').pop();
   const dir = /^(over|under)$/i.test(p.direction || '') ? p.direction.toLowerCase() : '';   // a class name: only the known values
   const sign = p.edge > 0 ? 'pos' : p.edge < 0 ? 'neg' : '';
-  return `<div class="pk-card ${fallback ? '' : dir}">
+  return `<div class="pk-card ${fallback ? '' : dir}${p.injuryStatus === 'out' || p.injuryStatus === 'doubtful' ? ' td-out' : ''}">
     <span class="pk-rank">#${i + 1}</span>
     ${pickAvatar(league, p.playerId, p.player)}
     <div class="pk-body">
-      <div class="pk-name">${escapeHtml(p.player)}${code ? `<small>${escapeHtml(code)}</small>` : ''}</div>
+      <div class="pk-name">${escapeHtml(p.player)}${injBadge(p)}${code ? `<small>${escapeHtml(code)}</small>` : ''}</div>
       <div class="pk-prop">${PROP_LABEL[p.propType] || escapeHtml(String(p.propType).toUpperCase())} · vs ${escapeHtml(oppShort)}${!fallback && p.book ? ` · ${escapeHtml(p.book)}` : ''}</div>
       <div class="pk-row">${fallback ? `<span>Projection <b>${escapeHtml(p.projection)}</b></span>` : `<span>Line <b>${escapeHtml(p.line)}</b></span><span>Proj <b>${escapeHtml(p.projection)}</b></span>`}</div>
       <div class="pk-row"><span>Confidence</span><b>${fmtConf(conf)}%</b></div>
@@ -5566,6 +5575,7 @@ function topPlayCard(p, i, league, conf, fallback) {
         ${!fallback && p.edge != null ? `<span class="pk-edge ${sign}">${p.edge > 0 ? '+' : ''}${escapeHtml(p.edge)}<small>EDGE</small></span>` : ''}
       </div>
       ${fallback ? '' : evChip(p)}
+      ${injNote(p)}
     </div>
   </div>`;
 }

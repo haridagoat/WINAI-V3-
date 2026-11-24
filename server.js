@@ -4811,8 +4811,36 @@ function fillPlayerIds(league, d) {
   if (Array.isArray(d.games)) out.games = d.games.map(g => (g && Array.isArray(g.picks) ? { ...g, picks: g.picks.map(fix) } : g));
   return out;
 }
+// The day's Top 3 is locked once, in the morning, and served unchanged until tomorrow. A player the injury report lists afterwards stays in it, so each time
+// it is served the picks' teams are checked against the current report (cached 30 minutes, free) and such a pick gets `injuryStatus`: out, doubtful,
+// questionable or day-to-day. The saved list itself is not changed. If the report does not answer in time nothing is flagged and the list is served as before.
+async function flagInjured(league, d) {
+  if (!d || typeof d !== 'object') return d;
+  const keys = ['topPlays', 'topTen', 'fallbackPlays'].filter(k => Array.isArray(d[k]));
+  const teams = new Set(); for (const k of keys) for (const p of d[k]) if (p && !p.locked && p.team && p.player) teams.add(p.team);
+  if (!teams.size) return d;
+  const rosterOf = league === 'wnba' ? fetchWNBARoster : fetchESPNRoster, status = new Map();
+  try {
+    await Promise.race([
+      Promise.all([...teams].map(async t => {
+        const r = await rosterOf(t).catch(() => null);
+        for (const x of (r && r.injured) || []) { const st = String(x.status || '').toLowerCase(); if (['out', 'doubtful', 'questionable', 'day-to-day'].includes(st)) status.set(t + '|' + normalizePlayerName(x.name), st); }   // ESPN's own words are "Out" and "Day-To-Day"
+      })),
+      new Promise(r => setTimeout(r, 2500)),
+    ]);
+  } catch (_) { return d; }
+  if (!status.size) return d;
+  const mark = p => { if (!p || p.locked || !p.player) return p; const st = status.get(p.team + '|' + normalizePlayerName(p.player)); return st ? { ...p, injuryStatus: st } : p; };
+  const out = { ...d }; for (const k of keys) out[k] = d[k].map(mark);
+  return out;
+}
 app.get('/api/top-plays', async (req, res) => {
-  const send = d => { d = fillPlayerIds((req.query.league || 'nba').toLowerCase() === 'wnba' ? 'wnba' : 'nba', d); res.json(planGated(req) ? planGate.lockedTopPlays(d) : d); };          // a free account is sent the first pick and empty slots, never the rest
+  const send = async d => {
+    const lg = (req.query.league || 'nba').toLowerCase() === 'wnba' ? 'wnba' : 'nba';
+    d = fillPlayerIds(lg, d);
+    try { d = await flagInjured(lg, d); } catch (_) {}
+    res.json(planGated(req) ? planGate.lockedTopPlays(d) : d);
+  };          // a free account is sent the first pick and empty slots, never the rest
   const league  = (req.query.league || 'nba').toLowerCase() === 'wnba' ? 'wnba' : 'nba';
   const today   = getToday();
   const frozen  = frozenTopPlays(league, today);

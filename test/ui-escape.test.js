@@ -216,3 +216,20 @@ test('WNBA is marked "off season" when it has no games and the server says it is
   assert.match(html, /v === 'wnba' && tdWnbaOff\(\) \? `<button type="button" data-lg="wnba" class="off" aria-pressed="\$\{L === v\}" aria-label="WNBA, off season" title="WNBA is in its off season">/);
   assert.match(html, /L === 'wnba' && tdWnbaOff\(\) \? 'The WNBA is in its off season\. ' : ''/); assert.match(html, /\.td-seg button\.off::after\{content:" · off season"/);
 });
+
+test('a flagged pick shows a badge, says what it means for the pick, and is marked on the Board cards, the ranks 4-10 rows and the Analyze cards; healthy picks look as before', () => {
+  const src = html.match(/const INJ_LABEL = [\s\S]*?\nconst injNote = [^\n]+\n/)[0];
+  const f = new Function('escapeHtml', src + '; return { injBadge, injNote };')(s => String(s));
+  assert.equal(f.injBadge({ injuryStatus: 'out' }), '<span class="inj-badge out">RULED OUT</span>'); assert.match(f.injBadge({ injuryStatus: 'doubtful' }), /DOUBTFUL/); assert.match(f.injBadge({ injuryStatus: 'questionable' }), /QUESTIONABLE/); assert.equal(f.injBadge({ injuryStatus: 'day-to-day' }), '<span class="inj-badge day-to-day">DAY-TO-DAY</span>');
+  for (const p of [{}, null, undefined, { injuryStatus: 'healthy' }, { injuryStatus: '<img onerror=x>' }]) { assert.equal(f.injBadge(p), ''); assert.equal(f.injNote(p), ''); }
+  assert.match(f.injNote({ injuryStatus: 'out' }), /Listed out on the injury report\. If he does not play, this pick is graded as no bet and left out of the record\./);
+  assert.match(f.injNote({ injuryStatus: 'questionable' }), /check lineup news before tip/); assert.match(f.injNote({ injuryStatus: 'day-to-day' }), /Listed day-to-day on the injury report: check lineup news before tip\. If he does not play/);
+  assert.match(html, /class="td-card td-tp\$\{p\.injuryStatus === 'out' \|\| p\.injuryStatus === 'doubtful' \? ' td-out' : ''\}"/);
+  assert.match(html, /\$\{escapeHtml\(p\.player\)\}\$\{injBadge\(p\)\}\$\{p\.bestBet/); assert.match(html, /<b>\$\{escapeHtml\(p\.player\)\}<\/b>\$\{injBadge\(p\)\}<small>/); assert.match(html, /pk-name">\$\{escapeHtml\(p\.player\)\}\$\{injBadge\(p\)\}/);
+  assert.equal((html.match(/\$\{injNote\(p\)\}/g) || []).length, 2, 'the note is on the Board card and the Analyze card');
+  assert.match(html, /\.td-out \.pk-av\{filter:grayscale\(1\);\}/); assert.ok(!/\.td-out\{[^}]*opacity/.test(html), 'dimmed by colour, not by opacity, so the text stays readable');
+});
+
+test('a long name plus a badge leaves room for the rank in the card corner', () => {
+  assert.match(html, /\.td-tp \.td-tp-h\{padding-right:38px;\}/);
+});

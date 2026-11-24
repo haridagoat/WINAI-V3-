@@ -202,3 +202,37 @@ test('a list cached before a photo id could be found gets the id when it is serv
   assert.equal(cached.topPlays[0].playerId, null, 'the cached copy itself is not changed'); assert.equal(out.cached, true);
   assert.equal(f.fillPlayerIds('nba', null), null); assert.equal(JSON.stringify(f.fillPlayerIds('nba', { topPlays: [] })), '{"topPlays":[]}');
 });
+
+// ── ruled-out players in the locked Top 3 ──
+function flagWorld(rosters, { slow = false } = {}) {
+  const calls = [];
+  const rosterOf = async t => { calls.push(t); if (slow) return new Promise(() => {}); if (rosters[t] instanceof Error) throw rosters[t]; return rosters[t] || null; };
+  const f = extract({ functions: ['flagInjured', 'normalizePlayerName'], globals: { fetchESPNRoster: rosterOf, fetchWNBARoster: rosterOf, setTimeout, Promise, Object, Array, Set, Map, String } });
+  return { f, calls };
+}
+const TOP = { topPlays: [{ player: 'Pascal Siakam', team: 'Indiana Pacers', direction: 'OVER' }, { player: 'Jalen Brunson', team: 'New York Knicks' }, { locked: true, rank: 3 }], topTen: [{ player: 'Nikola Jokić', team: 'Denver Nuggets' }], cached: true };
+
+test('a pick whose player the injury report now lists gets injuryStatus (out, doubtful or questionable); healthy players and locked slots are untouched; the saved list is not changed', async () => {
+  const w = flagWorld({ 'Indiana Pacers': { injured: [{ name: 'Pascal Siakam', status: 'Out' }, { name: 'Someone Else', status: 'Out' }] }, 'New York Knicks': { injured: [{ name: 'Jalen Brunson', status: 'Day-To-Day' }, { name: 'Josh Hart', status: 'Questionable' }, { name: 'Healthy Guy', status: 'Active' }] }, 'Denver Nuggets': { injured: [{ name: 'Nikola Jokic', status: 'Doubtful' }] } });
+  const out = await w.f.flagInjured('nba', TOP);
+  assert.equal(out.topPlays[0].injuryStatus, 'out'); assert.equal(out.topPlays[1].injuryStatus, 'day-to-day', 'ESPN says Day-To-Day for most uncertain players, so it is flagged'); assert.equal(out.topPlays[2].injuryStatus, undefined);
+  assert.equal(out.topTen[0].injuryStatus, 'doubtful', 'an accent in the saved name does not hide him (Jokić / Jokic)');
+  assert.equal(TOP.topPlays[0].injuryStatus, undefined, 'the saved list is not changed'); assert.equal(out.cached, true);
+  assert.deepEqual([...new Set(w.calls)].sort(), ['Denver Nuggets', 'Indiana Pacers', 'New York Knicks'], 'one look per team');
+});
+
+test('questionable is flagged too, and the status must belong to that team (a same-name player on another team is not him)', async () => {
+  const w = flagWorld({ 'Indiana Pacers': { injured: [{ name: 'Pascal Siakam', status: 'questionable' }] }, 'New York Knicks': { injured: [] }, 'Denver Nuggets': { injured: [{ name: 'Pascal Siakam', status: 'Out' }] } });
+  const out = await w.f.flagInjured('nba', { topPlays: [{ player: 'Pascal Siakam', team: 'Indiana Pacers' }, { player: 'Pascal Siakam', team: 'New York Knicks' }] });
+  assert.equal(out.topPlays[0].injuryStatus, 'questionable'); assert.equal(out.topPlays[1].injuryStatus, undefined);
+  const act = await flagWorld({ 'Indiana Pacers': { injured: [{ name: 'Pascal Siakam', status: 'Active' }, { name: 'Pascal Siakam', status: 'Probable' }] } }).f.flagInjured('nba', { topPlays: [{ player: 'Pascal Siakam', team: 'Indiana Pacers' }] });
+  assert.equal(act.topPlays[0].injuryStatus, undefined, 'only out, doubtful, questionable and day-to-day are flagged');
+});
+
+test('if the injury report fails or is slow, nothing is flagged and the list comes back as it was; nothing to check means no lookups', async () => {
+  const same = o => JSON.stringify(o);
+  assert.equal(same(await flagWorld({ 'Indiana Pacers': new Error('ESPN down'), 'New York Knicks': new Error('x'), 'Denver Nuggets': null }).f.flagInjured('nba', TOP)), same(TOP));
+  const slow = flagWorld({}, { slow: true }); const t0 = Date.now(); const out = await slow.f.flagInjured('nba', TOP); assert.ok(Date.now() - t0 < 4000, 'gives up after about 2.5 seconds'); assert.equal(same(out), same(TOP));
+  const none = flagWorld({}); assert.equal(await none.f.flagInjured('nba', { topPlays: [{ locked: true, rank: 1 }] }).then(x => x.topPlays.length), 1); assert.equal(none.calls.length, 0);
+  assert.equal(await none.f.flagInjured('nba', null), null);
+});
