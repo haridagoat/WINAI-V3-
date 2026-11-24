@@ -1945,8 +1945,10 @@ window.addEventListener('DOMContentLoaded', () => {
   gpSync(document.querySelector('.panel.active')?.id.replace('panel-', '') || 'today');
   loadTodaysGames();
   loadFullPlayerLists();
-  renderTodayPage();
   initMatchupDayPicker();
+  // The address says which screen to open. The Board is the default, so only then does the slate load here; any other screen loads its own data.
+  if (pageForPath(location.pathname) === 'today') renderTodayPage();
+  applyLocation();
   setDefaultMatchupLeague();
   checkDataFeedStatus();
   document.addEventListener('click', e => {
@@ -2714,6 +2716,7 @@ async function analyzeProp(league='nba') {
   if (!line) { notify('Enter the prop line, for example 24.5.', elFor(league,'prop-line')); return; }
   if (!(parseFloat(line) > 0)) { notify('The line has to be a number above zero.', elFor(league,'prop-line')); return; }
 
+  syncAnalyzeUrl(league);   // the address now names this analysis, so copying it shares it (it only fills the form in; whoever opens it still presses Analyze)
   // While the paywall is on, each analysis starts with a ticket from the server: free accounts get one a day.
   let ticketHeaders;
   try { const tk = await analysisStart(); if (tk) ticketHeaders = { 'X-Analysis-Ticket': tk }; }
@@ -4031,6 +4034,7 @@ function selectMatchupDay(dateStr) {
   matchupSelectedDate = new Date(dateStr + 'T00:00:00');
   renderDayStrip();
   loadScheduleForDate(dateStr);
+  syncMatchupUrl(dateStr);
 }
 
 async function loadScheduleForDate(dateStr) {
@@ -4632,6 +4636,7 @@ function loadHistory(i) {
   elFor(league,'player-name').value = h.player;
   elFor(league,'opp-team').value = h.opp;
   elFor(league,'prop-line').value = h.line;
+  syncAnalyzeUrl(league);
   const hv = parseVerdict(h.raw, { ...(h.ctx||{}), _postedLine: h.line, mathProjection: h.ctx?.mathProjection });
   elFor(league,'result-area').innerHTML = renderResult(h.raw, h.player, h.opp || '', h.propType, h.line, h.ctx || {}, hv, league);
   if (h.playerShotChart) renderShotChartsInto(league, h.player, h.opp || '', h.playerShotChart, h.oppShotChart);
@@ -4812,6 +4817,45 @@ const SECTIONS = {
 };
 const PAGE_SECTION = Object.fromEntries(Object.entries(SECTIONS).flatMap(([sec, v]) => v.pages.map(([pg]) => [pg, sec])));
 const PAGE_NAME = { today: 'Today', matchups: 'Daily Matchups', analyzer: 'NBA prop analyzer', wnba: 'WNBA prop analyzer', history: 'History / CLV', betslip: 'Prop List' };
+// ROUTES-BEGIN
+// Real addresses for each page, so Back, Forward, reload and a pasted link land on the right screen. The server answers each of these
+// with this same page (PAGE_PATHS in server.js, checked by a test). "/" is still the Board.
+const ROUTES = { today: '/board', matchups: '/board/games', analyzer: '/analyze', wnba: '/analyze/wnba', betslip: '/track', history: '/track/history' };
+const PATH_PAGE = Object.fromEntries(Object.entries(ROUTES).map(([pg, p]) => [p, pg]));
+const cleanPath = p => (String(p || '/').toLowerCase().replace(/\/+$/, '') || '/');
+function pageForPath(p) { const c = cleanPath(p); return c === '/' ? 'today' : (PATH_PAGE[c] || 'today'); }
+// Games: ?date=YYYY-MM-DD, only a real calendar day in a sensible range.
+function routeDate(search) {
+  const v = new URLSearchParams(search || '').get('date');
+  if (!v || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
+  const d = new Date(v + 'T00:00:00');
+  if (isNaN(d) || d.getFullYear() < 2020 || d.getFullYear() > 2100) return null;
+  const back = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return back === v ? v : null;   // "2026-02-31" rolls over to March; that is not a real day
+}
+// Analyze: ?player=&opp=&prop=&line=. Everything is trimmed, length-limited and checked; the result only ever goes into form fields as text.
+const ROUTE_PROPS = ['points', 'rebounds', 'assists', '3pm', 'pra', 'pr', 'pa', 'ra', 'steals', 'blocks'];
+function routeAnalysis(search) {
+  const q = new URLSearchParams(search || ''), out = {};
+  const hidden = k => k < 32 || k === 127 || (k >= 8203 && k <= 8207) || (k >= 8232 && k <= 8238) || k === 8288 || k === 65279;   // control, zero-width and direction-changing characters
+  const clean = (v, n) => Array.from(String(v == null ? '' : v)).filter(c => !hidden(c.charCodeAt(0))).join('').trim().slice(0, n);
+  const player = clean(q.get('player'), 60), opp = clean(q.get('opp'), 50), prop = clean(q.get('prop'), 12).toLowerCase(), line = clean(q.get('line'), 8);
+  if (player) out.player = player;
+  if (opp) out.opp = opp;
+  if (ROUTE_PROPS.includes(prop)) out.prop = prop;
+  if (/^\d{1,3}(\.\d)?$/.test(line) && parseFloat(line) > 0) out.line = line;
+  return out;
+}
+function analysisQuery(f) {
+  const q = new URLSearchParams();
+  if (f.player) q.set('player', f.player);
+  if (f.opp) q.set('opp', f.opp);
+  if (f.player && f.prop) q.set('prop', f.prop);
+  if (f.line) q.set('line', f.line);
+  const s = q.toString();
+  return s ? '?' + s : '';
+}
+// ROUTES-END
 // Where each section was last left, so Board always returns to the page you were on. Analyze also remembers across visits.
 const SECTION_LAST = { board: 'today', analyze: (() => { try { return localStorage.getItem('winai_analyze_page') === 'wnba' ? 'wnba' : 'analyzer'; } catch (_) { return 'analyzer'; } })(), track: 'betslip' };
 document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('.subtab'); if (b && b.dataset.page) switchTab(b.dataset.page); });
@@ -4840,7 +4884,48 @@ paintNav('today');   // the page that is showing when the site opens
   set(); window.addEventListener('resize', set);
   if (typeof ResizeObserver === 'function') new ResizeObserver(set).observe(h);
 })();
-function switchTab(name) {
+// Adds a history entry for a page the visitor navigated to (not for one the address already names, and not while answering Back/Forward).
+function pushPageUrl(name) {
+  const want = ROUTES[name]; if (!want) return;
+  const here = cleanPath(location.pathname);
+  if (pageForPath(here) === name && (here === want || (here === '/' && name === 'today'))) return;
+  const ds = toDateStr(matchupSelectedDate);
+  const query = name === 'matchups' && ds !== toDateStr(new Date()) ? '?date=' + ds : '';
+  try { history.pushState({ page: name }, '', want + query); } catch (_) {}
+}
+// Rewrites the address without adding a Back step (a day picked, or an analysis started).
+function replaceUrl(url) { try { if (url !== location.pathname + location.search) history.replaceState(history.state, '', url); } catch (_) {} }
+function syncMatchupUrl(ds) { if (document.getElementById('panel-matchups')?.classList.contains('active')) replaceUrl(ROUTES.matchups + (ds && ds !== toDateStr(new Date()) ? '?date=' + ds : '')); }
+function analyzeFields(league) {
+  const g = b => (elFor(league, b)?.value || '').trim();
+  return { player: g('player-name'), opp: g('opp-team'), prop: g('prop-type'), line: g('prop-line') };
+}
+function syncAnalyzeUrl(league) { replaceUrl(ROUTES[league === 'wnba' ? 'wnba' : 'analyzer'] + analysisQuery(analyzeFields(league))); }
+// Reads the address and shows what it names. Used when the site opens and on Back/Forward.
+function applyLocation() {
+  const page = pageForPath(location.pathname);
+  if (page === 'matchups') {
+    const ds = routeDate(location.search) || toDateStr(new Date());
+    if (ds !== toDateStr(matchupSelectedDate) || !window._matchupScheduleLoaded) {
+      matchupSelectedDate = new Date(ds + 'T00:00:00');
+      const first = new Date(matchupWindowStart), last = new Date(first); last.setDate(last.getDate() + 6);
+      if (matchupSelectedDate < new Date(toDateStr(first) + 'T00:00:00') || matchupSelectedDate > last) matchupWindowStart = new Date(matchupSelectedDate);
+      renderDayStrip();
+      loadScheduleForDate(ds);
+    }
+  }
+  switchTab(page, { push: false });
+  if (page === 'analyzer' || page === 'wnba') {
+    const league = page === 'wnba' ? 'wnba' : 'nba', f = routeAnalysis(location.search);
+    if (f.player) elFor(league, 'player-name').value = f.player;
+    if (f.opp) elFor(league, 'opp-team').value = f.opp;
+    if (f.prop) elFor(league, 'prop-type').value = f.prop;
+    if (f.line) elFor(league, 'prop-line').value = f.line;
+  }
+}
+window.addEventListener('popstate', applyLocation);
+function switchTab(name, opts) {
+  if (!(opts && opts.push === false)) pushPageUrl(name);
   const sec = PAGE_SECTION[name];
   if (sec) { SECTION_LAST[sec] = name; if (sec === 'analyze') lsSet('winai_analyze_page', name); }
   paintNav(name);
@@ -5434,7 +5519,7 @@ function goToTodayPick(idx) {
   // Fallback (no-odds) picks have a real projection but no posted line —
   // nothing to prefill or run an analysis against yet, so just get the
   // player/opponent/prop teed up and let the user enter a line themselves.
-  if (p.line == null) { elFor(league,'prop-line').focus(); return; }
+  if (p.line == null) { syncAnalyzeUrl(league); elFor(league,'prop-line').focus(); return; }
   elFor(league,'prop-line').value = p.line;
   analyzeProp(league);
 }
@@ -5475,6 +5560,7 @@ function gsPick(i) {
     switchTab(i.league === 'wnba' ? 'wnba' : 'analyzer');
     const el = elFor(i.league, 'player-name');
     el.value = i.n; el.dispatchEvent(new Event('input', { bubbles: true }));
+    syncAnalyzeUrl(i.league === 'wnba' ? 'wnba' : 'nba');
     return elFor(i.league, 'prop-line')?.focus();
   }
   switchTab('matchups');

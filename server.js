@@ -5060,7 +5060,10 @@ async function streamAnalysis(req, res, prompt) {
   }
 }
 
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+// The page's own addresses (public/index.html, ROUTES). Each one is the same single page; the page reads the address and shows that screen.
+// They are listed one by one, not matched with a catch-all, so a mistyped address is still "not found" and never hides a broken link.
+const PAGE_PATHS = ['/board', '/board/games', '/analyze', '/analyze/wnba', '/track', '/track/history'];
+app.get(['/', ...PAGE_PATHS], (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 // ── PLAYER MATCHUP LOOKUP ─────────────────────────────────────────
 // Given a player name, finds today's opponent automatically
